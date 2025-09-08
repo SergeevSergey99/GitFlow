@@ -293,7 +293,7 @@ fun RepositoryCard(
                         }
                     }
                     Text(
-                        text = getTimeAgo(repository.lastUpdated),
+                        text = timeAgo(repository.lastUpdated),
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -402,7 +402,7 @@ fun CommitCard(commit: Commit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = getTimeAgo(commit.timestamp),
+                        text = timeAgo(commit.timestamp),
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
