@@ -367,7 +367,9 @@ private fun buildGraphData(commits: List<Commit>): GraphData {
         return GraphData(emptyList(), emptyMap(), emptyMap(), emptyMap(), 0)
     }
 
-    val byHash = commits.associateBy { it.hash }
+    // Сортируем коммиты в правильном порядке для построения графа (старые -> новые)
+    val sortedCommits = commits.sortedBy { it.timestamp }
+    val byHash = sortedCommits.associateBy { it.hash }
     val nodePositions = mutableMapOf<String, NodePosition>()
     val connections = mutableMapOf<String, MutableList<Connection>>()
     val forkFrom = mutableMapOf<String, ForkInfo>()
@@ -375,7 +377,7 @@ private fun buildGraphData(commits: List<Commit>): GraphData {
     val active = mutableListOf<String?>() // lane -> ожидаемый хеш ниже
     var maxLanes = 0
 
-    commits.forEachIndexed { row, c ->
+    sortedCommits.forEachIndexed { row, c ->
         // lane для текущего коммита
         var lane = active.indexOf(c.hash)
         var laneWasNew = false
@@ -436,9 +438,18 @@ private fun buildGraphData(commits: List<Commit>): GraphData {
         maxLanes = max(maxLanes, active.size)
     }
 
+    // Пересчитываем позиции строк для корректного отображения в UI (инвертируем порядок)
+    val finalNodePositions = mutableMapOf<String, NodePosition>()
+    val totalRows = sortedCommits.size - 1
+    commits.forEach { commit ->
+        val originalPos = nodePositions[commit.hash]!!
+        val invertedRow = totalRows - originalPos.row
+        finalNodePositions[commit.hash] = NodePosition(lane = originalPos.lane, row = invertedRow)
+    }
+
     return GraphData(
-        commits = commits,
-        nodePositions = nodePositions,
+        commits = commits, // возвращаем в исходном порядке (новые сверху)
+        nodePositions = finalNodePositions,
         connections = connections,
         forkFrom = forkFrom,
         maxLane = maxLanes
