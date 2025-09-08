@@ -360,139 +360,96 @@ private data class ForkInfo(
     val parentLane: Int,
     val parentBranch: String?
 )
-
 private fun buildGraphData(commits: List<Commit>): GraphData {
-    if (commits.isEmpty()) {
-        return GraphData(emptyList(), emptyMap(), emptyMap(), emptyMap(), 0)
-    }
+    if (commits.isEmpty()) return GraphData(emptyList(), emptyMap(), emptyMap(), emptyMap(), 0)
 
     val byHash = commits.associateBy { it.hash }
     val nodePositions = mutableMapOf<String, NodePosition>()
     val connections = mutableMapOf<String, MutableList<Connection>>()
     val forkFrom = mutableMapOf<String, ForkInfo>()
 
-    // Построение карты потомков для каждого коммита
-    val children = mutableMapOf<String, MutableList<String>>()
-    commits.forEach { commit ->
-        commit.parents.forEach { parentHash ->
-            children.getOrPut(parentHash) { mutableListOf() }.add(commit.hash)
-        }
-    }
-
-    // Активные линии: индекс lane -> hash коммита, который ожидается в следующей строке
+    // lane -> ожидаемый следующий hash на этой линии (обычно родитель текущего узла на этой линии)
     val activeLanes = mutableListOf<String?>()
-    var maxLanes = 0
-    
-    // Инициализация: первый коммит и его потомки
-    if (commits.isNotEmpty()) {
-        val firstCommit = commits.first()
-        activeLanes.add(firstCommit.hash)
-        
-        // Добавляем всех детей первого коммита в активные линии
-        children[firstCommit.hash]?.forEach { childHash ->
-            if (childHash != firstCommit.hash && byHash.containsKey(childHash)) {
-                activeLanes.add(childHash)
-            }
-        }
-    }
+    activeLanes.add(commits.first().hash) // без «детей первого коммита»
+    var maxLanes = 1
 
     commits.forEachIndexed { row, commit ->
-        val list = mutableListOf<Connection>()
-        
-        // Найти lane для текущего коммита
-        var lane = activeLanes.indexOf(commit.hash)
-        var isNewBranch = false
-        
-        if (lane == -1) {
-            // Коммит не ожидался - найти свободную lane или создать новую
-            lane = activeLanes.indexOf(null)
-            if (lane == -1) {
-                lane = activeLanes.size
-                activeLanes.add(null)
-            }
-            isNewBranch = true
-        }
-        
+        val conns = mutableListOf<Connection>()
 
-        // Запомнить состояние lanes до изменений для правильного рисования линий
-        val lanesBefore = activeLanes.toList()
-        
-        // Рисуем вертикальные линии для всех активных lanes
-        for (i in lanesBefore.indices) {
-            if (lanesBefore[i] != null) {
-                list.add(Connection(fromLane = i, toLane = i, type = ConnectionType.STRAIGHT))
+        // 1) Схлопываем дубликаты: если текущий hash ожидают несколько lanes,
+        // оставляем самый левый как «основной», остальные подключаем диагональю и гасим.
+        val waitingIdx = activeLanes.withIndex().filter { it.value == commit.hash }.map { it.index }
+        var lane = waitingIdx.minOrNull() ?: -1
+        if (waitingIdx.size > 1) {
+            waitingIdx.sorted().drop(1).forEach { extra ->
+                conns.add(Connection(fromLane = extra, toLane = lane, type = ConnectionType.BRANCH))
+                activeLanes[extra] = null
             }
         }
-        
+
+        // 2) Снимок до изменений и вертикали на ряд
+        val lanesBefore = activeLanes.toList()
+        lanesBefore.indices.forEach { i ->
+            if (lanesBefore[i] != null) {
+                conns.add(Connection(fromLane = i, toLane = i, type = ConnectionType.STRAIGHT))
+            }
+        }
+
+        // 3) Назначаем lane текущему коммиту
+        val wasExpected = lane != -1
+        if (lane == -1) {
+            lane = activeLanes.indexOf(null).takeIf { it != -1 } ?: activeLanes.size.also { activeLanes.add(null) }
+        }
+
         val mainParent = commit.parents.firstOrNull()
-        
-        // Если это новая ветка, рисуем соединение с родительским коммитом
-        if (isNewBranch && mainParent != null && byHash.containsKey(mainParent)) {
-            // Найти родительский коммит в активных линиях
+
+        // 4) Если коммит «новая ветка» (не ожидался), рисуем ответвление от родителя к текущей lane
+        if (!wasExpected && mainParent != null && byHash.containsKey(mainParent)) {
             var parentLane = lanesBefore.indexOf(mainParent)
             if (parentLane == -1) {
-                // Если родитель не найден, добавляем его в свободную lane
-                parentLane = activeLanes.indexOf(null)
+                parentLane = activeLanes.indexOf(mainParent)
                 if (parentLane == -1) {
-                    parentLane = activeLanes.size
-                    activeLanes.add(mainParent)
-                } else {
+                    parentLane = activeLanes.indexOf(null).takeIf { it != -1 }
+                        ?: activeLanes.size.also { activeLanes.add(null) }
                     activeLanes[parentLane] = mainParent
                 }
             }
-            
             if (parentLane != lane) {
-                // Рисуем ответвление от родительской линии
-                list.add(Connection(fromLane = parentLane, toLane = lane, type = ConnectionType.BRANCH))
-                val parentBranch = byHash[mainParent]?.branch
+                conns.add(Connection(fromLane = parentLane, toLane = lane, type = ConnectionType.BRANCH))
                 forkFrom[commit.hash] = ForkInfo(
-                    parentHash = mainParent, 
-                    parentLane = parentLane, 
-                    parentBranch = parentBranch
+                    parentHash = mainParent,
+                    parentLane = parentLane,
+                    parentBranch = byHash[mainParent]?.branch
                 )
             }
         }
 
-        // Убираем текущий коммит из всех активных линий (избежание дубликатов)
-        for (i in activeLanes.indices) {
-            if (activeLanes[i] == commit.hash) {
-                activeLanes[i] = null
-            }
-        }
-        
-        // Устанавливаем основного родителя в текущую lane
-        if (mainParent != null && byHash.containsKey(mainParent)) {
-            activeLanes[lane] = mainParent
-        } else {
-            activeLanes[lane] = null // завершаем ветку
-        }
-        
-        // Обработка merge коммитов (дополнительные родители)
-        commit.parents.drop(1).forEach { parentHash ->
-            if (byHash.containsKey(parentHash)) {
-                var parentLane = activeLanes.indexOf(parentHash)
-                if (parentLane == -1) {
-                    // Найти свободную lane для merge parent
-                    parentLane = activeLanes.indexOf(null)
-                    if (parentLane == -1) {
-                        parentLane = activeLanes.size
-                        activeLanes.add(null)
+        // 5) Обновляем ожидание на текущей lane: следующий — основной родитель
+        activeLanes[lane] = if (mainParent != null && byHash.containsKey(mainParent)) mainParent else null
+
+        // 6) Merge-родители: рисуем «нижнюю половину» как было (у вас она выглядела корректно)
+        commit.parents.drop(1).forEach { p ->
+            if (byHash.containsKey(p)) {
+                var pLane = lanesBefore.indexOf(p)
+                if (pLane == -1) {
+                    pLane = activeLanes.indexOf(p)
+                    if (pLane == -1) {
+                        pLane = activeLanes.indexOf(null).takeIf { it != -1 }
+                            ?: activeLanes.size.also { activeLanes.add(null) }
                     }
                 }
-                // Рисуем merge линию
-                list.add(Connection(fromLane = lane, toLane = parentLane, type = ConnectionType.MERGE))
-                activeLanes[parentLane] = parentHash
+                // сохраняем ваш стиль MERGE: от текущей lane к lane родителя вниз
+                conns.add(Connection(fromLane = lane, toLane = pLane, type = ConnectionType.MERGE))
+                activeLanes[pLane] = p
             }
         }
 
-        // Убираем пустые lanes справа для компактности
-        while (activeLanes.isNotEmpty() && activeLanes.last() == null) {
-            activeLanes.removeLast()
-        }
+        // 7) Чистим пустые хвосты справа
+        while (activeLanes.isNotEmpty() && activeLanes.last() == null) activeLanes.removeLast()
 
         nodePositions[commit.hash] = NodePosition(lane = lane, row = row)
-        connections[commit.hash] = list
-        maxLanes = maxOf(maxLanes, activeLanes.size)
+        connections[commit.hash] = conns
+        if (activeLanes.size > maxLanes) maxLanes = activeLanes.size
     }
 
     return GraphData(
@@ -503,6 +460,7 @@ private fun buildGraphData(commits: List<Commit>): GraphData {
         maxLane = maxLanes
     )
 }
+
 
 /* ============================ UI utils ============================ */
 
