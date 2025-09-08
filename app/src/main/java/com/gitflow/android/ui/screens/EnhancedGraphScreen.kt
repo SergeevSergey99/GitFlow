@@ -1,6 +1,7 @@
 package com.gitflow.android.ui.screens
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -26,16 +27,18 @@ import kotlin.math.abs
 import kotlin.math.max
 
 /**
- * Minimal, correct commit-graph renderer.
- * Fixes:
- * 1) All geometry in dp -> px inside DrawScope, so lines align with nodes on any density.
- * 2) Graph builder de-duplicates active lanes for the same hash and stops lanes at the last commit.
+ * Commit-graph renderer with:
+ * - dp→px inside DrawScope (точное совпадение точек и линий на любой плотности);
+ * - корректное завершение дорожек без «бесконечных» вертикалей;
+ * - явные FORK-кривые при старте новой ветки из родителя;
+ * - кликабельные строки коммитов.
  */
 
 @Composable
 fun EnhancedGraphView(
     repository: Repository?,
-    gitRepository: MockGitRepository
+    gitRepository: MockGitRepository,
+    onCommitClick: (Commit) -> Unit = {}
 ) {
     if (repository == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -44,36 +47,33 @@ fun EnhancedGraphView(
         return
     }
 
-    // Source data
     val commits by remember(repository.id) {
         mutableStateOf(gitRepository.getCommits(repository))
     }
 
-    // Build rows for graph
     val rows by remember(commits) {
         mutableStateOf(buildGraphData(commits))
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize()
-    ) {
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
         itemsIndexed(rows, key = { _, r -> r.commit.hash }) { _, row ->
-            GraphListRow(row)
+            GraphListRow(row, onCommitClick)
         }
         item { Spacer(Modifier.height(24.dp)) }
     }
 }
 
 @Composable
-private fun GraphListRow(row: GraphRow) {
+private fun GraphListRow(row: GraphRow, onCommitClick: (Commit) -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(RowHeight)
+            .clickable { onCommitClick(row.commit) }
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Graph column
+        // граф
         Canvas(
             modifier = Modifier
                 .width((row.laneCount * LaneStep + GraphPadding).coerceAtLeast(40.dp))
@@ -83,7 +83,7 @@ private fun GraphListRow(row: GraphRow) {
             drawNode(row)
         }
 
-        // Commit info
+        // инфо
         Column(
             modifier = Modifier
                 .padding(start = 12.dp)
@@ -114,29 +114,31 @@ private fun DrawScope.drawRowConnections(row: GraphRow) {
     val strokePx = StrokeWidth.toPx()
     val midY = size.height / 2f
 
-    // Vertical lines for all active lanes in this row.
+    // Вертикали
     row.verticalMask.forEachIndexed { i, active ->
         if (!active) return@forEachIndexed
         val x = i * stepPx + centerPx
+
+        // если это новый форк — не рисуем верхнюю половину новой дорожки
+        val startY = if (row.forkFromLane != null && i == row.lane) midY else 0f
         drawLine(
             color = laneColor(i),
-            start = Offset(x, 0f),
+            start = Offset(x, startY),
             end = Offset(x, size.height),
             strokeWidth = strokePx,
             cap = StrokeCap.Round
         )
     }
 
-    // Merge curves from current lane to target lanes
+    // Кривые
     row.connections.forEach { c ->
         when (c.type) {
             ConnectionType.MERGE -> {
                 val x1 = c.fromLane * stepPx + centerPx
                 val x2 = c.toLane * stepPx + centerPx
+                val dx = abs(x2 - x1)
                 val path = Path().apply {
                     moveTo(x1, midY)
-                    // Smooth S-curve to bottom at target lane
-                    val dx = abs(x2 - x1)
                     cubicTo(
                         x1, midY + dx * 0.25f,
                         x2, size.height - dx * 0.25f,
@@ -149,8 +151,24 @@ private fun DrawScope.drawRowConnections(row: GraphRow) {
                     style = Stroke(width = strokePx, cap = StrokeCap.Round)
                 )
             }
-            ConnectionType.STRAIGHT -> {
-                // Not used explicitly. Vertical lines handled above.
+            ConnectionType.FORK -> {
+                val xParent = c.fromLane * stepPx + centerPx
+                val xChild = c.toLane * stepPx + centerPx
+                val dx = abs(xChild - xParent)
+                val path = Path().apply {
+                    moveTo(xParent, 0f)
+                    cubicTo(
+                        xParent, dx * 0.25f,
+                        xChild, midY - dx * 0.25f,
+                        xChild, midY
+                    )
+                }
+                // цвет по родителю, чтобы визуально «выйти» из его дорожки
+                drawPath(
+                    path = path,
+                    color = laneColor(c.fromLane),
+                    style = Stroke(width = strokePx, cap = StrokeCap.Round)
+                )
             }
         }
     }
@@ -180,7 +198,6 @@ private val NodeRadius: Dp = 6.dp
 private val StrokeWidth: Dp = 2.dp
 
 private fun laneColor(index: Int): Color {
-    // Stable palette cycling by lane index.
     val palette = listOf(
         Color(0xFF4F46E5), // indigo
         Color(0xFF059669), // emerald
@@ -198,8 +215,9 @@ private data class GraphRow(
     val commit: Commit,
     val lane: Int,
     val laneCount: Int,
-    val verticalMask: List<Boolean>,         // lanes with vertical line for this row
-    val connections: List<Connection>        // merges starting at this row
+    val verticalMask: List<Boolean>,   // какие дорожки рисуют вертикаль в этом ряду
+    val connections: List<Connection>, // MERGE/FORK кривые
+    val forkFromLane: Int?             // если старт новой ветки — из какой дорожки
 )
 
 private data class Connection(
@@ -208,24 +226,25 @@ private data class Connection(
     val type: ConnectionType
 )
 
-private enum class ConnectionType { STRAIGHT, MERGE }
+private enum class ConnectionType { MERGE, FORK }
 
 /**
- * Build a lane assignment and connection list per row.
- * - Uses only parent links.
- * - Removes duplicate occurrences of the same hash in active lanes.
- * - Stops lanes at the last commit.
+ * Построение дорожек:
+ * - удаляет дубликаты одного и того же hash в active;
+ * - завершает пустые «хвосты»;
+ * - ставит FORK при появлении нового lane от родителя.
  */
 private fun buildGraphData(commits: List<Commit>): List<GraphRow> {
     if (commits.isEmpty()) return emptyList()
 
     val rows = mutableListOf<GraphRow>()
-    val active = mutableListOf<String?>() // lane -> hash we are "waiting for" below
+    val active = mutableListOf<String?>() // lane -> hash, который «ждём» ниже
 
     for (c in commits) {
-        // 1) Find or allocate lane for current commit
+        // lane для текущего коммита
         var lane = active.indexOf(c.hash)
-        if (lane == -1) {
+        val laneWasNew = lane == -1
+        if (laneWasNew) {
             lane = active.indexOf(null)
             if (lane == -1) {
                 lane = active.size
@@ -233,26 +252,30 @@ private fun buildGraphData(commits: List<Commit>): List<GraphRow> {
             }
         }
 
-        // 2) Remove any duplicates of the same hash in other lanes
-        for (i in active.indices) {
-            if (i != lane && active[i] == c.hash) active[i] = null
-        }
+        // удалить дубликаты того же hash
+        for (i in active.indices) if (i != lane && active[i] == c.hash) active[i] = null
 
-        // Snapshot BEFORE updating with parents. This drives vertical lines in this row.
         val activeBefore = active.toList()
-
-        // 3) Build connections for merges and update active "waiting" hashes
         val connections = mutableListOf<Connection>()
 
-        if (c.parents.isNotEmpty()) {
-            // Main parent continues straight down from current lane
-            active[lane] = c.parents.first()
+        // основной родитель
+        val mainParent = c.parents.firstOrNull()
+        val parentLane = if (mainParent != null) activeBefore.indexOf(mainParent) else -1
+
+        // если lane новый и есть родитель, то это FORK из parentLane -> lane
+        val forkFromLane = if (laneWasNew && parentLane != -1) {
+            connections += Connection(fromLane = parentLane, toLane = lane, type = ConnectionType.FORK)
+            parentLane
+        } else null
+
+        // продолжение основной линии или конец
+        if (mainParent != null) {
+            active[lane] = mainParent
         } else {
-            // No parents: current lane ends here
             active[lane] = null
         }
 
-        // Other parents: MERGE arcs into their lanes
+        // дополнительные родители — MERGE из текущего lane в их lane к низу
         for (p in c.parents.drop(1)) {
             var t = active.indexOf(p)
             if (t == -1) {
@@ -266,14 +289,16 @@ private fun buildGraphData(commits: List<Commit>): List<GraphRow> {
             active[t] = p
         }
 
-        // 4) Trim trailing null lanes to avoid "infinite" tails
+        // обрезка пустых хвостов
         while (active.isNotEmpty() && active.last() == null) active.removeLast()
 
-        // Compute which lanes draw a vertical segment across this row:
-        // - any lane that was active before, or
-        // - the current lane if it has at least one parent (continues downward)
+        // вертикальные отрезки для этого ряда
         val verticalMask = MutableList(max(activeBefore.size, active.size)) { i ->
-            (i < activeBefore.size && activeBefore[i] != null) || (i == lane && c.parents.isNotEmpty())
+            // любая активная дорожка сверху рисует вертикаль
+            val wasActive = i < activeBefore.size && activeBefore[i] != null
+            // текущая дорожка продолжится вниз, если есть родитель
+            val currentContinues = (i == lane && mainParent != null)
+            wasActive || currentContinues
         }
 
         val laneCount = verticalMask.size.coerceAtLeast(lane + 1)
@@ -282,7 +307,8 @@ private fun buildGraphData(commits: List<Commit>): List<GraphRow> {
             lane = lane,
             laneCount = laneCount,
             verticalMask = verticalMask,
-            connections = connections
+            connections = connections,
+            forkFromLane = forkFromLane
         )
     }
 
@@ -291,7 +317,7 @@ private fun buildGraphData(commits: List<Commit>): List<GraphRow> {
 
 /* ============================ Utils ============================ */
 
-public fun timeAgo(timestamp: Long): String {
+fun timeAgo(timestamp: Long): String {
     val now = System.currentTimeMillis()
     val diff = now - timestamp
     return when {
