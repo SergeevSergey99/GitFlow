@@ -114,10 +114,13 @@ fun MainScreen(navController: NavController) {
                         repositories = repositories + repo
                     }
                 )
-                1 -> GraphView(
-                    repository = selectedRepository,
-                    gitRepository = gitRepository
-                )
+                1 -> {
+                    // Use the new enhanced graph view
+                    EnhancedGraphView(
+                        repository = selectedRepository,
+                        gitRepository = gitRepository
+                    )
+                }
                 2 -> ChangesView(
                     repository = selectedRepository,
                     gitRepository = gitRepository
@@ -1111,19 +1114,5 @@ fun EmptyStateMessage(message: String) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-    }
-}
-
-// Helper functions
-fun getTimeAgo(timestamp: Long): String {
-    val now = System.currentTimeMillis()
-    val diff = now - timestamp
-
-    return when {
-        diff < 60_000 -> "just now"
-        diff < 3_600_000 -> "${diff / 60_000}m ago"
-        diff < 86_400_000 -> "${diff / 3_600_000}h ago"
-        diff < 604_800_000 -> "${diff / 86_400_000}d ago"
-        else -> SimpleDateFormat("MMM dd", Locale.getDefault()).format(Date(timestamp))
     }
 }
