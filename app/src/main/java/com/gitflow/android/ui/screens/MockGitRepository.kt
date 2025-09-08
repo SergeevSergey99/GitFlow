@@ -274,61 +274,35 @@ class MockGitRepository {
         mockChanges[repo1.id] = generateChangesForRepo()
         mockChanges[repo2.id] = generateChangesForRepo()
     }
-
     private fun generateCommitsForRepo(repoName: String): List<Commit> {
-        val messages = listOf(
-            "Initial commit",
-            "Add README.md",
-            "Update dependencies",
-            "Fix critical bug in login flow",
-            "Add new feature: dark mode",
-            "Refactor database layer",
-            "Update UI components",
-            "Fix memory leak",
-            "Add unit tests",
-            "Improve performance",
-            "Update documentation",
-            "Fix merge conflicts",
-            "Add CI/CD pipeline",
-            "Update gradle version",
-            "Fix crash on Android 12"
-        )
-
-        val authors = listOf(
-            "John Doe" to "john@example.com",
-            "Jane Smith" to "jane@example.com",
-            "Bob Johnson" to "bob@example.com",
-            "Alice Brown" to "alice@example.com",
-            "Charlie Wilson" to "charlie@example.com"
-        )
-
-        val branches = listOf("main", "develop", "feature/ui", "feature/auth", "hotfix/crash")
-
+        fun h() = generateHash()
         val now = System.currentTimeMillis()
-        val commits = mutableListOf<Commit>()
-        var parentHash = ""
+        var t = now - 15 * 3600_000L
+        fun tick() = t.also { t += 3600_000L }
 
-        for (i in messages.indices) {
-            val author = authors.random()
-            val hash = generateHash()
+        val m1 = Commit(h(), "Initial commit","John Doe","john@example.com", tick(), emptyList(), "main")
+        val m2 = Commit(h(), "Setup CI","Jane Smith","jane@example.com", tick(), listOf(m1.hash), "main")
+        val m3 = Commit(h(), "Core module","Bob Johnson","bob@example.com", tick(), listOf(m2.hash), "main")
 
-            commits.add(
-                Commit(
-                    hash = hash,
-                    message = messages[messages.size - 1 - i],
-                    author = author.first,
-                    email = author.second,
-                    timestamp = now - (i * 3600000L), // Each commit 1 hour apart
-                    parents = if (parentHash.isEmpty()) emptyList() else listOf(parentHash),
-                    branch = if (i % 3 == 0) branches.random() else null
-                )
-            )
+        val ui1 = Commit(h(), "feat(ui): scaffold","Alice Brown","alice@example.com", tick(), listOf(m2.hash), "feature/ui")
+        val ui2 = Commit(h(), "feat(ui): list","Alice Brown","alice@example.com", tick(), listOf(ui1.hash), "feature/ui")
+        val ui3 = Commit(h(), "fix(ui): padding","Alice Brown","alice@example.com", tick(), listOf(ui2.hash), "feature/ui")
 
-            parentHash = hash
-        }
+        val d1 = Commit(h(), "chore(dev): configs","Charlie Wilson","charlie@example.com", tick(), listOf(m3.hash), "develop")
+        val d2 = Commit(h(), "refactor(dev): io","Charlie Wilson","charlie@example.com", tick(), listOf(d1.hash), "develop")
+        val d3 = Commit(h(), "merge(ui → develop)","Jane Smith","jane@example.com", tick(), listOf(d2.hash, ui3.hash), "develop")
 
-        return commits
+        val au1 = Commit(h(), "feat(auth): base","John Doe","john@example.com", tick(), listOf(m3.hash), "feature/auth")
+        val au2 = Commit(h(), "feat(auth): oauth","John Doe","john@example.com", tick(), listOf(au1.hash), "feature/auth")
+        val d4 = Commit(h(), "merge(auth → develop)","Jane Smith","jane@example.com", tick(), listOf(d3.hash, au2.hash), "develop")
+
+        val m4 = Commit(h(), "docs: README","Bob Johnson","bob@example.com", tick(), listOf(m3.hash), "main")
+        val m5 = Commit(h(), "merge(develop → main)","Jane Smith","jane@example.com", tick(), listOf(m4.hash, d4.hash), "main")
+        val m6 = Commit(h(), "release: 1.0","John Doe","john@example.com", tick(), listOf(m5.hash), "main")
+
+        return listOf(m1,m2,m3,ui1,ui2,ui3,d1,d2,d3,au1,au2,d4,m4,m5,m6).sortedByDescending { it.timestamp }
     }
+
 
     private fun generateChangesForRepo(): List<FileChange> {
         val files = listOf(

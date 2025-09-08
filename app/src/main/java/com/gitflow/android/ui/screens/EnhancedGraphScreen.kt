@@ -262,6 +262,7 @@ fun GraphCanvas(
                     connections = graphData.connections[commit.hash] ?: emptyList(),
                     isSelected = selectedCommit?.hash == commit.hash,
                     scale = scale,
+                    maxLanes = graphData.maxLane,
                     onClick = { onCommitClick(commit) }
                 )
             }
@@ -304,6 +305,7 @@ fun GraphCommitRow(
     connections: List<Connection>,
     isSelected: Boolean,
     scale: Float,
+    maxLanes: Int,
     onClick: () -> Unit
 ) {
     val branchColors = listOf(
@@ -334,7 +336,8 @@ fun GraphCommitRow(
         // Graph visualization with connections
         Box(
             modifier = Modifier
-                .width((max(200, (nodeData.lane + 1) * 40) * scale).dp)
+                //.width((max(200, (nodeData.lane + 1) * 40) * scale).dp)
+                .width((max(200, maxLanes * 40) * scale).dp)
                 .fillMaxHeight()
                 .drawBehind {
                     // Draw connections to other commits
@@ -477,79 +480,34 @@ fun GraphCommitRow(
 
 fun DrawScope.drawConnection(
     connection: Connection,
-    nodePosition: NodePosition,
+    nodePosition: NodePosition, // не нужен для X
     branchColors: List<Color>,
     scale: Float
 ) {
-    val startX = (nodePosition.lane * 30 + 20) * scale
-    val startY = size.height / 2
-
-    val endX = (connection.toLane * 30 + 20) * scale
-    val endY = when (connection.type) {
-        ConnectionType.PARENT -> size.height * 1.5f
-        ConnectionType.CHILD -> size.height * -0.5f
-        else -> size.height / 2
+    val step = 30; val center = 20
+    val startX = (connection.fromLane * step + center) * scale
+    val endX   = (connection.toLane   * step + center) * scale
+    val startY = size.height / 2f
+    val endY   = when (connection.type) {
+        ConnectionType.STRAIGHT -> size.height               // вертикаль в пределах строки
+        ConnectionType.MERGE, ConnectionType.BRANCH -> size.height * 1.5f // до центра следующей строки
+        else -> size.height
     }
-
     val color = branchColors[connection.fromLane % branchColors.size]
 
     when (connection.type) {
-        ConnectionType.STRAIGHT -> {
-            // Straight line down
-            drawLine(
-                color = color,
-                start = Offset(startX, 0f),
-                end = Offset(startX, size.height),
-                strokeWidth = 2f * scale
-            )
-        }
-        ConnectionType.MERGE -> {
-            // Curved merge line
-            val path = Path().apply {
+        ConnectionType.STRAIGHT -> drawLine(color, Offset(startX, 0f), Offset(startX, size.height), 2f * scale)
+        ConnectionType.MERGE, ConnectionType.BRANCH -> {
+            val p = Path().apply {
                 moveTo(startX, startY)
-                cubicTo(
-                    startX, startY + (endY - startY) * 0.3f,
-                    endX, startY + (endY - startY) * 0.7f,
-                    endX, endY
-                )
+                cubicTo(startX, startY + (endY - startY)*.3f, endX, startY + (endY - startY)*.7f, endX, endY)
             }
-            drawPath(
-                path = path,
-                color = color,
-                style = Stroke(width = 2f * scale, cap = StrokeCap.Round)
-            )
+            drawPath(p, color, style = Stroke(width = 2f * scale, cap = StrokeCap.Round))
         }
-        ConnectionType.BRANCH -> {
-            // Curved branch line
-            val path = Path().apply {
-                moveTo(startX, startY)
-                cubicTo(
-                    startX, startY + (endY - startY) * 0.3f,
-                    endX, startY + (endY - startY) * 0.7f,
-                    endX, endY
-                )
-            }
-            drawPath(
-                path = path,
-                color = color,
-                style = Stroke(
-                    width = 2f * scale,
-                    cap = StrokeCap.Round,
-                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 5f))
-                )
-            )
-        }
-        else -> {
-            // Generic connection
-            drawLine(
-                color = color,
-                start = Offset(startX, startY),
-                end = Offset(endX, endY),
-                strokeWidth = 2f * scale
-            )
-        }
+        else -> {}
     }
 }
+
 
 @Composable
 fun Badge(
@@ -699,67 +657,41 @@ fun extractAuthors(commits: List<Commit>): List<String> {
 fun buildGraphData(commits: List<Commit>): GraphData {
     val nodePositions = mutableMapOf<String, NodePosition>()
     val connections = mutableMapOf<String, List<Connection>>()
-    val activeLanes = mutableListOf<String?>()
-    var maxLane = 0
 
-    commits.forEachIndexed { index, commit ->
-        // Find or assign lane for this commit
-        var lane = activeLanes.indexOfFirst { it == commit.hash }
+    // active[i] = хеш коммита, который должен встретиться ниже по этой дорожке
+    val active = mutableListOf<String?>()
+    var maxLanes = 0
+
+    commits.forEachIndexed { row, c ->
+        // lane для текущего коммита = где он «ожидается»
+        var lane = active.indexOf(c.hash)
         if (lane == -1) {
-            // Find first empty lane or create new one
-            lane = activeLanes.indexOfFirst { it == null }
-            if (lane == -1) {
-                activeLanes.add(commit.hash)
-                lane = activeLanes.size - 1
-            } else {
-                activeLanes[lane] = commit.hash
+            lane = active.indexOf(null).takeIf { it != -1 } ?: run { active.add(null); active.lastIndex }
+        }
+        nodePositions[c.hash] = NodePosition(lane = lane, row = row)
+
+        val rowConns = mutableListOf<Connection>()
+
+        // непрерывные вертикали для всех живых дорожек
+        for (i in active.indices) if (active[i] != null) {
+            rowConns += Connection(fromLane = i, toLane = i, type = ConnectionType.STRAIGHT)
+        }
+
+        // основной родитель идёт по той же полосе
+        active[lane] = c.parents.firstOrNull()
+
+        // дополнительные родители: ведём MERGE в их полосы
+        c.parents.drop(1).forEach { p ->
+            var t = active.indexOf(p)
+            if (t == -1) {
+                t = active.indexOf(null).takeIf { it != -1 } ?: run { active.add(null); active.lastIndex }
             }
+            active[t] = p
+            rowConns += Connection(fromLane = lane, toLane = t, type = ConnectionType.MERGE)
         }
 
-        maxLane = maxOf(maxLane, lane)
-        nodePositions[commit.hash] = NodePosition(lane = lane, row = index)
-
-        // Build connections
-        val commitConnections = mutableListOf<Connection>()
-
-        // Connection to parents
-        commit.parents.forEach { parentHash ->
-            val parentIndex = commits.indexOfFirst { it.hash == parentHash }
-            if (parentIndex > index) {
-                // Parent is below (older)
-                var parentLane = activeLanes.indexOfFirst { it == parentHash }
-                if (parentLane == -1) {
-                    parentLane = activeLanes.indexOfFirst { it == null }
-                    if (parentLane == -1) {
-                        activeLanes.add(parentHash)
-                        parentLane = activeLanes.size - 1
-                    } else {
-                        activeLanes[parentLane] = parentHash
-                    }
-                }
-
-                val connectionType = when {
-                    commit.parents.size > 1 -> ConnectionType.MERGE
-                    parentLane != lane -> ConnectionType.BRANCH
-                    else -> ConnectionType.STRAIGHT
-                }
-
-                commitConnections.add(
-                    Connection(
-                        fromLane = lane,
-                        toLane = parentLane,
-                        type = connectionType
-                    )
-                )
-            }
-        }
-
-        connections[commit.hash] = commitConnections
-
-        // Clear lane if this is the last commit in its line
-        if (commit.parents.isEmpty()) {
-            activeLanes[lane] = null
-        }
+        connections[c.hash] = rowConns
+        maxLanes = max(maxLanes, active.size)
     }
 
     return GraphData(
@@ -768,7 +700,7 @@ fun buildGraphData(commits: List<Commit>): GraphData {
         connections = connections,
         branches = extractBranches(commits),
         authors = extractAuthors(commits),
-        maxLane = maxLane + 1
+        maxLane = maxLanes
     )
 }
 
