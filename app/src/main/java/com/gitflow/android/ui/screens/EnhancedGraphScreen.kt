@@ -3,9 +3,11 @@ package com.gitflow.android.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -95,6 +97,8 @@ private fun GraphCanvas(
     graphData: GraphData,
     onCommitClick: (Commit) -> Unit
 ) {
+    val horizontalScrollState = rememberScrollState()
+
     LazyColumn(
         modifier = Modifier.fillMaxSize()
     ) {
@@ -109,6 +113,7 @@ private fun GraphCanvas(
                 connections = conns,
                 forkInfo = forkInfo,
                 maxLanes = graphData.maxLane,
+                horizontalScrollState = horizontalScrollState,
                 onClick = { onCommitClick(commit) }
             )
         }
@@ -123,6 +128,7 @@ private fun GraphCommitRow(
     connections: List<Connection>,
     forkInfo: ForkInfo?,
     maxLanes: Int,
+    horizontalScrollState: androidx.compose.foundation.ScrollState,
     onClick: () -> Unit
 ) {
     val nodeColor = laneColor(nodeData.lane)
@@ -132,6 +138,7 @@ private fun GraphCommitRow(
             .fillMaxWidth()
             .height(RowHeight)
             .clickable { onClick() }
+            .horizontalScroll(horizontalScrollState)
             .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -156,15 +163,6 @@ private fun GraphCommitRow(
                     .offset(x = (nodeData.lane * LaneStepDp + NodeCenterOffsetDp))
                     .align(Alignment.CenterStart)
             ) {
-                // Кольцо для merge-коммитов
-                /*if (commit.parents.size > 1) {
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .border(3.dp, nodeColor.copy(alpha = 0.5f), CircleShape)
-                    )
-                }*/
                 // Основная точка
                 Box(
                     modifier = Modifier
@@ -177,10 +175,10 @@ private fun GraphCommitRow(
             }
         }
 
-        // Правая информационная часть
+        // Правая информационная часть с возможностью прокрутки
         Column(
             modifier = Modifier
-                .weight(1f)
+                .widthIn(min = 300.dp) // Минимальная ширина для обеспечения читаемости
                 .padding(start = 8.dp)
         ) {
             Text(
@@ -188,12 +186,15 @@ private fun GraphCommitRow(
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Visible // Позволяем тексту выходить за границы
             )
 
             Spacer(Modifier.height(2.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 // hash
                 Surface(
                     shape = RoundedCornerShape(4.dp),
