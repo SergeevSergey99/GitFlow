@@ -1,6 +1,5 @@
 package com.gitflow.android.ui.screens
 
-import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
@@ -14,7 +13,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -24,6 +22,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavController
 import com.gitflow.android.data.models.*
 import com.gitflow.android.data.repository.MockGitRepository
+import com.gitflow.android.ui.config.GraphConfig
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -37,6 +36,17 @@ fun MainScreen(navController: NavController) {
     var repositories by remember { mutableStateOf(gitRepository.getRepositories()) }
     var selectedRepository by remember { mutableStateOf<Repository?>(null) }
     var showOperationsSheet by remember { mutableStateOf(false) }
+    var selectedGraphPreset by remember { mutableStateOf("Default") }
+
+    // Функция для получения конфигурации по имени пресета
+    val getGraphConfig = { preset: String ->
+        when (preset) {
+            "Compact" -> GraphConfig.Compact
+            "Large" -> GraphConfig.Large
+            "Wide" -> GraphConfig.Wide
+            else -> GraphConfig.Default
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -115,17 +125,21 @@ fun MainScreen(navController: NavController) {
                     }
                 )
                 1 -> {
-                    // Use the new enhanced graph view
+                    // Use the new enhanced graph view with selected config
                     EnhancedGraphView(
                         repository = selectedRepository,
-                        gitRepository = gitRepository
+                        gitRepository = gitRepository,
+                        config = getGraphConfig(selectedGraphPreset)
                     )
                 }
                 2 -> ChangesView(
                     repository = selectedRepository,
                     gitRepository = gitRepository
                 )
-                3 -> SettingsView()
+                3 -> SettingsView(
+                    selectedGraphPreset = selectedGraphPreset,
+                    onGraphPresetChanged = { selectedGraphPreset = it }
+                )
             }
         }
     }
@@ -301,127 +315,6 @@ fun RepositoryCard(
             }
 
             Icon(Icons.Default.ChevronRight, contentDescription = "Open")
-        }
-    }
-}
-
-@Composable
-fun GraphView(
-    repository: Repository?,
-    gitRepository: MockGitRepository
-) {
-    if (repository == null) {
-        EmptyStateMessage("Select a repository to view commits")
-        return
-    }
-
-    val commits = remember(repository) { gitRepository.getCommits(repository) }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(commits) { commit ->
-            CommitCard(commit)
-        }
-    }
-}
-
-@Composable
-fun CommitCard(commit: Commit) {
-    val branchColors = mapOf(
-        "main" to Color(0xFF4CAF50),
-        "develop" to Color(0xFF2196F3),
-        "feature" to Color(0xFFFF9800),
-        "hotfix" to Color(0xFFF44336)
-    )
-
-    val color = commit.branch?.let { branch ->
-        branchColors.entries.firstOrNull { branch.contains(it.key) }?.value
-    } ?: Color(0xFF9E9E9E)
-
-    Card(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Graph visualization
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                if (commit.parents.isNotEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .width(2.dp)
-                            .height(8.dp)
-                            .background(color)
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .size(20.dp)
-                        .clip(CircleShape)
-                        .background(color)
-                        .border(2.dp, Color.White, CircleShape)
-                )
-                Box(
-                    modifier = Modifier
-                        .width(2.dp)
-                        .height(8.dp)
-                        .background(color)
-                )
-            }
-
-            // Commit info
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = commit.message,
-                    fontSize = 14.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = commit.hash.take(7),
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = commit.author,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = timeAgo(commit.timestamp),
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                commit.branch?.let { branch ->
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = color.copy(alpha = 0.2f)
-                    ) {
-                        Text(
-                            text = branch,
-                            fontSize = 10.sp,
-                            color = color,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-            }
         }
     }
 }
@@ -812,7 +705,12 @@ fun GitOperationsSheet(
 }
 
 @Composable
-fun SettingsView() {
+fun SettingsView(
+    selectedGraphPreset: String,
+    onGraphPresetChanged: (String) -> Unit
+) {
+    var showGraphPresetDialog by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -912,6 +810,52 @@ fun SettingsView() {
             }
         }
 
+        // Новая секция для настроек графа
+        Card(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text(
+                    text = "Graph Settings",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showGraphPresetDialog = true },
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Graph Preset", fontWeight = FontWeight.Medium)
+                        Text(
+                            text = selectedGraphPreset,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(
+                        Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "Choose how the commit graph should be displayed",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
         Card(
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -938,6 +882,18 @@ fun SettingsView() {
                 )
             }
         }
+    }
+
+    // Диалог выбора пресета графа
+    if (showGraphPresetDialog) {
+        GraphPresetDialog(
+            currentPreset = selectedGraphPreset,
+            onPresetSelected = { preset ->
+                onGraphPresetChanged(preset)
+                showGraphPresetDialog = false
+            },
+            onDismiss = { showGraphPresetDialog = false }
+        )
     }
 }
 
@@ -1116,3 +1072,100 @@ fun EmptyStateMessage(message: String) {
         }
     }
 }
+
+@Composable
+fun GraphPresetDialog(
+    currentPreset: String,
+    onPresetSelected: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val presets = listOf(
+        "Default" to "Стандартный размер для большинства экранов",
+        "Compact" to "Компактный вид для небольших экранов",
+        "Large" to "Крупный вид для больших экранов",
+        "Wide" to "Широкий вид для графов с множеством веток"
+    )
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp)
+            ) {
+                Text(
+                    text = "Graph Preset",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = "Choose how the commit graph should be displayed:",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                presets.forEach { (preset, description) ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onPresetSelected(preset) },
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (currentPreset == preset) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            }
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = currentPreset == preset,
+                                onClick = { onPresetSelected(preset) }
+                            )
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = preset,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 16.sp
+                                )
+                                Text(
+                                    text = description,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Отмена")
+                    }
+                }
+            }
+        }
+    }
+}
+
