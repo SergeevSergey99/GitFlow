@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.times
 import com.gitflow.android.data.models.Commit
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.MockGitRepository
+import com.gitflow.android.ui.config.GraphConfig
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
@@ -55,7 +56,8 @@ import kotlin.math.max
 @Composable
 fun EnhancedGraphView(
     repository: Repository?,
-    gitRepository: MockGitRepository
+    gitRepository: MockGitRepository,
+    config: GraphConfig = GraphConfig.Default
 ) {
     if (repository == null) {
         EmptyStateMessage("Select a repository to view commits")
@@ -71,6 +73,7 @@ fun EnhancedGraphView(
     Box(Modifier.fillMaxSize()) {
         GraphCanvas(
             graphData = graphData,
+            config = config,
             onCommitClick = { commit ->
                 selectedCommit = commit
                 showCommitDetail = true
@@ -95,6 +98,7 @@ fun EnhancedGraphView(
 @Composable
 private fun GraphCanvas(
     graphData: GraphData,
+    config: GraphConfig,
     onCommitClick: (Commit) -> Unit
 ) {
     val horizontalScrollState = rememberScrollState()
@@ -113,6 +117,7 @@ private fun GraphCanvas(
                 connections = conns,
                 forkInfo = forkInfo,
                 maxLanes = graphData.maxLane,
+                config = config,
                 horizontalScrollState = horizontalScrollState,
                 onClick = { onCommitClick(commit) }
             )
@@ -128,6 +133,7 @@ private fun GraphCommitRow(
     connections: List<Connection>,
     forkInfo: ForkInfo?,
     maxLanes: Int,
+    config: GraphConfig,
     horizontalScrollState: androidx.compose.foundation.ScrollState,
     onClick: () -> Unit
 ) {
@@ -136,22 +142,23 @@ private fun GraphCommitRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(RowHeight)
+            .height(config.rowHeight)
             .clickable { onClick() }
             .horizontalScroll(horizontalScrollState)
-            .padding(horizontal = 6.dp),
+            .padding(horizontal = config.rowPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Левая колонка с графом
         Box(
             modifier = Modifier
-                .width((maxOf(60, (maxLanes + 1) * LaneStepDp.value.toInt())).dp)
+                .width(config.getGraphWidth(maxLanes))
                 .fillMaxHeight()
                 .drawBehind {
                     // Все соединения для текущей строки
                     connections.forEach { connection ->
                         drawConnection(
                             connection = connection,
+                            config = config,
                             colorFromLane = laneColor(connection.fromLane)
                         )
                     }
@@ -160,17 +167,17 @@ private fun GraphCommitRow(
             // Узел
             Box(
                 modifier = Modifier
-                    .offset(x = (nodeData.lane * LaneStepDp + NodeCenterOffsetDp))
+                    .offset(x = (nodeData.lane * config.laneStep + config.nodeCenterOffset))
                     .align(Alignment.CenterStart)
             ) {
                 // Основная точка
                 Box(
                     modifier = Modifier
-                        .size(20.dp)
-                        .offset(x = (-10).dp, y = 0.dp)
+                        .size(config.nodeSize)
+                        .offset(x = -(config.nodeSize / 2), y = 0.dp)
                         .clip(CircleShape)
                         .background(nodeColor)
-                        .border(2.dp, Color.White, CircleShape)
+                        .border(config.nodeBorderWidth, Color.White, CircleShape)
                 )
             }
         }
@@ -178,52 +185,58 @@ private fun GraphCommitRow(
         // Правая информационная часть с возможностью прокрутки
         Column(
             modifier = Modifier
-                .widthIn(min = 300.dp) // Минимальная ширина для обеспечения читаемости
-                .padding(start = 8.dp)
+                .widthIn(min = config.infoMinWidth)
+                .padding(start = config.infoStartPadding)
         ) {
             Text(
                 text = commit.message,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
-                overflow = TextOverflow.Visible // Позволяем тексту выходить за границы
+                overflow = TextOverflow.Visible
             )
 
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(config.textSpacing))
 
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(config.badgeSpacing),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 // hash
                 Surface(
-                    shape = RoundedCornerShape(4.dp),
+                    shape = RoundedCornerShape(config.badgeCornerRadius),
                     color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
                 ) {
                     Text(
                         commit.hash.take(7),
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        modifier = Modifier.padding(
+                            horizontal = config.badgeHorizontalPadding,
+                            vertical = config.badgeVerticalPadding
+                        )
                     )
                 }
 
                 // время
                 Surface(
-                    shape = RoundedCornerShape(4.dp),
+                    shape = RoundedCornerShape(config.badgeCornerRadius),
                     color = MaterialTheme.colorScheme.surfaceVariant
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        modifier = Modifier.padding(
+                            horizontal = config.badgeHorizontalPadding,
+                            vertical = config.badgeVerticalPadding
+                        )
                     ) {
                         androidx.compose.material3.Icon(
                             Icons.Default.AccessTime,
                             contentDescription = null,
-                            modifier = Modifier.size(12.dp),
+                            modifier = Modifier.size(config.badgeIconSize),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Spacer(Modifier.width(4.dp))
+                        Spacer(Modifier.width(config.badgeIconSpacing))
                         Text(timeAgo(commit.timestamp), fontSize = 11.sp)
                     }
                 }
@@ -234,7 +247,8 @@ private fun GraphCommitRow(
                         text = b,
                         icon = Icons.Default.AccountTree,
                         background = nodeColor.copy(alpha = 0.15f),
-                        foreground = nodeColor
+                        foreground = nodeColor,
+                        config = config
                     )
                 }
 
@@ -244,7 +258,8 @@ private fun GraphCommitRow(
                         text = t,
                         icon = Icons.Default.LocalOffer,
                         background = MaterialTheme.colorScheme.tertiaryContainer,
-                        foreground = MaterialTheme.colorScheme.onTertiaryContainer
+                        foreground = MaterialTheme.colorScheme.onTertiaryContainer,
+                        config = config
                     )
                 }
 
@@ -255,7 +270,8 @@ private fun GraphCommitRow(
                                 (forkInfo.parentBranch?.let { " • $it" } ?: ""),
                         icon = Icons.Default.AccountTree,
                         background = MaterialTheme.colorScheme.surfaceVariant,
-                        foreground = MaterialTheme.colorScheme.onSurfaceVariant
+                        foreground = MaterialTheme.colorScheme.onSurfaceVariant,
+                        config = config
                     )
                 }
             }
@@ -265,17 +281,14 @@ private fun GraphCommitRow(
 
 /* ============================ Drawing ============================ */
 
-private val LaneStepDp: Dp = 24.dp
-private val NodeCenterOffsetDp: Dp = 16.dp
-private val RowHeight: Dp = 56.dp
-
 private fun DrawScope.drawConnection(
     connection: Connection,
+    config: GraphConfig,
     colorFromLane: Color
 ) {
-    val stepPx = LaneStepDp.toPx()
-    val centerPx = NodeCenterOffsetDp.toPx()
-    val strokePx = 2.dp.toPx()
+    val stepPx = config.laneStep.toPx()
+    val centerPx = config.nodeCenterOffset.toPx()
+    val strokePx = config.lineStrokeWidth.toPx()
 
     val x1 = connection.fromLane * stepPx + centerPx
     val x2 = connection.toLane * stepPx + centerPx
@@ -472,19 +485,34 @@ private fun Badge(
     text: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     background: Color,
-    foreground: Color
+    foreground: Color,
+    config: GraphConfig
 ) {
     Surface(
-        shape = RoundedCornerShape(4.dp),
+        shape = RoundedCornerShape(config.badgeCornerRadius),
         color = background
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            modifier = Modifier.padding(
+                horizontal = config.badgeHorizontalPadding,
+                vertical = config.badgeVerticalPadding
+            ),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            androidx.compose.material3.Icon(icon, null, Modifier.size(12.dp), tint = foreground)
-            Spacer(Modifier.width(4.dp))
-            Text(text, fontSize = 11.sp, color = foreground, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            androidx.compose.material3.Icon(
+                icon,
+                null,
+                Modifier.size(config.badgeIconSize),
+                tint = foreground
+            )
+            Spacer(Modifier.width(config.badgeIconSpacing))
+            Text(
+                text,
+                fontSize = 11.sp,
+                color = foreground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
