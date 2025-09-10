@@ -148,7 +148,8 @@ class MockGitRepository {
             Repository("9", "orphan-branch",            "/mock/orphan",                   now - 1_400_000, "main"),
             Repository("10","rebase-like",              "/mock/rebase-like",              now - 1_300_000, "main"),
             Repository("11","sparse-history-missing",   "/mock/sparse",                   now - 1_200_000, "main"),
-            Repository("12","tags-and-annotated",       "/mock/tags",                     now - 1_100_000, "main")
+            Repository("12","tags-and-annotated",       "/mock/tags",                     now - 1_100_000, "main"),
+            Repository("13","single-branch-merges",     "/mock/single-branch",            now - 1_000_000, "main")
         )
 
         mockRepositories.addAll(repos)
@@ -173,6 +174,7 @@ class MockGitRepository {
             "rebase-like" -> scenarioRebaseLike()
             "sparse-history-missing" -> scenarioSparse()
             "tags-and-annotated" -> scenarioTags()
+            "single-branch-merges" -> scenarioSingleBranchMerges()
             else -> scenarioSample()
         }.sortedByDescending { it.timestamp }
     }
@@ -374,6 +376,61 @@ class MockGitRepository {
         val f2 = Commit(h(), "feat: ui grid", "UI", "u@x", tick.next(), listOf(f1.hash), "feature/ui")
         val m4 = Commit(h(), "merge ui", "Maint", "m@x", tick.next(), listOf(m3.hash, f2.hash), "main", tags = listOf("v0.2.0"))
         return listOf(m1, m2, m3, f1, f2, m4)
+    }
+
+    private fun scenarioSingleBranchMerges(): List<Commit> {
+        val tick = Ticker(System.currentTimeMillis() - 11 * 60_60_1000L, 35)
+        fun h() = generateHash()
+
+        // Начальные коммиты
+        val m1 = Commit(h(), "init project", "Lead Dev", "lead@example.com", tick.next(), emptyList(), "main")
+        val m2 = Commit(h(), "setup base structure", "Lead Dev", "lead@example.com", tick.next(), listOf(m1.hash), "main")
+
+        // Разработчик A работает локально
+        val a1 = Commit(h(), "feat: user auth (local)", "Alice", "alice@example.com", tick.next(), listOf(m2.hash), "main")
+        val a2 = Commit(h(), "refactor: auth utils (local)", "Alice", "alice@example.com", tick.next(), listOf(a1.hash), "main")
+
+        // Разработчик B работает параллельно локально
+        val b1 = Commit(h(), "feat: api client (local)", "Bob", "bob@example.com", tick.next(), listOf(m2.hash), "main")
+        val b2 = Commit(h(), "fix: http headers (local)", "Bob", "bob@example.com", tick.next(), listOf(b1.hash), "main")
+
+        // Разработчик C тоже работает локально
+        val c1 = Commit(h(), "feat: ui components (local)", "Charlie", "charlie@example.com", tick.next(), listOf(m2.hash), "main")
+
+        // Alice мерджит свои изменения с remote main
+        val m3 = Commit(h(), "merge: Alice's auth work", "Alice", "alice@example.com", tick.next(), listOf(m2.hash, a2.hash), "main")
+
+        // Bob пуллит изменения Alice и мерджит свои
+        val m4 = Commit(h(), "merge: Bob's api work with Alice's", "Bob", "bob@example.com", tick.next(), listOf(m3.hash, b2.hash), "main")
+
+        // Charlie пуллит все и мерджит свои UI изменения
+        val m5 = Commit(h(), "merge: Charlie's UI with team work", "Charlie", "charlie@example.com", tick.next(), listOf(m4.hash, c1.hash), "main")
+
+        // Дополнительная работа от Alice после мерджа
+        val a3 = Commit(h(), "fix: auth integration (local)", "Alice", "alice@example.com", tick.next(), listOf(a2.hash), "main")
+        val a4 = Commit(h(), "test: auth scenarios (local)", "Alice", "alice@example.com", tick.next(), listOf(a3.hash), "main")
+
+        // Bob продолжает работу
+        val b3 = Commit(h(), "feat: caching layer (local)", "Bob", "bob@example.com", tick.next(), listOf(b2.hash), "main")
+
+        // Alice снова мерджит свои новые изменения
+        val m6 = Commit(h(), "merge: Alice's auth fixes", "Alice", "alice@example.com", tick.next(), listOf(m5.hash, a4.hash), "main")
+
+        // Bob мерджит кэширование
+        val m7 = Commit(h(), "merge: Bob's caching with latest", "Bob", "bob@example.com", tick.next(), listOf(m6.hash, b3.hash), "main")
+
+        // Hotfix от Lead Dev
+        val h1 = Commit(h(), "hotfix: critical bug (local)", "Lead Dev", "lead@example.com", tick.next(), listOf(m7.hash), "main")
+        val h2 = Commit(h(), "test: hotfix verification", "Lead Dev", "lead@example.com", tick.next(), listOf(h1.hash), "main")
+
+        // Lead мерджит hotfix
+        val m8 = Commit(h(), "merge: critical hotfix", "Lead Dev", "lead@example.com", tick.next(), listOf(m7.hash, h2.hash), "main")
+
+        // Финальная работа
+        val f1 = Commit(h(), "docs: update README", "Charlie", "charlie@example.com", tick.next(), listOf(m8.hash), "main")
+        val f2 = Commit(h(), "release: v1.0.0", "Lead Dev", "lead@example.com", tick.next(), listOf(f1.hash), "main", tags = listOf("v1.0.0"))
+
+        return listOf(m1, m2, a1, a2, b1, b2, c1, m3, m4, m5, a3, a4, b3, m6, m7, h1, h2, m8, f1, f2)
     }
 
     // ---------- File changes (simple) ----------
