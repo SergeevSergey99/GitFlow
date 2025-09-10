@@ -136,7 +136,7 @@ class MockGitRepository {
         val now = System.currentTimeMillis()
         val repos = listOf(
             Repository("1", "sample-android-app", "/storage/emulated/0/GitFlow/sample-android-app", now - 3_600_000, "main"),
-            Repository("2", "web-project",        "/storage/emulated/0/GitFlow/web-project",        now - 86_400_000, "develop"),
+            //Repository("2", "web-project",        "/storage/emulated/0/GitFlow/web-project",        now - 86_400_000, "develop"),
 
             // Новые сценарии
             Repository("3", "linear-main",              "/mock/linear-main",              now - 2_000_000, "main"),
@@ -164,7 +164,7 @@ class MockGitRepository {
 
     private fun generateCommitsForRepo(repoName: String): List<Commit> {
         return when (repoName) {
-            "sample-android-app", "web-project" -> scenarioSample()
+            "sample-android-app" -> scenarioSample()
             "linear-main" -> scenarioLinear()
             "feature-merge" -> scenarioFeatureMerge()
             "two-features-interleaved" -> scenarioTwoFeaturesInterleaved()
