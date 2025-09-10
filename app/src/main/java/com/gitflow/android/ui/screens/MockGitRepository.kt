@@ -149,7 +149,8 @@ class MockGitRepository {
             Repository("10","rebase-like",              "/mock/rebase-like",              now - 1_300_000, "main"),
             Repository("11","sparse-history-missing",   "/mock/sparse",                   now - 1_200_000, "main"),
             Repository("12","tags-and-annotated",       "/mock/tags",                     now - 1_100_000, "main"),
-            Repository("13","single-branch-merges",     "/mock/single-branch",            now - 1_000_000, "main")
+            Repository("13","single-branch-merges",     "/mock/single-branch",            now - 1_000_000, "main"),
+            Repository("14","ten-branches",             "/mock/ten-branches",             now - 900_000,  "main")
         )
 
         mockRepositories.addAll(repos)
@@ -175,6 +176,7 @@ class MockGitRepository {
             "sparse-history-missing" -> scenarioSparse()
             "tags-and-annotated" -> scenarioTags()
             "single-branch-merges" -> scenarioSingleBranchMerges()
+            "ten-branches" -> scenarioTenBranches()
             else -> scenarioSample()
         }.sortedByDescending { it.timestamp }
     }
@@ -431,6 +433,52 @@ class MockGitRepository {
         val f2 = Commit(h(), "release: v1.0.0", "Lead Dev", "lead@example.com", tick.next(), listOf(f1.hash), "main", tags = listOf("v1.0.0"))
 
         return listOf(m1, m2, a1, a2, b1, b2, c1, m3, m4, m5, a3, a4, b3, m6, m7, h1, h2, m8, f1, f2)
+    }
+
+    private fun scenarioTenBranches(): List<Commit> {
+        val tick = Ticker(System.currentTimeMillis() - 2 * 60_60_1000L, 5) // плотная история
+        fun h() = generateHash()
+
+        // Базовые коммиты main
+        val m1 = Commit(h(), "init", "Team", "team@example.com", tick.next(), emptyList(), "main")
+        val m2 = Commit(h(), "core setup", "Team", "team@example.com", tick.next(), listOf(m1.hash), "main")
+
+        // 9 веток feature/1..9, по 2-3 коммита каждая
+        val branchCommits = mutableListOf<Commit>()
+        val branchTips = mutableListOf<Commit>()
+
+        (1..9).forEach { i ->
+            val f1 = Commit(h(), "feat$i: start", "Dev$i", "dev$i@example.com", tick.next(), listOf(m2.hash), "feature/$i")
+            val f2 = Commit(h(), "feat$i: progress", "Dev$i", "dev$i@example.com", tick.next(), listOf(f1.hash), "feature/$i")
+            branchCommits += f1
+            branchCommits += f2
+            branchTips += f2
+        }
+
+        // Мерджим первые 3 фичи в main
+        val merge1 = Commit(h(), "merge feature/1", "Integrator", "int@example.com", tick.next(), listOf(m2.hash, branchTips[0].hash), "main")
+        val merge2 = Commit(h(), "merge feature/2", "Integrator", "int@example.com", tick.next(), listOf(merge1.hash, branchTips[1].hash), "main")
+        val merge3 = Commit(h(), "merge feature/3", "Integrator", "int@example.com", tick.next(), listOf(merge2.hash, branchTips[2].hash), "main")
+
+        // Добавляем ещё коммиты в некоторые оставшиеся ветки
+        val f4extra = Commit(h(), "feat4: refine", "Dev4", "dev4@example.com", tick.next(), listOf(branchTips[3].hash), "feature/4")
+        val f5extra = Commit(h(), "feat5: finalize", "Dev5", "dev5@example.com", tick.next(), listOf(branchTips[4].hash), "feature/5")
+
+        // Создаём ещё одну ветку develop
+        val d1 = Commit(h(), "develop: setup", "DevLead", "lead@example.com", tick.next(), listOf(merge3.hash), "develop")
+        val d2 = Commit(h(), "develop: integration", "DevLead", "lead@example.com", tick.next(), listOf(d1.hash), "develop")
+
+        // Тэг + релиз на main
+        val release = Commit(h(), "release: prep 0.1", "Integrator", "int@example.com", tick.next(), listOf(merge3.hash), "main", tags = listOf("v0.1.0"))
+
+        return buildList {
+            add(m1); add(m2)
+            addAll(branchCommits)
+            add(merge1); add(merge2); add(merge3)
+            add(f4extra); add(f5extra)
+            add(d1); add(d2)
+            add(release)
+        }
     }
 
     // ---------- File changes (simple) ----------
