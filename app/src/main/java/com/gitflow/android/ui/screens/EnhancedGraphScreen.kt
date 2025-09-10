@@ -305,15 +305,24 @@ private fun DrawScope.drawConnection(
             val path = Path().apply {
                 moveTo(x1, 0f)
                 val dy = yMid
-                val dx = abs(x2 - x1)
+                val dx = kotlin.math.abs(x2 - x1)
                 cubicTo(
                     x1, dy * 0.4f,
                     x2, dy - dx * 0.2f,
                     x2, yMid
                 )
             }
-            // цвет по родителю
             drawPath(path, laneColor(connection.fromLane), style = Stroke(width = strokePx, cap = StrokeCap.Round))
+        }
+        ConnectionType.VERTICAL_FROM_NODE -> {
+            // Нижняя половина вертикали (от центра узла вниз), чтобы линия «шла» к родителю ниже
+            drawLine(
+                color = laneColor(connection.fromLane),
+                start = Offset(x1, yMid),
+                end = Offset(x1, size.height),
+                strokeWidth = strokePx,
+                cap = StrokeCap.Round
+            )
         }
     }
 }
@@ -353,7 +362,7 @@ private data class Connection(
     val type: ConnectionType
 )
 
-private enum class ConnectionType { STRAIGHT, MERGE, BRANCH }
+private enum class ConnectionType { STRAIGHT, MERGE, BRANCH, VERTICAL_FROM_NODE }
 
 private data class ForkInfo(
     val parentHash: String,
@@ -368,16 +377,13 @@ private fun buildGraphData(commits: List<Commit>): GraphData {
     val connections = mutableMapOf<String, MutableList<Connection>>()
     val forkFrom = mutableMapOf<String, ForkInfo>()
 
-    // lane -> ожидаемый следующий hash на этой линии (обычно родитель текущего узла на этой линии)
     val activeLanes = mutableListOf<String?>()
-    activeLanes.add(commits.first().hash) // без «детей первого коммита»
+    activeLanes.add(commits.first().hash)
     var maxLanes = 1
 
     commits.forEachIndexed { row, commit ->
         val conns = mutableListOf<Connection>()
 
-        // 1) Схлопываем дубликаты: если текущий hash ожидают несколько lanes,
-        // оставляем самый левый как «основной», остальные подключаем диагональю и гасим.
         val waitingIdx = activeLanes.withIndex().filter { it.value == commit.hash }.map { it.index }
         var lane = waitingIdx.minOrNull() ?: -1
         if (waitingIdx.size > 1) {
@@ -387,7 +393,6 @@ private fun buildGraphData(commits: List<Commit>): GraphData {
             }
         }
 
-        // 2) Снимок до изменений и вертикали на ряд
         val lanesBefore = activeLanes.toList()
         lanesBefore.indices.forEach { i ->
             if (lanesBefore[i] != null) {
@@ -395,7 +400,6 @@ private fun buildGraphData(commits: List<Commit>): GraphData {
             }
         }
 
-        // 3) Назначаем lane текущему коммиту
         val wasExpected = lane != -1
         if (lane == -1) {
             lane = activeLanes.indexOf(null).takeIf { it != -1 } ?: activeLanes.size.also { activeLanes.add(null) }
@@ -403,7 +407,6 @@ private fun buildGraphData(commits: List<Commit>): GraphData {
 
         val mainParent = commit.parents.firstOrNull()
 
-        // 4) Если коммит «новая ветка» (не ожидался), рисуем ответвление от родителя к текущей lane
         if (!wasExpected && mainParent != null && byHash.containsKey(mainParent)) {
             var parentLane = lanesBefore.indexOf(mainParent)
             if (parentLane == -1) {
@@ -415,6 +418,7 @@ private fun buildGraphData(commits: List<Commit>): GraphData {
                 }
             }
             if (parentLane != lane) {
+                // Настоящее ответвление: кривая + нижняя половина вертикали
                 conns.add(Connection(fromLane = parentLane, toLane = lane, type = ConnectionType.BRANCH))
                 forkFrom[commit.hash] = ForkInfo(
                     parentHash = mainParent,
@@ -422,12 +426,12 @@ private fun buildGraphData(commits: List<Commit>): GraphData {
                     parentBranch = byHash[mainParent]?.branch
                 )
             }
+            // Добавляем нижнюю половину вертикали, чтобы линия шла от узла к родителю ниже
+            conns.add(Connection(fromLane = lane, toLane = lane, type = ConnectionType.VERTICAL_FROM_NODE))
         }
 
-        // 5) Обновляем ожидание на текущей lane: следующий — основной родитель
         activeLanes[lane] = if (mainParent != null && byHash.containsKey(mainParent)) mainParent else null
 
-        // 6) Merge-родители: рисуем «нижнюю половину» как было (у вас она выглядела корректно)
         commit.parents.drop(1).forEach { p ->
             if (byHash.containsKey(p)) {
                 var pLane = lanesBefore.indexOf(p)
@@ -438,13 +442,11 @@ private fun buildGraphData(commits: List<Commit>): GraphData {
                             ?: activeLanes.size.also { activeLanes.add(null) }
                     }
                 }
-                // сохраняем ваш стиль MERGE: от текущей lane к lane родителя вниз
                 conns.add(Connection(fromLane = lane, toLane = pLane, type = ConnectionType.MERGE))
                 activeLanes[pLane] = p
             }
         }
 
-        // 7) Чистим пустые хвосты справа
         while (activeLanes.isNotEmpty() && activeLanes.last() == null) activeLanes.removeLast()
 
         nodePositions[commit.hash] = NodePosition(lane = lane, row = row)
