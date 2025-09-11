@@ -1157,9 +1157,11 @@ fun SyntaxHighlightedFileContent(
             }
         }
 
-        // Content with line numbers
+        // Content with line numbers and horizontal scroll
         LazyColumn(
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .horizontalScroll(rememberScrollState())
         ) {
             val lines = content.split('\n')
             itemsIndexed(lines) { index, line ->
