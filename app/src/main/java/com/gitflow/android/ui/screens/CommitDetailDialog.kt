@@ -195,6 +195,11 @@ fun CommitDetailDialog(
                                 onClick = { selectedTab = 2 },
                                 text = { Text("Info") }
                             )
+                            Tab(
+                                selected = selectedTab == 3,
+                                onClick = { selectedTab = 3 },
+                                text = { Text("File Tree") }
+                            )
                         }
                     }
                 }
@@ -204,6 +209,7 @@ fun CommitDetailDialog(
                     0 -> DiffView(fileDiffs)
                     1 -> FileListView(fileDiffs)
                     2 -> CommitInfoView(commit)
+                    3 -> FileTreeView(commit, gitRepository)
                 }
             }
         }
@@ -724,4 +730,761 @@ fun VerticalDivider() {
 fun formatDate(timestamp: Long): String {
     val sdf = SimpleDateFormat("EEEE, MMMM d, yyyy 'at' HH:mm:ss", Locale.getDefault())
     return sdf.format(Date(timestamp))
+}
+
+fun getFileIcon(fileName: String): androidx.compose.ui.graphics.vector.ImageVector {
+    return when {
+        fileName.endsWith(".kt") -> Icons.Default.Code
+        fileName.endsWith(".java") -> Icons.Default.Code
+        fileName.endsWith(".xml") -> Icons.Default.Language
+        fileName.endsWith(".json") -> Icons.Default.DataObject
+        fileName.endsWith(".md") -> Icons.Default.Article
+        fileName.endsWith(".gradle") || fileName.endsWith(".gradle.kts") -> Icons.Default.Build
+        fileName.endsWith(".properties") -> Icons.Default.Settings
+        fileName.endsWith(".txt") -> Icons.Default.TextSnippet
+        fileName.endsWith(".png") || fileName.endsWith(".jpg") || fileName.endsWith(".jpeg") -> Icons.Default.Image
+        fileName == "AndroidManifest.xml" -> Icons.Default.Android
+        fileName == "README.md" -> Icons.Default.Info
+        fileName == ".gitignore" -> Icons.Default.VisibilityOff
+        else -> Icons.Default.InsertDriveFile
+    }
+}
+
+fun getFileIconColor(fileName: String): Color {
+    return when {
+        fileName.endsWith(".kt") -> Color(0xFF7C4DFF)
+        fileName.endsWith(".java") -> Color(0xFFFF7043)
+        fileName.endsWith(".xml") -> Color(0xFF4CAF50)
+        fileName.endsWith(".json") -> Color(0xFFFF9800)
+        fileName.endsWith(".md") -> Color(0xFF2196F3)
+        fileName.endsWith(".gradle") || fileName.endsWith(".gradle.kts") -> Color(0xFF4CAF50)
+        fileName.endsWith(".properties") -> Color(0xFF9C27B0)
+        fileName.endsWith(".png") || fileName.endsWith(".jpg") || fileName.endsWith(".jpeg") -> Color(0xFFE91E63)
+        fileName == "AndroidManifest.xml" -> Color(0xFF4CAF50)
+        else -> Color(0xFF757575)
+    }
+}
+
+fun formatFileSize(size: Long): String {
+    return when {
+        size < 1024 -> "$size B"
+        size < 1024 * 1024 -> "${size / 1024} KB"
+        else -> "${size / (1024 * 1024)} MB"
+    }
+}
+
+@Composable
+fun FileTreeView(commit: Commit, gitRepository: MockGitRepository) {
+    val fileTree = remember(commit) { gitRepository.getCommitFileTree(commit) }
+    var selectedFileForViewing by remember { mutableStateOf<FileTreeNode?>(null) }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Header
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.AccountTree,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = "Project Files",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                    Text(
+                        text = "Commit: ${commit.hash.take(7)} • ${fileTree.children.sumOf { countFiles(it) }} files",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        // File tree content
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            if (fileTree.children.isNotEmpty()) {
+                items(fileTree.children) { node ->
+                    FileTreeNodeItem(
+                        node = node,
+                        level = 0,
+                        onFileClicked = { selectedFileForViewing = it }
+                    )
+                }
+            } else {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                Icons.Default.FolderOpen,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "No files found in this commit",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // File viewer dialog
+    selectedFileForViewing?.let { file ->
+        FileViewerDialog(
+            file = file,
+            commit = commit,
+            gitRepository = gitRepository,
+            onDismiss = { selectedFileForViewing = null }
+        )
+    }
+}
+
+@Composable
+fun FileTreeNodeItem(
+    node: FileTreeNode,
+    level: Int,
+    onFileClicked: (FileTreeNode) -> Unit
+) {
+    var expanded by remember { mutableStateOf(level < 2) } // Раскрыты первые 2 уровня по умолчанию
+
+    Column {
+        // Node item
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    if (node.type == FileTreeNodeType.DIRECTORY) {
+                        expanded = !expanded
+                    } else {
+                        onFileClicked(node)
+                    }
+                },
+            shape = RoundedCornerShape(8.dp),
+            color = Color.Transparent
+        ) {
+            Row(
+                modifier = Modifier
+                    .padding(
+                        start = (level * 20).dp + 12.dp,
+                        top = 8.dp,
+                        bottom = 8.dp,
+                        end = 12.dp
+                    ),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (node.type == FileTreeNodeType.DIRECTORY) {
+                    Icon(
+                        if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        if (expanded) Icons.Default.FolderOpen else Icons.Default.Folder,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = Color(0xFFFFB74D)
+                    )
+                } else {
+                    Spacer(modifier = Modifier.width(24.dp))
+                    Icon(
+                        getFileIcon(node.name),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = getFileIconColor(node.name)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = node.name,
+                        fontSize = 15.sp,
+                        fontWeight = if (node.type == FileTreeNodeType.DIRECTORY) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (node.type == FileTreeNodeType.DIRECTORY)
+                            MaterialTheme.colorScheme.onSurface
+                        else
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
+                    )
+
+                    if (node.type == FileTreeNodeType.FILE && node.size != null) {
+                        Text(
+                            text = formatFileSize(node.size),
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else if (node.type == FileTreeNodeType.DIRECTORY) {
+                        val filesCount = countFiles(node)
+                        Text(
+                            text = "$filesCount ${if (filesCount == 1) "file" else "files"}",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                if (node.type == FileTreeNodeType.FILE) {
+                    Icon(
+                        Icons.Default.Visibility,
+                        contentDescription = "View file",
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                    )
+                }
+            }
+        }
+
+        // Children (if directory is expanded)
+        if (node.type == FileTreeNodeType.DIRECTORY && expanded) {
+            node.children.forEach { child ->
+                FileTreeNodeItem(
+                    node = child,
+                    level = level + 1,
+                    onFileClicked = onFileClicked
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun FileViewerDialog(
+    file: FileTreeNode,
+    commit: Commit,
+    gitRepository: MockGitRepository,
+    onDismiss: () -> Unit
+) {
+    var fileContent by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(file) {
+        isLoading = true
+        fileContent = gitRepository.getFileContent(commit, file.path)
+        isLoading = false
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(8.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                // Header
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                getFileIcon(file.name),
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp),
+                                tint = getFileIconColor(file.name)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = file.name,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = file.path,
+                                    fontSize = 12.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                )
+                                if (file.size != null) {
+                                    Text(
+                                        text = formatFileSize(file.size),
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                        }
+
+                        Row {
+                            IconButton(
+                                onClick = {
+                                    // TODO: Добавить копирование содержимого в буфер обмена
+                                }
+                            ) {
+                                Icon(
+                                    Icons.Default.ContentCopy,
+                                    contentDescription = "Copy content",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                            IconButton(onClick = onDismiss) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Close",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Content
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            CircularProgressIndicator()
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "Loading file content...",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                } else if (fileContent != null) {
+                    SyntaxHighlightedFileContent(
+                        content = fileContent!!,
+                        fileName = file.name,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                Icons.Default.ErrorOutline,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "Failed to load file content",
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SyntaxHighlightedFileContent(
+    content: String,
+    fileName: String,
+    modifier: Modifier = Modifier
+) {
+    val backgroundColor = MaterialTheme.colorScheme.surface
+    val isCodeFile = isCodeFile(fileName)
+
+    Column(modifier = modifier) {
+        // File type indicator
+        if (isCodeFile) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Code,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Syntax highlighting enabled for ${getFileLanguage(fileName)}",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+
+        // Content with line numbers and horizontal scroll
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .horizontalScroll(rememberScrollState())
+        ) {
+            val lines = content.split('\n')
+            itemsIndexed(lines) { index, line ->
+                CodeLine(
+                    lineNumber = index + 1,
+                    content = line,
+                    fileName = fileName,
+                    isCodeFile = isCodeFile
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun CodeLine(
+    lineNumber: Int,
+    content: String,
+    fileName: String,
+    isCodeFile: Boolean
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                if (lineNumber % 2 == 0)
+                    MaterialTheme.colorScheme.surface
+                else
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+            )
+            .padding(horizontal = 16.dp, vertical = 2.dp)
+    ) {
+        // Line number
+        Text(
+            text = lineNumber.toString().padStart(4, ' '),
+            fontSize = 12.sp,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            modifier = Modifier.width(48.dp)
+        )
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        // Content with basic syntax highlighting
+        SelectionContainer {
+            if (isCodeFile) {
+                HighlightedText(
+                    text = content,
+                    fileName = fileName
+                )
+            } else {
+                Text(
+                    text = content,
+                    fontSize = 13.sp,
+                    fontFamily = FontFamily.Monospace,
+                    lineHeight = 18.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun HighlightedText(
+    text: String,
+    fileName: String
+) {
+    val highlightedText = buildAnnotatedString {
+        when {
+            fileName.endsWith(".kt") -> highlightKotlin(text)
+            fileName.endsWith(".java") -> highlightJava(text)
+            fileName.endsWith(".xml") -> highlightXml(text)
+            fileName.endsWith(".json") -> highlightJson(text)
+            fileName.endsWith(".md") -> highlightMarkdown(text)
+            fileName.endsWith(".gradle") || fileName.endsWith(".gradle.kts") -> highlightGradle(text)
+            else -> append(text)
+        }
+    }
+
+    Text(
+        text = highlightedText,
+        fontSize = 13.sp,
+        fontFamily = FontFamily.Monospace,
+        lineHeight = 18.sp
+    )
+}
+
+// Helper functions
+fun countFiles(node: FileTreeNode): Int {
+    if (node.type == FileTreeNodeType.FILE) return 1
+    return node.children.sumOf { countFiles(it) }
+}
+
+fun isCodeFile(fileName: String): Boolean {
+    return fileName.endsWith(".kt") ||
+           fileName.endsWith(".java") ||
+           fileName.endsWith(".xml") ||
+           fileName.endsWith(".json") ||
+           fileName.endsWith(".md") ||
+           fileName.endsWith(".gradle") ||
+           fileName.endsWith(".gradle.kts") ||
+           fileName.endsWith(".properties") ||
+           fileName.endsWith(".yml") ||
+           fileName.endsWith(".yaml")
+}
+
+fun getFileLanguage(fileName: String): String {
+    return when {
+        fileName.endsWith(".kt") -> "Kotlin"
+        fileName.endsWith(".java") -> "Java"
+        fileName.endsWith(".xml") -> "XML"
+        fileName.endsWith(".json") -> "JSON"
+        fileName.endsWith(".md") -> "Markdown"
+        fileName.endsWith(".gradle") || fileName.endsWith(".gradle.kts") -> "Gradle"
+        fileName.endsWith(".properties") -> "Properties"
+        fileName.endsWith(".yml") || fileName.endsWith(".yaml") -> "YAML"
+        else -> "Text"
+    }
+}
+
+// Syntax highlighting extensions
+fun androidx.compose.ui.text.AnnotatedString.Builder.highlightKotlin(text: String) {
+    val keywords = setOf("class", "fun", "val", "var", "if", "else", "when", "for", "while", "return", "import", "package", "private", "public", "internal", "protected", "override", "open", "abstract", "final", "companion", "object", "data", "sealed", "interface", "enum", "annotation", "suspend", "inline", "crossinline", "noinline", "reified", "lateinit", "lazy", "delegate", "by", "in", "out", "is", "as", "typealias", "this", "super", "null", "true", "false")
+    highlightCode(text, keywords, Color(0xFF7C4DFF), Color(0xFF4CAF50), Color(0xFF9E9E9E))
+}
+
+fun androidx.compose.ui.text.AnnotatedString.Builder.highlightJava(text: String) {
+    val keywords = setOf("class", "public", "private", "protected", "static", "final", "abstract", "interface", "extends", "implements", "import", "package", "if", "else", "for", "while", "do", "switch", "case", "default", "return", "break", "continue", "try", "catch", "finally", "throw", "throws", "new", "this", "super", "null", "true", "false", "void", "int", "String", "boolean", "long", "double", "float", "char", "byte", "short")
+    highlightCode(text, keywords, Color(0xFFFF7043), Color(0xFF4CAF50), Color(0xFF9E9E9E))
+}
+
+fun androidx.compose.ui.text.AnnotatedString.Builder.highlightXml(text: String) {
+    // Простая подсветка XML
+    var i = 0
+    while (i < text.length) {
+        when {
+            text[i] == '<' -> {
+                val endIndex = text.indexOf('>', i)
+                if (endIndex != -1) {
+                    withStyle(SpanStyle(color = Color(0xFF2196F3))) {
+                        append(text.substring(i, endIndex + 1))
+                    }
+                    i = endIndex + 1
+                } else {
+                    append(text[i])
+                    i++
+                }
+            }
+            text.startsWith("<!--", i) -> {
+                val endIndex = text.indexOf("-->", i + 4)
+                if (endIndex != -1) {
+                    withStyle(SpanStyle(color = Color(0xFF9E9E9E))) {
+                        append(text.substring(i, endIndex + 3))
+                    }
+                    i = endIndex + 3
+                } else {
+                    append(text[i])
+                    i++
+                }
+            }
+            else -> {
+                append(text[i])
+                i++
+            }
+        }
+    }
+}
+
+fun androidx.compose.ui.text.AnnotatedString.Builder.highlightJson(text: String) {
+    var i = 0
+    while (i < text.length) {
+        when {
+            text[i] == '"' -> {
+                val endIndex = text.indexOf('"', i + 1)
+                if (endIndex != -1) {
+                    withStyle(SpanStyle(color = Color(0xFF4CAF50))) {
+                        append(text.substring(i, endIndex + 1))
+                    }
+                    i = endIndex + 1
+                } else {
+                    append(text[i])
+                    i++
+                }
+            }
+            text[i].isDigit() -> {
+                var j = i
+                while (j < text.length && (text[j].isDigit() || text[j] == '.')) j++
+                withStyle(SpanStyle(color = Color(0xFFFF9800))) {
+                    append(text.substring(i, j))
+                }
+                i = j
+            }
+            text.startsWith("true", i) || text.startsWith("false", i) || text.startsWith("null", i) -> {
+                val word = when {
+                    text.startsWith("true", i) -> "true"
+                    text.startsWith("false", i) -> "false"
+                    else -> "null"
+                }
+                withStyle(SpanStyle(color = Color(0xFF7C4DFF))) {
+                    append(word)
+                }
+                i += word.length
+            }
+            else -> {
+                append(text[i])
+                i++
+            }
+        }
+    }
+}
+
+fun androidx.compose.ui.text.AnnotatedString.Builder.highlightMarkdown(text: String) {
+    var i = 0
+    while (i < text.length) {
+        when {
+            text.startsWith("# ", i) -> {
+                val endIndex = text.indexOf('\n', i)
+                val end = if (endIndex != -1) endIndex else text.length
+                withStyle(SpanStyle(color = Color(0xFF2196F3), fontWeight = FontWeight.Bold)) {
+                    append(text.substring(i, end))
+                }
+                i = end
+            }
+            text.startsWith("```", i) -> {
+                val endIndex = text.indexOf("```", i + 3)
+                if (endIndex != -1) {
+                    withStyle(SpanStyle(color = Color(0xFF9E9E9E), background = Color(0xFFF5F5F5))) {
+                        append(text.substring(i, endIndex + 3))
+                    }
+                    i = endIndex + 3
+                } else {
+                    append(text[i])
+                    i++
+                }
+            }
+            text[i] == '`' -> {
+                val endIndex = text.indexOf('`', i + 1)
+                if (endIndex != -1) {
+                    withStyle(SpanStyle(color = Color(0xFFE91E63), background = Color(0xFFF5F5F5))) {
+                        append(text.substring(i, endIndex + 1))
+                    }
+                    i = endIndex + 1
+                } else {
+                    append(text[i])
+                    i++
+                }
+            }
+            else -> {
+                append(text[i])
+                i++
+            }
+        }
+    }
+}
+
+fun androidx.compose.ui.text.AnnotatedString.Builder.highlightGradle(text: String) {
+    val keywords = setOf("plugins", "dependencies", "implementation", "api", "testImplementation", "androidTestImplementation", "android", "compileSdk", "minSdk", "targetSdk", "versionCode", "versionName", "buildTypes", "debug", "release", "defaultConfig", "sourceSets", "repositories", "maven", "google", "mavenCentral", "apply", "plugin", "id", "version")
+    highlightCode(text, keywords, Color(0xFF4CAF50), Color(0xFF2196F3), Color(0xFF9E9E9E))
+}
+
+fun androidx.compose.ui.text.AnnotatedString.Builder.highlightCode(
+    text: String,
+    keywords: Set<String>,
+    keywordColor: Color,
+    stringColor: Color,
+    commentColor: Color
+) {
+    var i = 0
+    while (i < text.length) {
+        when {
+            // String literals
+            text[i] == '"' -> {
+                val endIndex = text.indexOf('"', i + 1)
+                if (endIndex != -1) {
+                    withStyle(SpanStyle(color = stringColor)) {
+                        append(text.substring(i, endIndex + 1))
+                    }
+                    i = endIndex + 1
+                } else {
+                    append(text[i])
+                    i++
+                }
+            }
+            // Single line comments
+            text.startsWith("//", i) -> {
+                val endIndex = text.indexOf('\n', i)
+                val end = if (endIndex != -1) endIndex else text.length
+                withStyle(SpanStyle(color = commentColor)) {
+                    append(text.substring(i, end))
+                }
+                i = end
+            }
+            // Multi-line comments
+            text.startsWith("/*", i) -> {
+                val endIndex = text.indexOf("*/", i + 2)
+                if (endIndex != -1) {
+                    withStyle(SpanStyle(color = commentColor)) {
+                        append(text.substring(i, endIndex + 2))
+                    }
+                    i = endIndex + 2
+                } else {
+                    append(text[i])
+                    i++
+                }
+            }
+            // Keywords
+            text[i].isLetter() -> {
+                var j = i
+                while (j < text.length && (text[j].isLetterOrDigit() || text[j] == '_')) j++
+                val word = text.substring(i, j)
+                if (keywords.contains(word)) {
+                    withStyle(SpanStyle(color = keywordColor, fontWeight = FontWeight.Bold)) {
+                        append(word)
+                    }
+                } else {
+                    append(word)
+                }
+                i = j
+            }
+            else -> {
+                append(text[i])
+                i++
+            }
+        }
+    }
 }
