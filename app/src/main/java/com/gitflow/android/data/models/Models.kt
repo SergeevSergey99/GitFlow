@@ -80,3 +80,24 @@ data class User(
     val email: String,
     val username: String
 )
+
+// Models for commit file tree
+data class FileTreeNode(
+    val name: String,
+    val path: String,
+    val type: FileTreeNodeType,
+    val size: Long? = null,
+    val children: List<FileTreeNode> = emptyList(),
+    val lastModified: Long? = null
+)
+
+enum class FileTreeNodeType {
+    FILE, DIRECTORY
+}
+
+data class CommitFileInfo(
+    val path: String,
+    val size: Long,
+    val lastModified: Long,
+    val content: String? = null // Может быть null для больших файлов
+)

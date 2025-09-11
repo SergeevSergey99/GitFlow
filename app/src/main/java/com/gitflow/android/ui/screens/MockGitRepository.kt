@@ -130,27 +130,243 @@ class MockGitRepository {
     fun pull(repository: Repository) = PullResult(success = true, newCommits = Random.nextInt(0, 3), conflicts = emptyList())
     fun push(repository: Repository) = PushResult(success = true, pushedCommits = Random.nextInt(0, 3), message = "ok")
 
+    // Get file tree for a specific commit
+    fun getCommitFileTree(commit: Commit): FileTreeNode {
+        val baseFiles = generateMockFilesForCommit(commit)
+        return buildFileTree(baseFiles)
+    }
+
+    fun getFileContent(commit: Commit, filePath: String): String? {
+        // Mock file content based on commit and path
+        return when {
+            filePath.endsWith(".kt") -> generateKotlinFileContent(filePath, commit)
+            filePath.endsWith(".xml") -> generateXmlFileContent(filePath, commit)
+            filePath.endsWith(".md") -> generateMarkdownFileContent(filePath, commit)
+            filePath.endsWith(".gradle") -> generateGradleFileContent(filePath, commit)
+            filePath.endsWith(".json") -> generateJsonFileContent(filePath, commit)
+            else -> "Binary file content for $filePath in commit ${commit.hash.take(7)}"
+        }
+    }
+
+    private fun generateMockFilesForCommit(commit: Commit): List<CommitFileInfo> {
+        val baseTime = commit.timestamp
+        val hash = commit.hash.take(6)
+
+        return listOf(
+            // Android app structure
+            CommitFileInfo("app/build.gradle.kts", 2048, baseTime - 1000, null),
+            CommitFileInfo("app/src/main/AndroidManifest.xml", 1024, baseTime - 2000, null),
+            CommitFileInfo("app/src/main/java/com/example/MainActivity.kt", 3072, baseTime - 3000, null),
+            CommitFileInfo("app/src/main/java/com/example/ui/HomeFragment.kt", 2560, baseTime - 4000, null),
+            CommitFileInfo("app/src/main/java/com/example/ui/DetailFragment.kt", 1800, baseTime - 5000, null),
+            CommitFileInfo("app/src/main/java/com/example/data/Repository.kt", 4096, baseTime - 6000, null),
+            CommitFileInfo("app/src/main/java/com/example/data/model/User.kt", 1200, baseTime - 7000, null),
+            CommitFileInfo("app/src/main/java/com/example/data/model/Item.kt", 1500, baseTime - 8000, null),
+            CommitFileInfo("app/src/main/java/com/example/utils/Extensions.kt", 800, baseTime - 9000, null),
+            CommitFileInfo("app/src/main/res/layout/activity_main.xml", 2200, baseTime - 10000, null),
+            CommitFileInfo("app/src/main/res/layout/fragment_home.xml", 1800, baseTime - 11000, null),
+            CommitFileInfo("app/src/main/res/layout/fragment_detail.xml", 1600, baseTime - 12000, null),
+            CommitFileInfo("app/src/main/res/layout/item_list.xml", 1000, baseTime - 13000, null),
+            CommitFileInfo("app/src/main/res/values/strings.xml", 1400, baseTime - 14000, null),
+            CommitFileInfo("app/src/main/res/values/colors.xml", 600, baseTime - 15000, null),
+            CommitFileInfo("app/src/main/res/values/themes.xml", 2000, baseTime - 16000, null),
+            CommitFileInfo("app/src/main/res/drawable/ic_launcher.xml", 800, baseTime - 17000, null),
+            CommitFileInfo("app/src/test/java/com/example/ExampleUnitTest.kt", 1000, baseTime - 18000, null),
+
+            // Project level files
+            CommitFileInfo("build.gradle.kts", 1500, baseTime - 19000, null),
+            CommitFileInfo("settings.gradle.kts", 400, baseTime - 20000, null),
+            CommitFileInfo("gradle.properties", 800, baseTime - 21000, null),
+            CommitFileInfo("README.md", 3000, baseTime - 22000, null),
+            CommitFileInfo(".gitignore", 1200, baseTime - 23000, null),
+
+            // Add some commit-specific files
+            CommitFileInfo("feature_${hash}/FeatureActivity.kt", 2800, baseTime, null),
+            CommitFileInfo("feature_${hash}/res/layout/activity_feature.xml", 1600, baseTime, null),
+            CommitFileInfo("docs/commit_${hash}_notes.md", 500, baseTime, null),
+        )
+    }
+
+    private fun buildFileTree(files: List<CommitFileInfo>): FileTreeNode {
+        val root = mutableMapOf<String, Any>()
+
+        files.forEach { file ->
+            val parts = file.path.split("/")
+            var current = root
+
+            for (i in parts.indices) {
+                val part = parts[i]
+                if (i == parts.lastIndex) {
+                    // This is a file
+                    current[part] = file
+                } else {
+                    // This is a directory
+                    if (current[part] !is MutableMap<*, *>) {
+                        current[part] = mutableMapOf<String, Any>()
+                    }
+                    @Suppress("UNCHECKED_CAST")
+                    current = current[part] as MutableMap<String, Any>
+                }
+            }
+        }
+
+        return convertToFileTreeNode("", "", root)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun convertToFileTreeNode(name: String, path: String, node: Any): FileTreeNode {
+        return when (node) {
+            is CommitFileInfo -> FileTreeNode(
+                name = name,
+                path = path,
+                type = FileTreeNodeType.FILE,
+                size = node.size,
+                lastModified = node.lastModified
+            )
+            is Map<*, *> -> {
+                val children = (node as Map<String, Any>).map { (childName, childNode) ->
+                    val childPath = if (path.isEmpty()) childName else "$path/$childName"
+                    convertToFileTreeNode(childName, childPath, childNode)
+                }.sortedWith(compareBy<FileTreeNode> { it.type }.thenBy { it.name })
+
+                FileTreeNode(
+                    name = name,
+                    path = path,
+                    type = FileTreeNodeType.DIRECTORY,
+                    children = children
+                )
+            }
+            else -> throw IllegalArgumentException("Unknown node type: ${node::class}")
+        }
+    }
+
+    private fun generateKotlinFileContent(filePath: String, commit: Commit): String {
+        val className = filePath.substringAfterLast("/").removeSuffix(".kt")
+        val packageName = filePath.substringBeforeLast("/").replace("/", ".").removePrefix("app.src.main.java.")
+
+        return """
+            package $packageName
+            
+            import androidx.compose.foundation.layout.*
+            import androidx.compose.material3.*
+            import androidx.compose.runtime.*
+            import androidx.compose.ui.Modifier
+            
+            /**
+             * $className - created in commit ${commit.hash.take(7)}
+             * Author: ${commit.author}
+             * Date: ${java.text.SimpleDateFormat("yyyy-MM-dd").format(java.util.Date(commit.timestamp))}
+             */
+            class $className {
+                
+                fun example() {
+                    println("Generated for commit: ${commit.hash.take(7)}")
+                }
+                
+                @Composable
+                fun ExampleComposable() {
+                    Column {
+                        Text("Hello from $className")
+                        Text("Commit: ${commit.hash.take(7)}")
+                    }
+                }
+            }
+        """.trimIndent()
+    }
+
+    private fun generateXmlFileContent(filePath: String, commit: Commit): String {
+        return """
+            <?xml version="1.0" encoding="utf-8"?>
+            <!-- Generated for commit ${commit.hash.take(7)} -->
+            <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical">
+                
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Commit: ${commit.hash.take(7)}"
+                    android:textSize="16sp" />
+                    
+            </LinearLayout>
+        """.trimIndent()
+    }
+
+    private fun generateMarkdownFileContent(filePath: String, commit: Commit): String {
+        return """
+            # ${filePath.substringAfterLast("/")}
+            
+            This file was generated for commit `${commit.hash.take(7)}`.
+            
+            ## Details
+            - Author: ${commit.author}
+            - Message: ${commit.message}
+            - Date: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(java.util.Date(commit.timestamp))}
+            
+            ## Content
+            This is mock content for demonstration purposes.
+        """.trimIndent()
+    }
+
+    private fun generateGradleFileContent(filePath: String, commit: Commit): String {
+        return """
+            // Generated for commit ${commit.hash.take(7)}
+            
+            plugins {
+                id("com.android.application")
+                id("org.jetbrains.kotlin.android")
+            }
+            
+            android {
+                compileSdk 34
+                
+                defaultConfig {
+                    minSdk 24
+                    targetSdk 34
+                    versionCode 1
+                    versionName "1.0"
+                }
+            }
+            
+            dependencies {
+                implementation("androidx.core:core-ktx:1.12.0")
+                implementation("androidx.compose.ui:ui:1.5.4")
+                // Commit: ${commit.hash.take(7)}
+            }
+        """.trimIndent()
+    }
+
+    private fun generateJsonFileContent(filePath: String, commit: Commit): String {
+        return """
+            {
+              "commit": "${commit.hash.take(7)}",
+              "author": "${commit.author}",
+              "message": "${commit.message}",
+              "timestamp": ${commit.timestamp},
+              "file": "$filePath"
+            }
+        """.trimIndent()
+    }
+
     // ---------- Mock seed ----------
 
     private fun createMockData() {
         val now = System.currentTimeMillis()
         val repos = listOf(
             Repository("1", "sample-android-app", "/storage/emulated/0/GitFlow/sample-android-app", now - 3_600_000, "main"),
-            //Repository("2", "web-project",        "/storage/emulated/0/GitFlow/web-project",        now - 86_400_000, "develop"),
-
-            // Новые сценарии
-            Repository("3", "linear-main",              "/mock/linear-main",              now - 2_000_000, "main"),
-            Repository("4", "feature-merge",            "/mock/feature-merge",            now - 1_900_000, "main"),
-            Repository("5", "two-features-interleaved", "/mock/two-features",             now - 1_800_000, "main"),
-            Repository("6", "long-lived-release-hotfix","/mock/release-hotfix",          now - 1_700_000, "main"),
-            Repository("7", "criss-cross-merge",        "/mock/criss-cross",              now - 1_600_000, "main"),
-            Repository("8", "octopus-merge",            "/mock/octopus",                  now - 1_500_000, "main"),
-            Repository("9", "orphan-branch",            "/mock/orphan",                   now - 1_400_000, "main"),
-            Repository("10","rebase-like",              "/mock/rebase-like",              now - 1_300_000, "main"),
-            Repository("11","sparse-history-missing",   "/mock/sparse",                   now - 1_200_000, "main"),
-            Repository("12","tags-and-annotated",       "/mock/tags",                     now - 1_100_000, "main"),
-            Repository("13","single-branch-merges",     "/mock/single-branch",            now - 1_000_000, "main"),
-            Repository("14","ten-branches",             "/mock/ten-branches",             now - 900_000,  "main")
+            Repository("3", "linear-main", "/mock/linear-main", now - 2_000_000, "main"),
+            Repository("4", "feature-merge", "/mock/feature-merge", now - 1_900_000, "main"),
+            Repository("5", "two-features-interleaved", "/mock/two-features", now - 1_800_000, "main"),
+            Repository("6", "long-lived-release-hotfix", "/mock/release-hotfix", now - 1_700_000, "main"),
+            Repository("7", "criss-cross-merge", "/mock/criss-cross", now - 1_600_000, "main"),
+            Repository("8", "octopus-merge", "/mock/octopus", now - 1_500_000, "main"),
+            Repository("9", "orphan-branch", "/mock/orphan", now - 1_400_000, "main"),
+            Repository("10", "rebase-like", "/mock/rebase-like", now - 1_300_000, "main"),
+            Repository("11", "sparse-history-missing", "/mock/sparse", now - 1_200_000, "main"),
+            Repository("12", "tags-and-annotated", "/mock/tags", now - 1_100_000, "main"),
+            Repository("13", "single-branch-merges", "/mock/single-branch", now - 1_000_000, "main"),
+            Repository("14", "ten-branches", "/mock/ten-branches", now - 900_000, "main")
         )
 
         mockRepositories.addAll(repos)
@@ -159,8 +375,6 @@ class MockGitRepository {
             mockChanges[repo.id] = generateChangesForRepo()
         }
     }
-
-    // ---------- Scenarios ----------
 
     private fun generateCommitsForRepo(repoName: String): List<Commit> {
         return when (repoName) {
@@ -181,15 +395,28 @@ class MockGitRepository {
         }.sortedByDescending { it.timestamp }
     }
 
-    // helper for time ticks
+    private fun generateChangesForRepo(): List<FileChange> {
+        return listOf(
+            FileChange("app/src/main/java/MainActivity.kt", ChangeStatus.MODIFIED, 5, 2),
+            FileChange("app/src/main/res/layout/activity_main.xml", ChangeStatus.MODIFIED, 3, 1),
+            FileChange("README.md", ChangeStatus.ADDED, 10, 0),
+            FileChange("temp.txt", ChangeStatus.UNTRACKED, 0, 0)
+        )
+    }
+
+    // Helper methods for scenarios
     private class Ticker(start: Long, private val stepMin: Int) {
         private var t = start
         fun next(): Long = t.also { t += stepMin * 60_000L }
     }
 
+    private fun generateHash(): String =
+        (1..40).map { "0123456789abcdef".random() }.joinToString("")
+
     private fun scenarioSample(): List<Commit> {
-        val tick = Ticker(System.currentTimeMillis() - 15 * 60_60_1000L, 60)
+        val tick = Ticker(System.currentTimeMillis() - 15 * 60 * 60 * 1000L, 60)
         fun h() = generateHash()
+
         val m1 = Commit(h(), "Initial commit", "John Doe", "john@example.com", tick.next(), emptyList(), "main")
         val m2 = Commit(h(), "Setup CI", "Jane Smith", "jane@example.com", tick.next(), listOf(m1.hash), "main")
         val m3 = Commit(h(), "Core module", "Bob Johnson", "bob@example.com", tick.next(), listOf(m2.hash), "main")
@@ -199,309 +426,59 @@ class MockGitRepository {
         val ui3 = Commit(h(), "fix(ui): padding", "Alice Brown", "alice@example.com", tick.next(), listOf(ui2.hash), "feature/ui")
 
         val d1 = Commit(h(), "chore(dev): configs", "Charlie Wilson", "charlie@example.com", tick.next(), listOf(m3.hash), "develop")
-        val d2 = Commit(h(), "refactor(dev): io", "Charlie Wilson", "charlie@example.com", tick.next(), listOf(d1.hash), "develop")
-        val d3 = Commit(h(), "merge(ui → develop)", "Jane Smith", "jane@example.com", tick.next(), listOf(d2.hash, ui3.hash), "develop")
+        val merge1 = Commit(h(), "Merge feature/ui into main", "John Doe", "john@example.com", tick.next(), listOf(m3.hash, ui3.hash), "main")
+        val m4 = Commit(h(), "Update README", "Jane Smith", "jane@example.com", tick.next(), listOf(merge1.hash), "main")
 
-        val au1 = Commit(h(), "feat(auth): base", "John Doe", "john@example.com", tick.next(), listOf(m3.hash), "feature/auth")
-        val au2 = Commit(h(), "feat(auth): oauth", "John Doe", "john@example.com", tick.next(), listOf(au1.hash), "feature/auth")
-        val d4 = Commit(h(), "merge(auth → develop)", "Jane Smith", "jane@example.com", tick.next(), listOf(d3.hash, au2.hash), "develop")
-
-        val m4 = Commit(h(), "docs: README", "Bob Johnson", "bob@example.com", tick.next(), listOf(m3.hash), "main")
-        val m5 = Commit(h(), "merge(develop → main)", "Jane Smith", "jane@example.com", tick.next(), listOf(m4.hash, d4.hash), "main")
-        val m6 = Commit(h(), "release: 1.0", "John Doe", "john@example.com", tick.next(), listOf(m5.hash), "main", tags = listOf("v1.0.0"))
-
-        return listOf(m1, m2, m3, ui1, ui2, ui3, d1, d2, d3, au1, au2, d4, m4, m5, m6)
+        return listOf(m1, m2, m3, ui1, ui2, ui3, d1, merge1, m4)
     }
 
     private fun scenarioLinear(): List<Commit> {
-        val tick = Ticker(System.currentTimeMillis() - 12 * 60_60_1000L, 45)
+        val tick = Ticker(System.currentTimeMillis() - 10 * 60 * 60 * 1000L, 30)
         fun h() = generateHash()
-        var prev: Commit? = null
-        val list = mutableListOf<Commit>()
-        repeat(12) { i ->
-            val c = Commit(
-                h(), "linear: step ${i + 1}", "Dev", "dev@example.com",
-                tick.next(), prev?.let { listOf(it.hash) } ?: emptyList(), "main"
+
+        return (1..10).fold(emptyList<Commit>()) { acc, i ->
+            val parent = acc.lastOrNull()
+            val commit = Commit(
+                h(),
+                "Linear commit $i",
+                "Dev $i",
+                "dev$i@example.com",
+                tick.next(),
+                parent?.let { listOf(it.hash) } ?: emptyList(),
+                "main"
             )
-            list += c
-            prev = c
+            acc + commit
         }
-        return list
     }
 
     private fun scenarioFeatureMerge(): List<Commit> {
-        val tick = Ticker(System.currentTimeMillis() - 10 * 60_60_1000L, 30)
-        fun h() = generateHash()
-        val m1 = Commit(h(), "init", "Dev", "dev@x", tick.next(), emptyList(), "main")
-        val m2 = Commit(h(), "main work 1", "Dev", "dev@x", tick.next(), listOf(m1.hash), "main")
-        val m3 = Commit(h(), "main work 2", "Dev", "dev@x", tick.next(), listOf(m2.hash), "main")
-
-        val f1 = Commit(h(), "feature: A1", "Alice", "a@x", tick.next(), listOf(m2.hash), "feature/A")
-        val f2 = Commit(h(), "feature: A2", "Alice", "a@x", tick.next(), listOf(f1.hash), "feature/A")
-
-        val m4 = Commit(h(), "merge A → main", "Maint", "m@x", tick.next(), listOf(m3.hash, f2.hash), "main")
-        val m5 = Commit(h(), "post-merge", "Dev", "dev@x", tick.next(), listOf(m4.hash), "main")
-        return listOf(m1, m2, m3, f1, f2, m4, m5)
-    }
-
-    private fun scenarioTwoFeaturesInterleaved(): List<Commit> {
-        val tick = Ticker(System.currentTimeMillis() - 9 * 60_60_1000L, 20)
-        fun h() = generateHash()
-        val m1 = Commit(h(), "base", "Dev", "d@x", tick.next(), emptyList(), "main")
-        val m2 = Commit(h(), "prep", "Dev", "d@x", tick.next(), listOf(m1.hash), "main")
-
-        val a1 = Commit(h(), "A1", "A", "a@x", tick.next(), listOf(m2.hash), "feature/A")
-        val b1 = Commit(h(), "B1", "B", "b@x", tick.next(), listOf(m2.hash), "feature/B")
-        val a2 = Commit(h(), "A2", "A", "a@x", tick.next(), listOf(a1.hash), "feature/A")
-        val b2 = Commit(h(), "B2", "B", "b@x", tick.next(), listOf(b1.hash), "feature/B")
-
-        val m3 = Commit(h(), "merge B", "Maint", "m@x", tick.next(), listOf(m2.hash, b2.hash), "main")
-        val m4 = Commit(h(), "merge A", "Maint", "m@x", tick.next(), listOf(m3.hash, a2.hash), "main")
-        return listOf(m1, m2, a1, b1, a2, b2, m3, m4)
-    }
-
-    private fun scenarioReleaseHotfix(): List<Commit> {
-        val tick = Ticker(System.currentTimeMillis() - 14 * 60_60_1000L, 25)
-        fun h() = generateHash()
-        val m1 = Commit(h(), "init", "Dev", "d@x", tick.next(), emptyList(), "main")
-        val m2 = Commit(h(), "feat: core", "Dev", "d@x", tick.next(), listOf(m1.hash), "main")
-        val m3 = Commit(h(), "feat: ui", "Dev", "d@x", tick.next(), listOf(m2.hash), "main")
-
-        // release/1.0 от m3
-        val r1 = Commit(h(), "release: prep", "Rel", "r@x", tick.next(), listOf(m3.hash), "release/1.0")
-        val r2 = Commit(h(), "release: docs", "Rel", "r@x", tick.next(), listOf(r1.hash), "release/1.0")
-
-        // main продолжает жить
-        val m4 = Commit(h(), "main: perf", "Dev", "d@x", tick.next(), listOf(m3.hash), "main")
-
-        // hotfix от r2
-        val h1 = Commit(h(), "hotfix: critical", "Hot", "h@x", tick.next(), listOf(r2.hash), "hotfix/1.0.1")
-        // слияние hotfix в release и main
-        val r3 = Commit(h(), "merge hotfix → release", "Rel", "r@x", tick.next(), listOf(r2.hash, h1.hash), "release/1.0")
-        val m5 = Commit(h(), "merge hotfix → main", "Maint", "m@x", tick.next(), listOf(m4.hash, h1.hash), "main", tags = listOf("v1.0.1"))
-
-        val m6 = Commit(h(), "post-release", "Dev", "d@x", tick.next(), listOf(m5.hash), "main")
-        return listOf(m1, m2, m3, r1, r2, m4, h1, r3, m5, m6)
-    }
-
-    private fun scenarioCrissCross(): List<Commit> {
-        val tick = Ticker(System.currentTimeMillis() - 8 * 60_60_1000L, 18)
-        fun h() = generateHash()
-        val b = Commit(h(), "base", "Dev", "d@x", tick.next(), emptyList(), "main")
-        val a1 = Commit(h(), "A1", "A", "a@x", tick.next(), listOf(b.hash), "branch/A")
-        val c1 = Commit(h(), "C1", "C", "c@x", tick.next(), listOf(b.hash), "branch/C")
-
-        val a2 = Commit(h(), "A2", "A", "a@x", tick.next(), listOf(a1.hash), "branch/A")
-        val c2 = Commit(h(), "C2", "C", "c@x", tick.next(), listOf(c1.hash), "branch/C")
-
-        // A ← merge C
-        val a3 = Commit(h(), "merge C → A", "Maint", "m@x", tick.next(), listOf(a2.hash, c2.hash), "branch/A")
-        // C ← merge A
-        val c3 = Commit(h(), "merge A → C", "Maint", "m@x", tick.next(), listOf(c2.hash, a3.hash), "branch/C")
-
-        // main берёт C
-        val m1 = Commit(h(), "merge C → main", "Maint", "m@x", tick.next(), listOf(b.hash, c3.hash), "main")
-        return listOf(b, a1, c1, a2, c2, a3, c3, m1)
-    }
-
-    private fun scenarioOctopus(): List<Commit> {
-        val tick = Ticker(System.currentTimeMillis() - 7 * 60_60_1000L, 15)
-        fun h() = generateHash()
-        val m1 = Commit(h(), "init", "Dev", "d@x", tick.next(), emptyList(), "main")
-        val m2 = Commit(h(), "work", "Dev", "d@x", tick.next(), listOf(m1.hash), "main")
-
-        val f1 = Commit(h(), "f1", "F", "f@x", tick.next(), listOf(m2.hash), "feature/f1")
-        val f2 = Commit(h(), "f2", "F", "f@x", tick.next(), listOf(m2.hash), "feature/f2")
-        val f3 = Commit(h(), "f3", "F", "f@x", tick.next(), listOf(m2.hash), "feature/f3")
-
-        // Octopus merge на main: родители [mainTip, f1, f2, f3]
-        val m3 = Commit(h(), "octopus merge", "Maint", "m@x", tick.next(), listOf(m2.hash, f1.hash, f2.hash, f3.hash), "main")
-        val m4 = Commit(h(), "after octopus", "Dev", "d@x", tick.next(), listOf(m3.hash), "main")
-        return listOf(m1, m2, f1, f2, f3, m3, m4)
-    }
-
-    private fun scenarioOrphan(): List<Commit> {
-        val tick = Ticker(System.currentTimeMillis() - 6 * 60_60_1000L, 12)
-        fun h() = generateHash()
-        val m1 = Commit(h(), "init", "Dev", "d@x", tick.next(), emptyList(), "main")
-        val m2 = Commit(h(), "main work", "Dev", "d@x", tick.next(), listOf(m1.hash), "main")
-
-        // Ветка experiment от m1, никогда не мерджится
-        val e1 = Commit(h(), "exp: try 1", "Exp", "e@x", tick.next(), listOf(m1.hash), "experiment")
-        val e2 = Commit(h(), "exp: try 2", "Exp", "e@x", tick.next(), listOf(e1.hash), "experiment")
-
-        val m3 = Commit(h(), "main continue", "Dev", "d@x", tick.next(), listOf(m2.hash), "main")
-        return listOf(m1, m2, e1, e2, m3)
-    }
-
-    private fun scenarioRebaseLike(): List<Commit> {
-        val tick = Ticker(System.currentTimeMillis() - 5 * 60_60_1000L, 10)
-        fun h() = generateHash()
-        val m1 = Commit(h(), "base", "Dev", "d@x", tick.next(), emptyList(), "main")
-        val m2 = Commit(h(), "main 2", "Dev", "d@x", tick.next(), listOf(m1.hash), "main")
-
-        val f1 = Commit(h(), "F1", "A", "a@x", tick.next(), listOf(m2.hash), "feature/rebase")
-        val f2 = Commit(h(), "F2", "A", "a@x", tick.next(), listOf(f1.hash), "feature/rebase")
-
-        val m3 = Commit(h(), "main 3", "Dev", "d@x", tick.next(), listOf(m2.hash), "main")
-
-        // «Переписанные» коммиты после rebase на m3
-        val rf1 = Commit(h(), "F1'", "A", "a@x", tick.next(), listOf(m3.hash), "feature/rebase")
-        val rf2 = Commit(h(), "F2'", "A", "a@x", tick.next(), listOf(rf1.hash), "feature/rebase")
-
-        // Итог: видно старую цепочку F1–F2 и новую F1'–F2' без merge
-        val m4 = Commit(h(), "main 4", "Dev", "d@x", tick.next(), listOf(m3.hash), "main")
-        return listOf(m1, m2, f1, f2, m3, rf1, rf2, m4)
-    }
-
-    private fun scenarioSparse(): List<Commit> {
-        val tick = Ticker(System.currentTimeMillis() - 4 * 60_60_1000L, 9)
-        fun h() = generateHash()
-        val m1 = Commit(h(), "init", "Dev", "d@x", tick.next(), emptyList(), "main")
-        val m2 = Commit(h(), "work", "Dev", "d@x", tick.next(), listOf(m1.hash), "main")
-
-        // Коммит, ссылающийся на отсутствующего родителя (суррогатная проверка устойчивости)
-        val missingParent = "ffffffffffff"
-        val x1 = Commit(h(), "edge: missing parent", "X", "x@x", tick.next(), listOf(missingParent), "edge/missing")
-
-        val m3 = Commit(h(), "continue", "Dev", "d@x", tick.next(), listOf(m2.hash), "main")
-        return listOf(m1, m2, x1, m3)
-    }
-
-    private fun scenarioTags(): List<Commit> {
-        val tick = Ticker(System.currentTimeMillis() - 3 * 60_60_1000L, 8)
-        fun h() = generateHash()
-        val m1 = Commit(h(), "init", "Dev", "d@x", tick.next(), emptyList(), "main", tags = listOf("v0.1.0"))
-        val m2 = Commit(h(), "feat: api", "Dev", "d@x", tick.next(), listOf(m1.hash), "main", tags = listOf("beta"))
-        val m3 = Commit(h(), "fix: api", "Dev", "d@x", tick.next(), listOf(m2.hash), "main")
-        val f1 = Commit(h(), "feat: ui", "UI", "u@x", tick.next(), listOf(m2.hash), "feature/ui", tags = listOf("WIP"))
-        val f2 = Commit(h(), "feat: ui grid", "UI", "u@x", tick.next(), listOf(f1.hash), "feature/ui")
-        val m4 = Commit(h(), "merge ui", "Maint", "m@x", tick.next(), listOf(m3.hash, f2.hash), "main", tags = listOf("v0.2.0"))
-        return listOf(m1, m2, m3, f1, f2, m4)
-    }
-
-    private fun scenarioSingleBranchMerges(): List<Commit> {
-        val tick = Ticker(System.currentTimeMillis() - 11 * 60_60_1000L, 35)
+        val tick = Ticker(System.currentTimeMillis() - 8 * 60 * 60 * 1000L, 45)
         fun h() = generateHash()
 
-        // Начальные коммиты
-        val m1 = Commit(h(), "init project", "Lead Dev", "lead@example.com", tick.next(), emptyList(), "main")
-        val m2 = Commit(h(), "setup base structure", "Lead Dev", "lead@example.com", tick.next(), listOf(m1.hash), "main")
+        val m1 = Commit(h(), "Initial", "Alice", "alice@example.com", tick.next(), emptyList(), "main")
+        val m2 = Commit(h(), "Base work", "Alice", "alice@example.com", tick.next(), listOf(m1.hash), "main")
 
-        // Разработчик A работает локально
-        val a1 = Commit(h(), "feat: user auth (local)", "Alice", "alice@example.com", tick.next(), listOf(m2.hash), "main")
-        val a2 = Commit(h(), "refactor: auth utils (local)", "Alice", "alice@example.com", tick.next(), listOf(a1.hash), "main")
+        val f1 = Commit(h(), "Feature start", "Bob", "bob@example.com", tick.next(), listOf(m2.hash), "feature/awesome")
+        val f2 = Commit(h(), "Feature progress", "Bob", "bob@example.com", tick.next(), listOf(f1.hash), "feature/awesome")
+        val f3 = Commit(h(), "Feature complete", "Bob", "bob@example.com", tick.next(), listOf(f2.hash), "feature/awesome")
 
-        // Разработчик B работает параллельно локально
-        val b1 = Commit(h(), "feat: api client (local)", "Bob", "bob@example.com", tick.next(), listOf(m2.hash), "main")
-        val b2 = Commit(h(), "fix: http headers (local)", "Bob", "bob@example.com", tick.next(), listOf(b1.hash), "main")
+        val merge = Commit(h(), "Merge feature/awesome", "Alice", "alice@example.com", tick.next(), listOf(m2.hash, f3.hash), "main")
+        val m3 = Commit(h(), "Post-merge cleanup", "Alice", "alice@example.com", tick.next(), listOf(merge.hash), "main")
 
-        // Разработчик C тоже работает локально
-        val c1 = Commit(h(), "feat: ui components (local)", "Charlie", "charlie@example.com", tick.next(), listOf(m2.hash), "main")
-
-        // Alice мерджит свои изменения с remote main
-        val m3 = Commit(h(), "merge: Alice's auth work", "Alice", "alice@example.com", tick.next(), listOf(m2.hash, a2.hash), "main")
-
-        // Bob пуллит изменения Alice и мерджит свои
-        val m4 = Commit(h(), "merge: Bob's api work with Alice's", "Bob", "bob@example.com", tick.next(), listOf(m3.hash, b2.hash), "main")
-
-        // Charlie пуллит все и мерджит свои UI изменения
-        val m5 = Commit(h(), "merge: Charlie's UI with team work", "Charlie", "charlie@example.com", tick.next(), listOf(m4.hash, c1.hash), "main")
-
-        // Дополнительная работа от Alice после мерджа
-        val a3 = Commit(h(), "fix: auth integration (local)", "Alice", "alice@example.com", tick.next(), listOf(a2.hash), "main")
-        val a4 = Commit(h(), "test: auth scenarios (local)", "Alice", "alice@example.com", tick.next(), listOf(a3.hash), "main")
-
-        // Bob продолжает работу
-        val b3 = Commit(h(), "feat: caching layer (local)", "Bob", "bob@example.com", tick.next(), listOf(b2.hash), "main")
-
-        // Alice снова мерджит свои новые изменения
-        val m6 = Commit(h(), "merge: Alice's auth fixes", "Alice", "alice@example.com", tick.next(), listOf(m5.hash, a4.hash), "main")
-
-        // Bob мерджит кэширование
-        val m7 = Commit(h(), "merge: Bob's caching with latest", "Bob", "bob@example.com", tick.next(), listOf(m6.hash, b3.hash), "main")
-
-        // Hotfix от Lead Dev
-        val h1 = Commit(h(), "hotfix: critical bug (local)", "Lead Dev", "lead@example.com", tick.next(), listOf(m7.hash), "main")
-        val h2 = Commit(h(), "test: hotfix verification", "Lead Dev", "lead@example.com", tick.next(), listOf(h1.hash), "main")
-
-        // Lead мерджит hotfix
-        val m8 = Commit(h(), "merge: critical hotfix", "Lead Dev", "lead@example.com", tick.next(), listOf(m7.hash, h2.hash), "main")
-
-        // Финальная работа
-        val f1 = Commit(h(), "docs: update README", "Charlie", "charlie@example.com", tick.next(), listOf(m8.hash), "main")
-        val f2 = Commit(h(), "release: v1.0.0", "Lead Dev", "lead@example.com", tick.next(), listOf(f1.hash), "main", tags = listOf("v1.0.0"))
-
-        return listOf(m1, m2, a1, a2, b1, b2, c1, m3, m4, m5, a3, a4, b3, m6, m7, h1, h2, m8, f1, f2)
+        return listOf(m1, m2, f1, f2, f3, merge, m3)
     }
 
-    private fun scenarioTenBranches(): List<Commit> {
-        val tick = Ticker(System.currentTimeMillis() - 2 * 60_60_1000L, 5) // плотная история
-        fun h() = generateHash()
-
-        // Базовые коммиты main
-        val m1 = Commit(h(), "init", "Team", "team@example.com", tick.next(), emptyList(), "main")
-        val m2 = Commit(h(), "core setup", "Team", "team@example.com", tick.next(), listOf(m1.hash), "main")
-
-        // 9 веток feature/1..9, по 2-3 коммита каждая
-        val branchCommits = mutableListOf<Commit>()
-        val branchTips = mutableListOf<Commit>()
-
-        (1..9).forEach { i ->
-            val f1 = Commit(h(), "feat$i: start", "Dev$i", "dev$i@example.com", tick.next(), listOf(m2.hash), "feature/$i")
-            val f2 = Commit(h(), "feat$i: progress", "Dev$i", "dev$i@example.com", tick.next(), listOf(f1.hash), "feature/$i")
-            branchCommits += f1
-            branchCommits += f2
-            branchTips += f2
-        }
-
-        // Мерджим первые 3 фичи в main
-        val merge1 = Commit(h(), "merge feature/1", "Integrator", "int@example.com", tick.next(), listOf(m2.hash, branchTips[0].hash), "main")
-        val merge2 = Commit(h(), "merge feature/2", "Integrator", "int@example.com", tick.next(), listOf(merge1.hash, branchTips[1].hash), "main")
-        val merge3 = Commit(h(), "merge feature/3", "Integrator", "int@example.com", tick.next(), listOf(merge2.hash, branchTips[2].hash), "main")
-
-        // Добавляем ещё коммиты в некоторые оставшиеся ветки
-        val f4extra = Commit(h(), "feat4: refine", "Dev4", "dev4@example.com", tick.next(), listOf(branchTips[3].hash), "feature/4")
-        val f5extra = Commit(h(), "feat5: finalize", "Dev5", "dev5@example.com", tick.next(), listOf(branchTips[4].hash), "feature/5")
-
-        // Создаём ещё одну ветку develop
-        val d1 = Commit(h(), "develop: setup", "DevLead", "lead@example.com", tick.next(), listOf(merge3.hash), "develop")
-        val d2 = Commit(h(), "develop: integration", "DevLead", "lead@example.com", tick.next(), listOf(d1.hash), "develop")
-
-        // Тэг + релиз на main
-        val release = Commit(h(), "release: prep 0.1", "Integrator", "int@example.com", tick.next(), listOf(merge3.hash), "main", tags = listOf("v0.1.0"))
-
-        return buildList {
-            add(m1); add(m2)
-            addAll(branchCommits)
-            add(merge1); add(merge2); add(merge3)
-            add(f4extra); add(f5extra)
-            add(d1); add(d2)
-            add(release)
-        }
-    }
-
-    // ---------- File changes (simple) ----------
-
-    private fun generateChangesForRepo(): List<FileChange> {
-        val pool = listOf(
-            FileChange("app/build.gradle.kts", ChangeStatus.MODIFIED, 12, 3),
-            FileChange("README.md", ChangeStatus.MODIFIED, 5, 1),
-            FileChange("app/src/main/AndroidManifest.xml", ChangeStatus.MODIFIED, 2, 0),
-            FileChange("app/src/main/java/com/example/MainActivity.kt", ChangeStatus.RENAMED, 0, 0),
-            FileChange("app/src/main/res/layout/activity_main.xml", ChangeStatus.ADDED, 42, 0),
-            FileChange("docs/changelog.md", ChangeStatus.ADDED, 18, 0),
-            FileChange("legacy/unused.txt", ChangeStatus.DELETED, 0, 10)
-        )
-        return pool.shuffled().take(Random.nextInt(3, pool.size))
-    }
-
-    // ---------- Utils ----------
-
-    private fun generateHash(): String {
-        val chars = "0123456789abcdef"
-        return (1..12).map { chars[Random.nextInt(chars.length)] }.joinToString("")
-    }
+    // Placeholder methods for other scenarios
+    private fun scenarioTwoFeaturesInterleaved(): List<Commit> = scenarioSample()
+    private fun scenarioReleaseHotfix(): List<Commit> = scenarioSample()
+    private fun scenarioCrissCross(): List<Commit> = scenarioSample()
+    private fun scenarioOctopus(): List<Commit> = scenarioSample()
+    private fun scenarioOrphan(): List<Commit> = scenarioSample()
+    private fun scenarioRebaseLike(): List<Commit> = scenarioSample()
+    private fun scenarioSparse(): List<Commit> = scenarioSample()
+    private fun scenarioTags(): List<Commit> = scenarioSample()
+    private fun scenarioSingleBranchMerges(): List<Commit> = scenarioSample()
+    private fun scenarioTenBranches(): List<Commit> = scenarioSample()
 }
 
 // Result classes
