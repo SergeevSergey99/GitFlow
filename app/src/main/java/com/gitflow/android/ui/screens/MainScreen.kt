@@ -171,6 +171,9 @@ fun RepositoryListView(
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var customDestination by remember { mutableStateOf("") }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var repositoryToDelete by remember { mutableStateOf<Repository?>(null) }
+    var deleteMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val gitRepository = remember { RealGitRepository(context) }
@@ -220,7 +223,18 @@ fun RepositoryListView(
                 items(repositories) { repository ->
                     RepositoryCard(
                         repository = repository,
-                        onClick = { onRepositorySelected(repository) }
+                        onClick = { onRepositorySelected(repository) },
+                        onDelete = { repo, deleteFiles ->
+                            if (deleteFiles) {
+                                showDeleteConfirmDialog = true
+                                repositoryToDelete = repo
+                            } else {
+                                // Просто удаляем из списка
+                                scope.launch {
+                                    gitRepository.removeRepository(repo.id)
+                                }
+                            }
+                        }
                     )
                 }
             }
@@ -314,13 +328,46 @@ fun RepositoryListView(
             }
         )
     }
+
+    // Диалог подтверждения удаления
+    if (showDeleteConfirmDialog && repositoryToDelete != null) {
+        DeleteRepositoryDialog(
+            repository = repositoryToDelete!!,
+            onDismiss = {
+                showDeleteConfirmDialog = false
+                repositoryToDelete = null
+                deleteMessage = null
+            },
+            onConfirm = { deleteFiles ->
+                scope.launch {
+                    val result = if (deleteFiles) {
+                        gitRepository.removeRepositoryWithFiles(repositoryToDelete!!.id)
+                    } else {
+                        gitRepository.removeRepository(repositoryToDelete!!.id)
+                        Result.success(Unit)
+                    }
+                    
+                    result.onSuccess {
+                        showDeleteConfirmDialog = false
+                        repositoryToDelete = null
+                        deleteMessage = null
+                    }.onFailure { exception ->
+                        deleteMessage = "Failed to delete repository: ${exception.message}"
+                    }
+                }
+            },
+            errorMessage = deleteMessage
+        )
+    }
 }
 
 @Composable
 fun RepositoryCard(
     repository: Repository,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDelete: (Repository, Boolean) -> Unit = { _, _ -> }
 ) {
+    var showDeleteMenu by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -382,7 +429,48 @@ fun RepositoryCard(
                 }
             }
 
-            Icon(Icons.Default.ChevronRight, contentDescription = "Open")
+            Box {
+                IconButton(
+                    onClick = { showDeleteMenu = true }
+                ) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "Options")
+                }
+                
+                DropdownMenu(
+                    expanded = showDeleteMenu,
+                    onDismissRequest = { showDeleteMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Remove from list") },
+                        onClick = {
+                            showDeleteMenu = false
+                            onDelete(repository, false)
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Default.RemoveCircleOutline, contentDescription = null)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { 
+                            Text(
+                                "Delete repository",
+                                color = MaterialTheme.colorScheme.error
+                            ) 
+                        },
+                        onClick = {
+                            showDeleteMenu = false
+                            onDelete(repository, true)
+                        },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.Delete, 
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    )
+                }
+            }
         }
     }
 }
@@ -1466,6 +1554,164 @@ fun getRealPathFromUri(uri: Uri): String {
         }
     } catch (e: Exception) {
         uri.toString()
+    }
+}
+
+@Composable
+fun DeleteRepositoryDialog(
+    repository: Repository,
+    onDismiss: () -> Unit,
+    onConfirm: (Boolean) -> Unit,
+    errorMessage: String? = null
+) {
+    var deleteFiles by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Заголовок с иконкой предупреждения
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Text(
+                        text = "Delete Repository",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                // Информация о репозитории
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Text(
+                            text = repository.name,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 16.sp
+                        )
+                        Text(
+                            text = repository.path,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+
+                // Опция удаления файлов
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (deleteFiles) 
+                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                        else 
+                            MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { deleteFiles = !deleteFiles }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = deleteFiles,
+                            onCheckedChange = { deleteFiles = it }
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Also delete repository files",
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "This will permanently delete all repository files from your device",
+                                fontSize = 12.sp,
+                                color = if (deleteFiles) 
+                                    MaterialTheme.colorScheme.error
+                                else 
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                // Сообщение об ошибке
+                errorMessage?.let { error ->
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer
+                        )
+                    ) {
+                        Text(
+                            text = error,
+                            modifier = Modifier.padding(12.dp),
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                // Текст предупреждения
+                if (deleteFiles) {
+                    Text(
+                        text = "⚠️ This action cannot be undone!",
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
+
+                // Кнопки
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = { onConfirm(deleteFiles) },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (deleteFiles) 
+                                MaterialTheme.colorScheme.error 
+                            else 
+                                MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Icon(
+                            if (deleteFiles) Icons.Default.Delete else Icons.Default.RemoveCircleOutline,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            if (deleteFiles) "Delete Repository" else "Remove from List"
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

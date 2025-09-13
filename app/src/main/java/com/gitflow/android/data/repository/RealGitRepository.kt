@@ -196,6 +196,31 @@ class RealGitRepository(private val context: Context) {
         dataStore.removeRepository(repositoryId)
     }
 
+    suspend fun removeRepositoryWithFiles(repositoryId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            // Сначала получаем информацию о репозитории
+            val repositories = getRepositories()
+            val repository = repositories.find { it.id == repositoryId }
+                ?: return@withContext Result.failure(Exception("Repository not found"))
+
+            // Удаляем файлы репозитория
+            val repoDir = File(repository.path)
+            if (repoDir.exists()) {
+                val deleted = repoDir.deleteRecursively()
+                if (!deleted) {
+                    return@withContext Result.failure(Exception("Failed to delete repository files"))
+                }
+            }
+
+            // Удаляем из списка
+            dataStore.removeRepository(repositoryId)
+            
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun updateRepository(repository: Repository) = withContext(Dispatchers.IO) {
         dataStore.updateRepository(repository)
     }
