@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.LocalOffer
+import androidx.compose.material.icons.filled.MergeType
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -192,15 +193,28 @@ private fun GraphCommitRow(
                     .offset(x = (nodeData.lane * config.laneStep + config.nodeCenterOffset))
                     .align(Alignment.CenterStart)
             ) {
-                // Основная точка
-                Box(
-                    modifier = Modifier
-                        .size(config.nodeSize)
-                        .offset(x = -(config.nodeSize / 2), y = 0.dp)
-                        .clip(CircleShape)
-                        .background(nodeColor)
-                        .border(config.nodeBorderWidth, Color.White, CircleShape)
-                )
+                // Основная точка с учетом типа коммита
+                if (commit.isMergeCommit) {
+                    // Квадратный узел для merge коммитов
+                    Box(
+                        modifier = Modifier
+                            .size(config.nodeSize)
+                            .offset(x = -(config.nodeSize / 2), y = 0.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(nodeColor)
+                            .border(config.nodeBorderWidth, Color.White, RoundedCornerShape(2.dp))
+                    )
+                } else {
+                    // Круглый узел для обычных коммитов
+                    Box(
+                        modifier = Modifier
+                            .size(config.nodeSize)
+                            .offset(x = -(config.nodeSize / 2), y = 0.dp)
+                            .clip(CircleShape)
+                            .background(nodeColor)
+                            .border(config.nodeBorderWidth, Color.White, CircleShape)
+                    )
+                }
             }
         }
 
@@ -210,13 +224,28 @@ private fun GraphCommitRow(
                 .widthIn(min = config.infoMinWidth)
                 .padding(start = config.infoStartPadding)
         ) {
-            Text(
-                text = commit.message,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Visible
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Иконка merge коммита
+                if (commit.isMergeCommit) {
+                    androidx.compose.material3.Icon(
+                        Icons.Default.MergeType,
+                        contentDescription = "Merge commit",
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.width(4.dp))
+                }
+                
+                Text(
+                    text = commit.message,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Visible
+                )
+            }
 
             Spacer(Modifier.height(config.textSpacing))
 
@@ -263,13 +292,14 @@ private fun GraphCommitRow(
                     }
                 }
 
-                // бейдж ветки
-                commit.branch?.let { b ->
+                // Показываем только ветки, где коммит является HEAD
+                commit.branchHeads.forEach { branchHead ->
+                    val branchColor = getBranchColor(branchHead)
                     Badge(
-                        text = b,
+                        text = branchHead,
                         icon = Icons.Default.AccountTree,
-                        background = nodeColor.copy(alpha = 0.15f),
-                        foreground = nodeColor,
+                        background = branchColor.copy(alpha = 0.15f),
+                        foreground = branchColor,
                         config = config
                     )
                 }
@@ -537,6 +567,30 @@ private fun Badge(
             )
         }
     }
+}
+
+/* ============================ Branch Colors ============================ */
+
+private fun getBranchColor(branchName: String): Color {
+    // Генерируем стабильный цвет для каждой ветки на основе её имени
+    val colors = listOf(
+        Color(0xFF4CAF50), // Green
+        Color(0xFF2196F3), // Blue  
+        Color(0xFFFF9800), // Orange
+        Color(0xFF9C27B0), // Purple
+        Color(0xFFE91E63), // Pink
+        Color(0xFF00BCD4), // Cyan
+        Color(0xFFFF5722), // Deep Orange
+        Color(0xFF795548), // Brown
+        Color(0xFF607D8B), // Blue Grey
+        Color(0xFF3F51B5), // Indigo
+        Color(0xFFCDDC39), // Lime
+        Color(0xFFFFEB3B)  // Yellow
+    )
+    
+    // Выбираем цвет на основе хеша имени ветки
+    val index = branchName.hashCode().let { if (it < 0) -it else it } % colors.size
+    return colors[index]
 }
 
 fun timeAgo(timestamp: Long): String {

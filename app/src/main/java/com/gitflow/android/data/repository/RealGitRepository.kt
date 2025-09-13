@@ -168,8 +168,25 @@ class RealGitRepository(private val context: Context) {
             val remoteBranches = git.branchList().setListMode(org.eclipse.jgit.api.ListBranchCommand.ListMode.REMOTE).call()
 
             val allRefs = branches + remoteBranches
-
             val processedCommits = mutableSetOf<String>()
+            
+            // Создаем мапу коммит -> список веток, где он является HEAD
+            val commitToBranchHeads = mutableMapOf<String, MutableList<String>>()
+            
+            // Сначала определяем HEAD коммиты для каждой ветки
+            for (ref in allRefs) {
+                try {
+                    val branchName = getBranchName(ref)
+                    val head = git.repository.resolve(ref.objectId.name)
+                    
+                    if (head != null) {
+                        val headCommitHash = head.name
+                        commitToBranchHeads.getOrPut(headCommitHash) { mutableListOf() }.add(branchName)
+                    }
+                } catch (e: Exception) {
+                    continue
+                }
+            }
 
             for (ref in allRefs) {
                 try {
@@ -186,6 +203,8 @@ class RealGitRepository(private val context: Context) {
 
                             val parents = commit.parents.map { it.id.name }
                             val tags = getTagsForCommit(git, commit.id.name)
+                            val branchHeads = commitToBranchHeads[commit.id.name] ?: emptyList()
+                            val isMergeCommit = commit.parentCount > 1
 
                             commits.add(
                                 Commit(
@@ -197,7 +216,9 @@ class RealGitRepository(private val context: Context) {
                                     timestamp = commit.authorIdent.`when`.time,
                                     parents = parents,
                                     branch = branchName,
-                                    tags = tags
+                                    tags = tags,
+                                    branchHeads = branchHeads,
+                                    isMergeCommit = isMergeCommit
                                 )
                             )
                         }

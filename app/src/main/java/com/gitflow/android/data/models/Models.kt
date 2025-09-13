@@ -24,7 +24,9 @@ data class Commit(
     val parents: List<String>,
     val branch: String? = null,
     val tags: List<String> = emptyList(),
-    val description: String = ""
+    val description: String = "",
+    val branchHeads: List<String> = emptyList(), // Список веток, где этот коммит является HEAD
+    val isMergeCommit: Boolean = false // Является ли коммит merge коммитом
 )
 
 @Serializable
