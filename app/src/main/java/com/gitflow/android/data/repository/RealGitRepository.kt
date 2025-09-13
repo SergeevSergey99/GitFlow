@@ -1,0 +1,720 @@
+package com.gitflow.android.data.repository
+
+import android.content.Context
+import com.gitflow.android.data.models.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.api.errors.GitAPIException
+import org.eclipse.jgit.diff.DiffFormatter
+import org.eclipse.jgit.lib.ObjectId
+import org.eclipse.jgit.lib.Ref
+import org.eclipse.jgit.lib.Repository
+import org.eclipse.jgit.revwalk.RevCommit
+import org.eclipse.jgit.revwalk.RevWalk
+import org.eclipse.jgit.storage.file.FileRepositoryBuilder
+import org.eclipse.jgit.treewalk.CanonicalTreeParser
+import org.eclipse.jgit.treewalk.TreeWalk
+import org.eclipse.jgit.treewalk.filter.PathFilter
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.*
+
+class RealGitRepository(private val context: Context) {
+
+    private val repositories = mutableListOf<com.gitflow.android.data.models.Repository>()
+
+    // ---------- Public API ----------
+
+    suspend fun getRepositories(): List<com.gitflow.android.data.models.Repository> = withContext(Dispatchers.IO) {
+        repositories.toList()
+    }
+
+    suspend fun addRepository(path: String): Result<com.gitflow.android.data.models.Repository> = withContext(Dispatchers.IO) {
+        try {
+            val repoDir = File(path)
+            if (!repoDir.exists() || !File(repoDir, ".git").exists()) {
+                return@withContext Result.failure(Exception("Directory is not a Git repository"))
+            }
+
+            val git = Git.open(repoDir)
+            val jgitRepo = git.repository
+
+            val name = repoDir.name
+            val currentBranch = jgitRepo.branch
+            val lastCommit = getLastCommitTime(git)
+
+            val repository = com.gitflow.android.data.models.Repository(
+                id = UUID.randomUUID().toString(),
+                name = name,
+                path = path,
+                lastUpdated = lastCommit,
+                currentBranch = currentBranch
+            )
+
+            repositories.add(repository)
+            git.close()
+
+            Result.success(repository)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun cloneRepository(url: String, localPath: String): Result<com.gitflow.android.data.models.Repository> = withContext(Dispatchers.IO) {
+        try {
+            val targetDir = File(localPath)
+            if (targetDir.exists()) {
+                return@withContext Result.failure(Exception("Directory already exists"))
+            }
+
+            val git = Git.cloneRepository()
+                .setURI(url)
+                .setDirectory(targetDir)
+                .call()
+
+            val name = targetDir.name
+            val currentBranch = git.repository.branch
+            val lastCommit = getLastCommitTime(git)
+
+            val repository = com.gitflow.android.data.models.Repository(
+                id = UUID.randomUUID().toString(),
+                name = name,
+                path = localPath,
+                lastUpdated = lastCommit,
+                currentBranch = currentBranch
+            )
+
+            repositories.add(repository)
+            git.close()
+
+            Result.success(repository)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getCommits(repository: com.gitflow.android.data.models.Repository): List<Commit> = withContext(Dispatchers.IO) {
+        try {
+            val git = openRepository(repository.path) ?: return@withContext emptyList()
+
+            val commits = mutableListOf<Commit>()
+            val revWalk = RevWalk(git.repository)
+
+            // Получаем все ветки
+            val branches = git.branchList().call()
+            val remoteBranches = git.branchList().setListMode(org.eclipse.jgit.api.ListBranchCommand.ListMode.REMOTE).call()
+
+            val allRefs = branches + remoteBranches
+
+            val processedCommits = mutableSetOf<String>()
+
+            for (ref in allRefs) {
+                try {
+                    val branchName = getBranchName(ref)
+                    val head = git.repository.resolve(ref.objectId.name)
+
+                    if (head != null) {
+                        val revCommit = revWalk.parseCommit(head)
+                        revWalk.markStart(revCommit)
+
+                        for (commit in revWalk) {
+                            if (processedCommits.contains(commit.id.name)) continue
+                            processedCommits.add(commit.id.name)
+
+                            val parents = commit.parents.map { it.id.name }
+                            val tags = getTagsForCommit(git, commit.id.name)
+
+                            commits.add(
+                                Commit(
+                                    hash = commit.id.name,
+                                    message = commit.shortMessage,
+                                    description = commit.fullMessage.removePrefix(commit.shortMessage).trim(),
+                                    author = commit.authorIdent.name,
+                                    email = commit.authorIdent.emailAddress,
+                                    timestamp = commit.authorIdent.`when`.time,
+                                    parents = parents,
+                                    branch = branchName,
+                                    tags = tags
+                                )
+                            )
+                        }
+                        revWalk.reset()
+                    }
+                } catch (e: Exception) {
+                    // Пропускаем ветки с ошибками
+                    continue
+                }
+            }
+
+            revWalk.close()
+            git.close()
+
+            // Сортируем по времени (новые сначала)
+            commits.sortedByDescending { it.timestamp }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun getChangedFiles(repository: com.gitflow.android.data.models.Repository): List<FileChange> = withContext(Dispatchers.IO) {
+        try {
+            val git = openRepository(repository.path) ?: return@withContext emptyList()
+
+            val status = git.status().call()
+            val changes = mutableListOf<FileChange>()
+
+            // Добавленные файлы
+            status.added.forEach { path ->
+                changes.add(FileChange(path, ChangeStatus.ADDED, 0, 0))
+            }
+
+            // Измененные файлы
+            status.modified.forEach { path ->
+                val diffInfo = getFileDiffInfo(git, path)
+                changes.add(FileChange(path, ChangeStatus.MODIFIED, diffInfo.first, diffInfo.second))
+            }
+
+            // Удаленные файлы
+            status.removed.forEach { path ->
+                changes.add(FileChange(path, ChangeStatus.DELETED, 0, 0))
+            }
+
+            // Неотслеживаемые файлы
+            status.untracked.forEach { path ->
+                changes.add(FileChange(path, ChangeStatus.UNTRACKED, 0, 0))
+            }
+
+            git.close()
+            changes
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun getCommitDiffs(commit: Commit): List<FileDiff> = withContext(Dispatchers.IO) {
+        try {
+            // Находим репозиторий по коммиту
+            val repo = repositories.find { repository ->
+                try {
+                    val git = openRepository(repository.path)
+                    val hasCommit = git?.repository?.resolve(commit.hash) != null
+                    git?.close()
+                    hasCommit
+                } catch (e: Exception) {
+                    false
+                }
+            } ?: return@withContext emptyList()
+
+            val git = openRepository(repo.path) ?: return@withContext emptyList()
+
+            val repository = git.repository
+            val revWalk = RevWalk(repository)
+            val revCommit = revWalk.parseCommit(repository.resolve(commit.hash))
+
+            val diffs = mutableListOf<FileDiff>()
+
+            if (revCommit.parentCount > 0) {
+                val parent = revWalk.parseCommit(revCommit.getParent(0).id)
+
+                val oldTreeParser = CanonicalTreeParser()
+                val newTreeParser = CanonicalTreeParser()
+
+                repository.newObjectReader().use { reader ->
+                    oldTreeParser.reset(reader, parent.tree)
+                    newTreeParser.reset(reader, revCommit.tree)
+                }
+
+                val diffEntries = git.diff()
+                    .setOldTree(oldTreeParser)
+                    .setNewTree(newTreeParser)
+                    .call()
+
+                for (diffEntry in diffEntries) {
+                    val outputStream = ByteArrayOutputStream()
+                    val formatter = DiffFormatter(outputStream)
+                    formatter.setRepository(repository)
+                    formatter.format(diffEntry)
+                    formatter.close()
+
+                    val diffText = outputStream.toString()
+                    val fileDiff = parseDiffText(diffEntry, diffText)
+                    diffs.add(fileDiff)
+                }
+            } else {
+                // Первый коммит - показываем все файлы как добавленные
+                val treeWalk = TreeWalk(repository)
+                treeWalk.addTree(revCommit.tree)
+                treeWalk.isRecursive = true
+
+                while (treeWalk.next()) {
+                    val path = treeWalk.pathString
+                    val content = getFileContentFromCommit(repository, revCommit, path)
+                    val lines = content?.split('\n')?.size ?: 0
+
+                    diffs.add(
+                        FileDiff(
+                            path = path,
+                            status = FileStatus.ADDED,
+                            additions = lines,
+                            deletions = 0,
+                            hunks = listOf(
+                                DiffHunk(
+                                    header = "@@ -0,0 +1,$lines @@",
+                                    oldStart = 0,
+                                    oldLines = 0,
+                                    newStart = 1,
+                                    newLines = lines,
+                                    lines = content?.split('\n')?.mapIndexed { index, line ->
+                                        DiffLine(
+                                            type = LineType.ADDED,
+                                            content = line,
+                                            lineNumber = index + 1,
+                                            newLineNumber = index + 1
+                                        )
+                                    } ?: emptyList()
+                                )
+                            )
+                        )
+                    )
+                }
+                treeWalk.close()
+            }
+
+            revWalk.close()
+            git.close()
+            diffs
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun getBranches(repository: com.gitflow.android.data.models.Repository): List<Branch> = withContext(Dispatchers.IO) {
+        try {
+            val git = openRepository(repository.path) ?: return@withContext emptyList()
+
+            val branches = mutableListOf<Branch>()
+
+            // Локальные ветки
+            val localBranches = git.branchList().call()
+            for (ref in localBranches) {
+                val branchName = ref.name.removePrefix("refs/heads/")
+                val lastCommitHash = ref.objectId.name
+
+                branches.add(
+                    Branch(
+                        name = branchName,
+                        isLocal = true,
+                        lastCommitHash = lastCommitHash,
+                        ahead = 0, // TODO: Реализовать подсчет ahead/behind
+                        behind = 0
+                    )
+                )
+            }
+
+            // Удаленные ветки
+            val remoteBranches = git.branchList()
+                .setListMode(org.eclipse.jgit.api.ListBranchCommand.ListMode.REMOTE)
+                .call()
+
+            for (ref in remoteBranches) {
+                val branchName = ref.name.removePrefix("refs/remotes/")
+                val lastCommitHash = ref.objectId.name
+
+                branches.add(
+                    Branch(
+                        name = branchName,
+                        isLocal = false,
+                        lastCommitHash = lastCommitHash,
+                        ahead = 0,
+                        behind = 0
+                    )
+                )
+            }
+
+            git.close()
+            branches.sortedBy { it.name }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun pull(repository: com.gitflow.android.data.models.Repository): PullResult = withContext(Dispatchers.IO) {
+        try {
+            val git = openRepository(repository.path) ?: return@withContext PullResult(false, 0, listOf("Repository not found"))
+
+            val result = git.pull().call()
+            git.close()
+
+            if (result.isSuccessful) {
+                PullResult(true, 0, emptyList()) // TODO: Подсчитать количество новых коммитов
+            } else {
+                PullResult(false, 0, listOf("Pull failed"))
+            }
+        } catch (e: Exception) {
+            PullResult(false, 0, listOf(e.message ?: "Unknown error"))
+        }
+    }
+
+    suspend fun push(repository: com.gitflow.android.data.models.Repository): PushResult = withContext(Dispatchers.IO) {
+        try {
+            val git = openRepository(repository.path) ?: return@withContext PushResult(false, 0, "Repository not found")
+
+            val result = git.push().call()
+            git.close()
+
+            if (result.any { it.messages.isEmpty() }) {
+                PushResult(true, 0, "Push successful") // TODO: Подсчитать количество отправленных коммитов
+            } else {
+                PushResult(false, 0, "Push failed")
+            }
+        } catch (e: Exception) {
+            PushResult(false, 0, e.message ?: "Unknown error")
+        }
+    }
+
+    suspend fun getCommitFileTree(commit: Commit): FileTreeNode = withContext(Dispatchers.IO) {
+        try {
+            // Находим репозиторий по коммиту
+            val repo = repositories.find { repository ->
+                try {
+                    val git = openRepository(repository.path)
+                    val hasCommit = git?.repository?.resolve(commit.hash) != null
+                    git?.close()
+                    hasCommit
+                } catch (e: Exception) {
+                    false
+                }
+            } ?: return@withContext FileTreeNode("", "", FileTreeNodeType.DIRECTORY)
+
+            val git = openRepository(repo.path) ?: return@withContext FileTreeNode("", "", FileTreeNodeType.DIRECTORY)
+
+            val repository = git.repository
+            val revWalk = RevWalk(repository)
+            val revCommit = revWalk.parseCommit(repository.resolve(commit.hash))
+
+            val files = mutableListOf<CommitFileInfo>()
+            val treeWalk = TreeWalk(repository)
+            treeWalk.addTree(revCommit.tree)
+            treeWalk.isRecursive = true
+
+            while (treeWalk.next()) {
+                val path = treeWalk.pathString
+                val objectId = treeWalk.getObjectId(0)
+                val size = repository.newObjectReader().use { reader ->
+                    reader.getObjectSize(objectId, org.eclipse.jgit.lib.Constants.OBJ_BLOB).toLong()
+                }
+
+                files.add(
+                    CommitFileInfo(
+                        path = path,
+                        size = size,
+                        lastModified = commit.timestamp
+                    )
+                )
+            }
+
+            treeWalk.close()
+            revWalk.close()
+            git.close()
+
+            buildFileTree(files)
+        } catch (e: Exception) {
+            FileTreeNode("", "", FileTreeNodeType.DIRECTORY)
+        }
+    }
+
+    suspend fun getFileContent(commit: Commit, filePath: String): String? = withContext(Dispatchers.IO) {
+        try {
+            // Находим репозиторий по коммиту
+            val repo = repositories.find { repository ->
+                try {
+                    val git = openRepository(repository.path)
+                    val hasCommit = git?.repository?.resolve(commit.hash) != null
+                    git?.close()
+                    hasCommit
+                } catch (e: Exception) {
+                    false
+                }
+            } ?: return@withContext null
+
+            val git = openRepository(repo.path) ?: return@withContext null
+
+            val repository = git.repository
+            val revWalk = RevWalk(repository)
+            val revCommit = revWalk.parseCommit(repository.resolve(commit.hash))
+
+            val content = getFileContentFromCommit(repository, revCommit, filePath)
+
+            revWalk.close()
+            git.close()
+
+            content
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    // ---------- Helper methods ----------
+
+    private fun openRepository(path: String): Git? {
+        return try {
+            val repoDir = File(path)
+            Git.open(repoDir)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun getLastCommitTime(git: Git): Long {
+        return try {
+            val commits = git.log().setMaxCount(1).call()
+            commits.firstOrNull()?.authorIdent?.`when`?.time ?: System.currentTimeMillis()
+        } catch (e: Exception) {
+            System.currentTimeMillis()
+        }
+    }
+
+    private fun getBranchName(ref: Ref): String {
+        return when {
+            ref.name.startsWith("refs/heads/") -> ref.name.removePrefix("refs/heads/")
+            ref.name.startsWith("refs/remotes/") -> ref.name.removePrefix("refs/remotes/")
+            else -> ref.name
+        }
+    }
+
+    private fun getTagsForCommit(git: Git, commitHash: String): List<String> {
+        return try {
+            val tags = git.tagList().call()
+            val repository = git.repository
+            val commitId = repository.resolve(commitHash)
+
+            tags.filter { tag ->
+                try {
+                    val tagCommit = repository.resolve(tag.objectId.name)
+                    tagCommit == commitId
+                } catch (e: Exception) {
+                    false
+                }
+            }.map { it.name.removePrefix("refs/tags/") }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun getFileDiffInfo(git: Git, filePath: String): Pair<Int, Int> {
+        return try {
+            val repository = git.repository
+            val head = repository.resolve("HEAD")
+            val headCommit = RevWalk(repository).parseCommit(head)
+
+            if (headCommit.parentCount > 0) {
+                val parentCommit = RevWalk(repository).parseCommit(headCommit.getParent(0).id)
+
+                val oldTreeParser = CanonicalTreeParser()
+                val newTreeParser = CanonicalTreeParser()
+
+                repository.newObjectReader().use { reader ->
+                    oldTreeParser.reset(reader, parentCommit.tree)
+                    newTreeParser.reset(reader, headCommit.tree)
+                }
+
+                val diffs = git.diff()
+                    .setOldTree(oldTreeParser)
+                    .setNewTree(newTreeParser)
+                    .setPathFilter(PathFilter.create(filePath))
+                    .call()
+
+                if (diffs.isNotEmpty()) {
+                    val outputStream = ByteArrayOutputStream()
+                    val formatter = DiffFormatter(outputStream)
+                    formatter.setRepository(repository)
+                    formatter.format(diffs.first())
+                    formatter.close()
+
+                    val diffText = outputStream.toString()
+                    parseDiffStats(diffText)
+                } else {
+                    Pair(0, 0)
+                }
+            } else {
+                Pair(0, 0)
+            }
+        } catch (e: Exception) {
+            Pair(0, 0)
+        }
+    }
+
+    private fun parseDiffText(diffEntry: org.eclipse.jgit.diff.DiffEntry, diffText: String): FileDiff {
+        val lines = diffText.split('\n')
+        val hunks = mutableListOf<DiffHunk>()
+        var currentHunk: DiffHunk? = null
+        val hunkLines = mutableListOf<DiffLine>()
+
+        var additions = 0
+        var deletions = 0
+
+        for (line in lines) {
+            when {
+                line.startsWith("@@") -> {
+                    // Сохраняем предыдущий hunk
+                    currentHunk?.let { hunk ->
+                        hunks.add(hunk.copy(lines = hunkLines.toList()))
+                        hunkLines.clear()
+                    }
+
+                    // Парсим новый hunk header
+                    val hunkInfo = parseHunkHeader(line)
+                    currentHunk = DiffHunk(
+                        header = line,
+                        oldStart = hunkInfo.first,
+                        oldLines = hunkInfo.second,
+                        newStart = hunkInfo.third,
+                        newLines = hunkInfo.fourth,
+                        lines = emptyList()
+                    )
+                }
+                line.startsWith("+") && !line.startsWith("+++") -> {
+                    additions++
+                    hunkLines.add(DiffLine(LineType.ADDED, line, newLineNumber = hunkLines.size + 1))
+                }
+                line.startsWith("-") && !line.startsWith("---") -> {
+                    deletions++
+                    hunkLines.add(DiffLine(LineType.DELETED, line, oldLineNumber = hunkLines.size + 1))
+                }
+                line.startsWith(" ") -> {
+                    hunkLines.add(DiffLine(LineType.CONTEXT, line, oldLineNumber = hunkLines.size + 1, newLineNumber = hunkLines.size + 1))
+                }
+            }
+        }
+
+        // Добавляем последний hunk
+        currentHunk?.let { hunk ->
+            hunks.add(hunk.copy(lines = hunkLines.toList()))
+        }
+
+        val status = when (diffEntry.changeType) {
+            org.eclipse.jgit.diff.DiffEntry.ChangeType.ADD -> FileStatus.ADDED
+            org.eclipse.jgit.diff.DiffEntry.ChangeType.DELETE -> FileStatus.DELETED
+            org.eclipse.jgit.diff.DiffEntry.ChangeType.MODIFY -> FileStatus.MODIFIED
+            org.eclipse.jgit.diff.DiffEntry.ChangeType.RENAME -> FileStatus.RENAMED
+            else -> FileStatus.MODIFIED
+        }
+
+        return FileDiff(
+            path = diffEntry.newPath ?: diffEntry.oldPath,
+            oldPath = if (diffEntry.oldPath != diffEntry.newPath) diffEntry.oldPath else null,
+            status = status,
+            additions = additions,
+            deletions = deletions,
+            hunks = hunks
+        )
+    }
+
+    private fun parseHunkHeader(header: String): Tuple4<Int, Int, Int, Int> {
+        // Формат: @@ -oldStart,oldLines +newStart,newLines @@
+        val regex = """@@ -(\d+),(\d+) \+(\d+),(\d+) @@""".toRegex()
+        val match = regex.find(header)
+
+        return if (match != null) {
+            val (oldStart, oldLines, newStart, newLines) = match.destructured
+            Tuple4(oldStart.toInt(), oldLines.toInt(), newStart.toInt(), newLines.toInt())
+        } else {
+            Tuple4(0, 0, 0, 0)
+        }
+    }
+
+    private fun parseDiffStats(diffText: String): Pair<Int, Int> {
+        val lines = diffText.split('\n')
+        var additions = 0
+        var deletions = 0
+
+        for (line in lines) {
+            when {
+                line.startsWith("+") && !line.startsWith("+++") -> additions++
+                line.startsWith("-") && !line.startsWith("---") -> deletions++
+            }
+        }
+
+        return Pair(additions, deletions)
+    }
+
+    private fun getFileContentFromCommit(repository: Repository, commit: RevCommit, filePath: String): String? {
+        return try {
+            val treeWalk = TreeWalk(repository)
+            treeWalk.addTree(commit.tree)
+            treeWalk.isRecursive = true
+            treeWalk.filter = PathFilter.create(filePath)
+
+            if (treeWalk.next()) {
+                val objectId = treeWalk.getObjectId(0)
+                repository.newObjectReader().use { reader ->
+                    val loader = reader.open(objectId)
+                    String(loader.bytes)
+                }
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun buildFileTree(files: List<CommitFileInfo>): FileTreeNode {
+        val root = mutableMapOf<String, Any>()
+
+        files.forEach { file ->
+            val parts = file.path.split("/")
+            var current = root
+
+            for (i in parts.indices) {
+                val part = parts[i]
+                if (i == parts.lastIndex) {
+                    // This is a file
+                    current[part] = file
+                } else {
+                    // This is a directory
+                    if (current[part] !is MutableMap<*, *>) {
+                        current[part] = mutableMapOf<String, Any>()
+                    }
+                    @Suppress("UNCHECKED_CAST")
+                    current = current[part] as MutableMap<String, Any>
+                }
+            }
+        }
+
+        return convertToFileTreeNode("", "", root)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun convertToFileTreeNode(name: String, path: String, node: Any): FileTreeNode {
+        return when (node) {
+            is CommitFileInfo -> FileTreeNode(
+                name = name,
+                path = path,
+                type = FileTreeNodeType.FILE,
+                size = node.size,
+                lastModified = node.lastModified
+            )
+            is Map<*, *> -> {
+                val children = (node as Map<String, Any>).map { (childName, childNode) ->
+                    val childPath = if (path.isEmpty()) childName else "$path/$childName"
+                    convertToFileTreeNode(childName, childPath, childNode)
+                }.sortedWith(compareBy<FileTreeNode> { it.type }.thenBy { it.name })
+
+                FileTreeNode(
+                    name = name,
+                    path = path,
+                    type = FileTreeNodeType.DIRECTORY,
+                    children = children
+                )
+            }
+            else -> throw IllegalArgumentException("Unknown node type: ${node::class}")
+        }
+    }
+}
+
+// Helper data class
+private data class Tuple4<T1, T2, T3, T4>(val first: T1, val second: T2, val third: T3, val fourth: T4)

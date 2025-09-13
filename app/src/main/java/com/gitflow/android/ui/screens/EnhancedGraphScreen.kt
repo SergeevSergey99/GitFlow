@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -40,6 +41,7 @@ import androidx.compose.ui.unit.times
 import com.gitflow.android.data.models.Commit
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.MockGitRepository
+import com.gitflow.android.data.repository.RealGitRepository
 import com.gitflow.android.ui.config.GraphConfig
 import java.text.SimpleDateFormat
 import java.util.*
@@ -56,7 +58,7 @@ import kotlin.math.max
 @Composable
 fun EnhancedGraphView(
     repository: Repository?,
-    gitRepository: MockGitRepository,
+    gitRepository: RealGitRepository,
     config: GraphConfig = GraphConfig.Default
 ) {
     if (repository == null) {
@@ -64,21 +66,41 @@ fun EnhancedGraphView(
         return
     }
 
-    var commits by remember { mutableStateOf(gitRepository.getCommits(repository)) }
+    var commits by remember { mutableStateOf<List<Commit>>(emptyList()) }
     var selectedCommit by remember { mutableStateOf<Commit?>(null) }
     var showCommitDetail by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+
+    // Загружаем коммиты при смене репозитория
+    LaunchedEffect(repository) {
+        isLoading = true
+        commits = gitRepository.getCommits(repository)
+        isLoading = false
+    }
 
     val graphData = remember(commits) { buildGraphData(commits) }
 
     Box(Modifier.fillMaxSize()) {
-        GraphCanvas(
-            graphData = graphData,
-            config = config,
-            onCommitClick = { commit ->
-                selectedCommit = commit
-                showCommitDetail = true
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
             }
-        )
+        } else if (commits.isEmpty()) {
+            EmptyStateMessage("No commits found in this repository")
+        } else {
+            GraphCanvas(
+                graphData = graphData,
+                config = config,
+                onCommitClick = { commit ->
+                    selectedCommit = commit
+                    showCommitDetail = true
+                }
+            )
+        }
     }
 
     if (showCommitDetail && selectedCommit != null) {

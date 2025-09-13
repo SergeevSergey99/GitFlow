@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -21,7 +22,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavController
 import com.gitflow.android.data.models.*
-import com.gitflow.android.data.repository.MockGitRepository
+import com.gitflow.android.data.repository.RealGitRepository
 import com.gitflow.android.ui.config.GraphConfig
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -32,20 +33,17 @@ import java.util.*
 @Composable
 fun MainScreen(navController: NavController) {
     var selectedTab by remember { mutableStateOf(0) }
-    val gitRepository = remember { MockGitRepository() }
-    var repositories by remember { mutableStateOf(gitRepository.getRepositories()) }
+    val context = LocalContext.current
+    val gitRepository = remember { RealGitRepository(context) }
+    var repositories by remember { mutableStateOf<List<Repository>>(emptyList()) }
     var selectedRepository by remember { mutableStateOf<Repository?>(null) }
     var showOperationsSheet by remember { mutableStateOf(false) }
     var selectedGraphPreset by remember { mutableStateOf("Default") }
+    val scope = rememberCoroutineScope()
 
-    // Функция для получения конфигурации по имени пресета
-    val getGraphConfig = { preset: String ->
-        when (preset) {
-            "Compact" -> GraphConfig.Compact
-            "Large" -> GraphConfig.Large
-            "Wide" -> GraphConfig.Wide
-            else -> GraphConfig.Default
-        }
+    // Загружаем репозитории при запуске
+    LaunchedEffect(Unit) {
+        repositories = gitRepository.getRepositories()
     }
 
     Scaffold(
@@ -161,7 +159,11 @@ fun RepositoryListView(
     onRepositoryAdded: (Repository) -> Unit
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val gitRepository = remember { RealGitRepository(context) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (repositories.isEmpty()) {
@@ -230,18 +232,47 @@ fun RepositoryListView(
 
     if (showAddDialog) {
         AddRepositoryDialog(
-            onDismiss = { showAddDialog = false },
-            onAdd = { name, url ->
+            onDismiss = {
+                showAddDialog = false
+                errorMessage = null
+            },
+            isLoading = isLoading,
+            errorMessage = errorMessage,
+            onAdd = { name, url, isClone ->
                 scope.launch {
-                    val newRepo = Repository(
-                        id = UUID.randomUUID().toString(),
-                        name = name,
-                        path = "/storage/emulated/0/GitFlow/$name",
-                        lastUpdated = System.currentTimeMillis(),
-                        currentBranch = "main"
-                    )
-                    onRepositoryAdded(newRepo)
-                    showAddDialog = false
+                    isLoading = true
+                    errorMessage = null
+
+                    try {
+                        if (isClone && url.isNotEmpty()) {
+                            // Клонирование репозитория
+                            val appDir = context.getExternalFilesDir(null) ?: context.filesDir
+                            val localPath = "${appDir.absolutePath}/repositories/$name"
+
+                            val result = gitRepository.cloneRepository(url, localPath)
+                            result.onSuccess { repo ->
+                                onRepositoryAdded(repo)
+                                showAddDialog = false
+                            }.onFailure { exception ->
+                                errorMessage = "Failed to clone repository: ${exception.message}"
+                            }
+                        } else {
+                            // Создание нового репозитория (пока просто создаем объект)
+                            val newRepo = Repository(
+                                id = UUID.randomUUID().toString(),
+                                name = name,
+                                path = "${context.getExternalFilesDir(null)?.absolutePath}/repositories/$name",
+                                lastUpdated = System.currentTimeMillis(),
+                                currentBranch = "main"
+                            )
+                            onRepositoryAdded(newRepo)
+                            showAddDialog = false
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = "Error: ${e.message}"
+                    } finally {
+                        isLoading = false
+                    }
                 }
             }
         )
@@ -323,7 +354,7 @@ fun RepositoryCard(
 @Composable
 fun ChangesView(
     repository: Repository?,
-    gitRepository: MockGitRepository
+    gitRepository: RealGitRepository
 ) {
     if (repository == null) {
         EmptyStateMessage("Select a repository to view changes")
@@ -331,9 +362,17 @@ fun ChangesView(
     }
 
     var stagedFiles by remember { mutableStateOf(listOf<FileChange>()) }
-    var unstagedFiles by remember { mutableStateOf(gitRepository.getChangedFiles(repository)) }
+    var unstagedFiles by remember { mutableStateOf(listOf<FileChange>()) }
     var commitMessage by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
+
+    // Загружаем изменения при смене репозитория
+    LaunchedEffect(repository) {
+        isLoading = true
+        unstagedFiles = gitRepository.getChangedFiles(repository)
+        isLoading = false
+    }
 
     Column(
         modifier = Modifier
@@ -378,10 +417,12 @@ fun ChangesView(
                     Button(
                         onClick = {
                             scope.launch {
-                                // Mock commit
+                                // TODO: Реализовать создание коммита через JGit
                                 delay(500)
                                 stagedFiles = emptyList()
                                 commitMessage = ""
+                                // Перезагружаем изменения
+                                unstagedFiles = gitRepository.getChangedFiles(repository)
                             }
                         },
                         modifier = Modifier.weight(1f),
@@ -398,71 +439,80 @@ fun ChangesView(
         Spacer(modifier = Modifier.height(16.dp))
 
         // File changes
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            if (stagedFiles.isNotEmpty()) {
-                item {
-                    Text(
-                        "Staged Changes (${stagedFiles.size})",
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                items(stagedFiles) { file ->
-                    FileChangeCard(
-                        file = file,
-                        isStaged = true,
-                        onToggle = {
-                            unstagedFiles = unstagedFiles + file
-                            stagedFiles = stagedFiles - file
-                        }
-                    )
-                }
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
             }
-
-            if (unstagedFiles.isNotEmpty()) {
-                item {
-                    Text(
-                        "Unstaged Changes (${unstagedFiles.size})",
-                        fontWeight = FontWeight.Medium
-                    )
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (stagedFiles.isNotEmpty()) {
+                    item {
+                        Text(
+                            "Staged Changes (${stagedFiles.size})",
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    items(stagedFiles) { file ->
+                        FileChangeCard(
+                            file = file,
+                            isStaged = true,
+                            onToggle = {
+                                unstagedFiles = unstagedFiles + file
+                                stagedFiles = stagedFiles - file
+                            }
+                        )
+                    }
                 }
-                items(unstagedFiles) { file ->
-                    FileChangeCard(
-                        file = file,
-                        isStaged = false,
-                        onToggle = {
-                            stagedFiles = stagedFiles + file
-                            unstagedFiles = unstagedFiles - file
-                        }
-                    )
-                }
-            }
 
-            if (stagedFiles.isEmpty() && unstagedFiles.isEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(32.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
+                if (unstagedFiles.isNotEmpty()) {
+                    item {
+                        Text(
+                            "Unstaged Changes (${unstagedFiles.size})",
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    items(unstagedFiles) { file ->
+                        FileChangeCard(
+                            file = file,
+                            isStaged = false,
+                            onToggle = {
+                                stagedFiles = stagedFiles + file
+                                unstagedFiles = unstagedFiles - file
+                            }
+                        )
+                    }
+                }
+
+                if (stagedFiles.isEmpty() && unstagedFiles.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                modifier = Modifier.size(64.dp),
-                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                "No changes",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(64.dp),
+                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    "No changes",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
@@ -545,7 +595,7 @@ fun FileChangeCard(
 @Composable
 fun GitOperationsSheet(
     repository: Repository,
-    gitRepository: MockGitRepository,
+    gitRepository: RealGitRepository,
     onDismiss: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -576,8 +626,12 @@ fun GitOperationsSheet(
                     .clickable {
                         scope.launch {
                             isLoading = true
-                            delay(1000) // Simulate operation
-                            operationResult = "✓ Pulled latest changes"
+                            val result = gitRepository.pull(repository)
+                            operationResult = if (result.success) {
+                                "✓ Pull completed successfully"
+                            } else {
+                                "✗ Pull failed: ${result.conflicts.joinToString(", ")}"
+                            }
                             isLoading = false
                         }
                     }
@@ -612,8 +666,12 @@ fun GitOperationsSheet(
                     .clickable {
                         scope.launch {
                             isLoading = true
-                            delay(1000)
-                            operationResult = "✓ Pushed to origin/main"
+                            val result = gitRepository.push(repository)
+                            operationResult = if (result.success) {
+                                "✓ Push completed successfully"
+                            } else {
+                                "✗ Push failed: ${result.message}"
+                            }
                             isLoading = false
                         }
                     }
@@ -649,7 +707,7 @@ fun GitOperationsSheet(
                         scope.launch {
                             isLoading = true
                             delay(1000)
-                            operationResult = "✓ Created new branch"
+                            operationResult = "✓ Branch operations coming soon"
                             isLoading = false
                         }
                     }
@@ -667,9 +725,9 @@ fun GitOperationsSheet(
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("New Branch", fontWeight = FontWeight.Medium)
+                        Text("Branches", fontWeight = FontWeight.Medium)
                         Text(
-                            "Create and switch to new branch",
+                            "Manage repository branches",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -681,13 +739,21 @@ fun GitOperationsSheet(
             operationResult?.let { result ->
                 Card(
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                        containerColor = if (result.startsWith("✓")) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.errorContainer
+                        }
                     )
                 ) {
                     Text(
                         text = result,
                         modifier = Modifier.padding(12.dp),
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                        color = if (result.startsWith("✓")) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onErrorContainer
+                        }
                     )
                 }
             }
@@ -900,7 +966,9 @@ fun SettingsView(
 @Composable
 fun AddRepositoryDialog(
     onDismiss: () -> Unit,
-    onAdd: (String, String) -> Unit
+    isLoading: Boolean = false,
+    errorMessage: String? = null,
+    onAdd: (String, String, Boolean) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
@@ -948,7 +1016,8 @@ fun AddRepositoryDialog(
                             modifier = Modifier.fillMaxWidth(),
                             leadingIcon = {
                                 Icon(Icons.Default.Link, contentDescription = null)
-                            }
+                            },
+                            enabled = !isLoading
                         )
 
                         Spacer(modifier = Modifier.height(8.dp))
@@ -961,7 +1030,8 @@ fun AddRepositoryDialog(
                             modifier = Modifier.fillMaxWidth(),
                             leadingIcon = {
                                 Icon(Icons.Default.Folder, contentDescription = null)
-                            }
+                            },
+                            enabled = !isLoading
                         )
 
                         Spacer(modifier = Modifier.height(8.dp))
@@ -982,21 +1052,24 @@ fun AddRepositoryDialog(
                                     url = "https://github.com/torvalds/linux.git"
                                     name = "linux"
                                 },
-                                label = { Text("Linux", fontSize = 12.sp) }
+                                label = { Text("Linux", fontSize = 12.sp) },
+                                enabled = !isLoading
                             )
                             AssistChip(
                                 onClick = {
                                     url = "https://github.com/facebook/react.git"
                                     name = "react"
                                 },
-                                label = { Text("React", fontSize = 12.sp) }
+                                label = { Text("React", fontSize = 12.sp) },
+                                enabled = !isLoading
                             )
                             AssistChip(
                                 onClick = {
                                     url = "https://github.com/flutter/flutter.git"
                                     name = "flutter"
                                 },
-                                label = { Text("Flutter", fontSize = 12.sp) }
+                                label = { Text("Flutter", fontSize = 12.sp) },
+                                enabled = !isLoading
                             )
                         }
                     }
@@ -1010,7 +1083,8 @@ fun AddRepositoryDialog(
                             modifier = Modifier.fillMaxWidth(),
                             leadingIcon = {
                                 Icon(Icons.Default.Create, contentDescription = null)
-                            }
+                            },
+                            enabled = !isLoading
                         )
 
                         Spacer(modifier = Modifier.height(8.dp))
@@ -1023,25 +1097,70 @@ fun AddRepositoryDialog(
                     }
                 }
 
+                // Error message display
+                errorMessage?.let { error ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer
+                        )
+                    ) {
+                        Text(
+                            text = error,
+                            modifier = Modifier.padding(12.dp),
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                // Loading indicator
+                if (isLoading) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (selectedTab == 0) "Cloning repository..." else "Creating repository...",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(onClick = onDismiss) {
+                    TextButton(
+                        onClick = onDismiss,
+                        enabled = !isLoading
+                    ) {
                         Text("Cancel")
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
                             if (name.isNotEmpty()) {
-                                onAdd(name, url)
+                                onAdd(name, url, selectedTab == 0) // isClone = selectedTab == 0
                             }
                         },
-                        enabled = name.isNotEmpty()
+                        enabled = name.isNotEmpty() && !isLoading
                     ) {
-                        Text(if (selectedTab == 0) "Clone" else "Create")
+                        if (isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                        } else {
+                            Text(if (selectedTab == 0) "Clone" else "Create")
+                        }
                     }
                 }
             }
@@ -1166,5 +1285,15 @@ fun GraphPresetDialog(
                 }
             }
         }
+    }
+}
+
+// Helper function to get graph config
+fun getGraphConfig(preset: String): GraphConfig {
+    return when (preset) {
+        "Compact" -> GraphConfig.Compact
+        "Large" -> GraphConfig.Large
+        "Wide" -> GraphConfig.Wide
+        else -> GraphConfig.Default
     }
 }

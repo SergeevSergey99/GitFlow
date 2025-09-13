@@ -27,6 +27,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.gitflow.android.data.models.*
 import com.gitflow.android.data.repository.MockGitRepository
+import com.gitflow.android.data.repository.RealGitRepository
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -34,11 +35,20 @@ import java.util.*
 @Composable
 fun CommitDetailDialog(
     commit: Commit,
-    gitRepository: MockGitRepository,
+    gitRepository: RealGitRepository,
     onDismiss: () -> Unit
 ) {
     var selectedTab by remember { mutableStateOf(0) }
-    val fileDiffs = remember { gitRepository.getCommitDiffs(commit) }
+    var fileDiffs by remember { mutableStateOf<List<FileDiff>>(emptyList()) }
+    var isLoadingDiffs by remember { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+
+    // Загружаем диффы при открытии диалога
+    LaunchedEffect(commit) {
+        isLoadingDiffs = true
+        fileDiffs = gitRepository.getCommitDiffs(commit)
+        isLoadingDiffs = false
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -153,24 +163,28 @@ fun CommitDetailDialog(
 
                                 // Stats
                                 Spacer(modifier = Modifier.height(12.dp))
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                    StatChip(
-                                        icon = Icons.Default.Add,
-                                        value = "+${fileDiffs.sumOf { it.additions }}",
-                                        color = Color(0xFF4CAF50)
-                                    )
-                                    StatChip(
-                                        icon = Icons.Default.Remove,
-                                        value = "-${fileDiffs.sumOf { it.deletions }}",
-                                        color = Color(0xFFF44336)
-                                    )
-                                    StatChip(
-                                        icon = Icons.Default.Description,
-                                        value = "${fileDiffs.size} files",
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                if (isLoadingDiffs) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                                } else {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                    ) {
+                                        StatChip(
+                                            icon = Icons.Default.Add,
+                                            value = "+${fileDiffs.sumOf { it.additions }}",
+                                            color = Color(0xFF4CAF50)
+                                        )
+                                        StatChip(
+                                            icon = Icons.Default.Remove,
+                                            value = "-${fileDiffs.sumOf { it.deletions }}",
+                                            color = Color(0xFFF44336)
+                                        )
+                                        StatChip(
+                                            icon = Icons.Default.Description,
+                                            value = "${fileDiffs.size} files",
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -183,7 +197,7 @@ fun CommitDetailDialog(
                             Tab(
                                 selected = selectedTab == 0,
                                 onClick = { selectedTab = 0 },
-                                text = { Text("Changes (${fileDiffs.size})") }
+                                text = { Text("Changes (${if (isLoadingDiffs) "..." else fileDiffs.size})") }
                             )
                             Tab(
                                 selected = selectedTab == 1,
@@ -206,8 +220,26 @@ fun CommitDetailDialog(
 
                 // Tab content
                 when (selectedTab) {
-                    0 -> DiffView(fileDiffs)
-                    1 -> FileListView(fileDiffs)
+                    0 -> if (isLoadingDiffs) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    } else {
+                        DiffView(fileDiffs)
+                    }
+                    1 -> if (isLoadingDiffs) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    } else {
+                        FileListView(fileDiffs)
+                    }
                     2 -> CommitInfoView(commit)
                     3 -> FileTreeView(commit, gitRepository)
                 }
@@ -774,9 +806,18 @@ fun formatFileSize(size: Long): String {
 }
 
 @Composable
-fun FileTreeView(commit: Commit, gitRepository: MockGitRepository) {
-    val fileTree = remember(commit) { gitRepository.getCommitFileTree(commit) }
+fun FileTreeView(commit: Commit, gitRepository: RealGitRepository) {
+    var fileTree by remember { mutableStateOf<FileTreeNode?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
     var selectedFileForViewing by remember { mutableStateOf<FileTreeNode?>(null) }
+    val scope = rememberCoroutineScope()
+
+    // Загружаем дерево файлов при открытии
+    LaunchedEffect(commit) {
+        isLoading = true
+        fileTree = gitRepository.getCommitFileTree(commit)
+        isLoading = false
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Header
@@ -801,51 +842,68 @@ fun FileTreeView(commit: Commit, gitRepository: MockGitRepository) {
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp
                     )
-                    Text(
-                        text = "Commit: ${commit.hash.take(7)} • ${fileTree.children.sumOf { countFiles(it) }} files",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    if (isLoading) {
+                        Text(
+                            text = "Loading...",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Text(
+                            text = "Commit: ${commit.hash.take(7)} • ${fileTree?.children?.sumOf { countFiles(it) } ?: 0} files",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
 
         // File tree content
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            if (fileTree.children.isNotEmpty()) {
-                items(fileTree.children) { node ->
-                    FileTreeNodeItem(
-                        node = node,
-                        level = 0,
-                        onFileClicked = { selectedFileForViewing = it }
-                    )
-                }
-            } else {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                if (fileTree?.children?.isNotEmpty() == true) {
+                    items(fileTree!!.children) { node ->
+                        FileTreeNodeItem(
+                            node = node,
+                            level = 0,
+                            onFileClicked = { selectedFileForViewing = it }
+                        )
+                    }
+                } else {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(200.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                Icons.Default.FolderOpen,
-                                contentDescription = null,
-                                modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "No files found in this commit",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    Icons.Default.FolderOpen,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(48.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "No files found in this commit",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
@@ -978,7 +1036,7 @@ fun FileTreeNodeItem(
 fun FileViewerDialog(
     file: FileTreeNode,
     commit: Commit,
-    gitRepository: MockGitRepository,
+    gitRepository: RealGitRepository,
     onDismiss: () -> Unit
 ) {
     var fileContent by remember { mutableStateOf<String?>(null) }
