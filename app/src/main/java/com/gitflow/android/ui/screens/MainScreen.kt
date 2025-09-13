@@ -35,15 +35,23 @@ fun MainScreen(navController: NavController) {
     var selectedTab by remember { mutableStateOf(0) }
     val context = LocalContext.current
     val gitRepository = remember { RealGitRepository(context) }
-    var repositories by remember { mutableStateOf<List<Repository>>(emptyList()) }
+    
+    // Используем Flow для автоматического обновления списка репозиториев
+    val repositories by gitRepository.getRepositoriesFlow().collectAsState(initial = emptyList())
+    
     var selectedRepository by remember { mutableStateOf<Repository?>(null) }
     var showOperationsSheet by remember { mutableStateOf(false) }
     var selectedGraphPreset by remember { mutableStateOf("Default") }
     val scope = rememberCoroutineScope()
 
-    // Загружаем репозитории при запуске
-    LaunchedEffect(Unit) {
-        repositories = gitRepository.getRepositories()
+    // Обновляем выбранный репозиторий если он изменился в списке
+    LaunchedEffect(repositories, selectedRepository) {
+        selectedRepository?.let { selected ->
+            val updated = repositories.find { it.id == selected.id }
+            if (updated != null && updated != selected) {
+                selectedRepository = updated
+            }
+        }
     }
 
     Scaffold(
@@ -117,9 +125,6 @@ fun MainScreen(navController: NavController) {
                     onRepositorySelected = {
                         selectedRepository = it
                         selectedTab = 1 // Switch to graph view
-                    },
-                    onRepositoryAdded = { repo ->
-                        repositories = repositories + repo
                     }
                 )
                 1 -> {
@@ -155,8 +160,7 @@ fun MainScreen(navController: NavController) {
 @Composable
 fun RepositoryListView(
     repositories: List<Repository>,
-    onRepositorySelected: (Repository) -> Unit,
-    onRepositoryAdded: (Repository) -> Unit
+    onRepositorySelected: (Repository) -> Unit
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
@@ -251,22 +255,20 @@ fun RepositoryListView(
 
                             val result = gitRepository.cloneRepository(url, localPath)
                             result.onSuccess { repo ->
-                                onRepositoryAdded(repo)
+                                // Репозиторий автоматически добавляется в DataStore через gitRepository.cloneRepository
                                 showAddDialog = false
                             }.onFailure { exception ->
                                 errorMessage = "Failed to clone repository: ${exception.message}"
                             }
                         } else {
-                            // Создание нового репозитория (пока просто создаем объект)
-                            val newRepo = Repository(
-                                id = UUID.randomUUID().toString(),
-                                name = name,
-                                path = "${context.getExternalFilesDir(null)?.absolutePath}/repositories/$name",
-                                lastUpdated = System.currentTimeMillis(),
-                                currentBranch = "main"
-                            )
-                            onRepositoryAdded(newRepo)
-                            showAddDialog = false
+                            // Добавление существующего репозитория
+                            val result = gitRepository.addRepository(name)
+                            result.onSuccess { repo ->
+                                // Репозиторий автоматически добавляется в DataStore через gitRepository.addRepository
+                                showAddDialog = false
+                            }.onFailure { exception ->
+                                errorMessage = "Failed to add repository: ${exception.message}"
+                            }
                         }
                     } catch (e: Exception) {
                         errorMessage = "Error: ${e.message}"
@@ -1297,3 +1299,4 @@ fun getGraphConfig(preset: String): GraphConfig {
         else -> GraphConfig.Default
     }
 }
+

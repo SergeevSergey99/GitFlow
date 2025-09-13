@@ -4,12 +4,14 @@ import android.content.Context
 import com.gitflow.android.data.models.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.api.errors.GitAPIException
 import org.eclipse.jgit.diff.DiffFormatter
 import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.lib.Ref
-import org.eclipse.jgit.lib.Repository
+import org.eclipse.jgit.lib.Repository as JGitRepository
 import org.eclipse.jgit.revwalk.RevCommit
 import org.eclipse.jgit.revwalk.RevWalk
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder
@@ -24,15 +26,17 @@ import java.util.*
 
 class RealGitRepository(private val context: Context) {
 
-    private val repositories = mutableListOf<com.gitflow.android.data.models.Repository>()
+    private val dataStore = RepositoryDataStore(context)
 
     // ---------- Public API ----------
 
-    suspend fun getRepositories(): List<com.gitflow.android.data.models.Repository> = withContext(Dispatchers.IO) {
-        repositories.toList()
+    fun getRepositoriesFlow(): Flow<List<Repository>> = dataStore.repositories
+
+    suspend fun getRepositories(): List<Repository> = withContext(Dispatchers.IO) {
+        dataStore.repositories.first()
     }
 
-    suspend fun addRepository(path: String): Result<com.gitflow.android.data.models.Repository> = withContext(Dispatchers.IO) {
+    suspend fun addRepository(path: String): Result<Repository> = withContext(Dispatchers.IO) {
         try {
             val repoDir = File(path)
             if (!repoDir.exists() || !File(repoDir, ".git").exists()) {
@@ -46,15 +50,24 @@ class RealGitRepository(private val context: Context) {
             val currentBranch = jgitRepo.branch
             val lastCommit = getLastCommitTime(git)
 
-            val repository = com.gitflow.android.data.models.Repository(
+            // Получаем информацию о ветках
+            val branches = getBranchesInternal(git)
+            val totalBranches = branches.size
+
+            // Проверяем наличие remote origin
+            val hasRemoteOrigin = git.remoteList().call().any { it.name == "origin" }
+
+            val repository = Repository(
                 id = UUID.randomUUID().toString(),
                 name = name,
                 path = path,
                 lastUpdated = lastCommit,
-                currentBranch = currentBranch
+                currentBranch = currentBranch,
+                totalBranches = totalBranches,
+                hasRemoteOrigin = hasRemoteOrigin
             )
 
-            repositories.add(repository)
+            dataStore.addRepository(repository)
             git.close()
 
             Result.success(repository)
@@ -63,7 +76,7 @@ class RealGitRepository(private val context: Context) {
         }
     }
 
-    suspend fun cloneRepository(url: String, localPath: String): Result<com.gitflow.android.data.models.Repository> = withContext(Dispatchers.IO) {
+    suspend fun cloneRepository(url: String, localPath: String): Result<Repository> = withContext(Dispatchers.IO) {
         try {
             val targetDir = File(localPath)
             if (targetDir.exists()) {
@@ -79,20 +92,67 @@ class RealGitRepository(private val context: Context) {
             val currentBranch = git.repository.branch
             val lastCommit = getLastCommitTime(git)
 
-            val repository = com.gitflow.android.data.models.Repository(
+            // Получаем информацию о ветках
+            val branches = getBranchesInternal(git)
+            val totalBranches = branches.size
+
+            // Проверяем наличие remote origin (обычно есть после клонирования)
+            val hasRemoteOrigin = git.remoteList().call().any { it.name == "origin" }
+
+            val repository = Repository(
                 id = UUID.randomUUID().toString(),
                 name = name,
                 path = localPath,
                 lastUpdated = lastCommit,
-                currentBranch = currentBranch
+                currentBranch = currentBranch,
+                totalBranches = totalBranches,
+                hasRemoteOrigin = hasRemoteOrigin
             )
 
-            repositories.add(repository)
+            dataStore.addRepository(repository)
             git.close()
 
             Result.success(repository)
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    suspend fun removeRepository(repositoryId: String) = withContext(Dispatchers.IO) {
+        dataStore.removeRepository(repositoryId)
+    }
+
+    suspend fun updateRepository(repository: Repository) = withContext(Dispatchers.IO) {
+        dataStore.updateRepository(repository)
+    }
+
+    suspend fun refreshRepository(repository: Repository): Repository? = withContext(Dispatchers.IO) {
+        try {
+            val git = openRepository(repository.path) ?: return@withContext null
+
+            val currentBranch = git.repository.branch
+            val lastCommit = getLastCommitTime(git)
+
+            // Получаем обновленную информацию о ветках
+            val branches = getBranchesInternal(git)
+            val totalBranches = branches.size
+
+            // Проверяем наличие remote origin
+            val hasRemoteOrigin = git.remoteList().call().any { it.name == "origin" }
+
+            val updatedRepository = repository.copy(
+                currentBranch = currentBranch,
+                lastUpdated = lastCommit,
+                totalBranches = totalBranches,
+                hasRemoteOrigin = hasRemoteOrigin
+            )
+
+            updateRepository(updatedRepository)
+            git.close()
+
+            updatedRepository
+        } catch (e: Exception) {
+            null
         }
     }
 
@@ -197,6 +257,7 @@ class RealGitRepository(private val context: Context) {
     suspend fun getCommitDiffs(commit: Commit): List<FileDiff> = withContext(Dispatchers.IO) {
         try {
             // Находим репозиторий по коммиту
+            val repositories = getRepositories()
             val repo = repositories.find { repository ->
                 try {
                     val git = openRepository(repository.path)
@@ -378,6 +439,7 @@ class RealGitRepository(private val context: Context) {
     suspend fun getCommitFileTree(commit: Commit): FileTreeNode = withContext(Dispatchers.IO) {
         try {
             // Находим репозиторий по коммиту
+            val repositories = getRepositories()
             val repo = repositories.find { repository ->
                 try {
                     val git = openRepository(repository.path)
@@ -429,6 +491,7 @@ class RealGitRepository(private val context: Context) {
     suspend fun getFileContent(commit: Commit, filePath: String): String? = withContext(Dispatchers.IO) {
         try {
             // Находим репозиторий по коммиту
+            val repositories = getRepositories()
             val repo = repositories.find { repository ->
                 try {
                     val git = openRepository(repository.path)
@@ -458,6 +521,53 @@ class RealGitRepository(private val context: Context) {
     }
 
     // ---------- Helper methods ----------
+
+    private fun getBranchesInternal(git: Git): List<Branch> {
+        return try {
+            val branches = mutableListOf<Branch>()
+
+            // Локальные ветки
+            val localBranches = git.branchList().call()
+            for (ref in localBranches) {
+                val branchName = ref.name.removePrefix("refs/heads/")
+                val lastCommitHash = ref.objectId.name
+
+                branches.add(
+                    Branch(
+                        name = branchName,
+                        isLocal = true,
+                        lastCommitHash = lastCommitHash,
+                        ahead = 0,
+                        behind = 0
+                    )
+                )
+            }
+
+            // Удаленные ветки
+            val remoteBranches = git.branchList()
+                .setListMode(org.eclipse.jgit.api.ListBranchCommand.ListMode.REMOTE)
+                .call()
+
+            for (ref in remoteBranches) {
+                val branchName = ref.name.removePrefix("refs/remotes/")
+                val lastCommitHash = ref.objectId.name
+
+                branches.add(
+                    Branch(
+                        name = branchName,
+                        isLocal = false,
+                        lastCommitHash = lastCommitHash,
+                        ahead = 0,
+                        behind = 0
+                    )
+                )
+            }
+
+            branches.sortedBy { it.name }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
 
     private fun openRepository(path: String): Git? {
         return try {
@@ -641,7 +751,7 @@ class RealGitRepository(private val context: Context) {
         return Pair(additions, deletions)
     }
 
-    private fun getFileContentFromCommit(repository: Repository, commit: RevCommit, filePath: String): String? {
+    private fun getFileContentFromCommit(repository: JGitRepository, commit: RevCommit, filePath: String): String? {
         return try {
             val treeWalk = TreeWalk(repository)
             treeWalk.addTree(commit.tree)

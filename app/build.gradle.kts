@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 android {
@@ -82,6 +83,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     
     // JGit для работы с Git репозиториями - используем версию совместимую с Android
+    // Serialization
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+
     implementation("org.eclipse.jgit:org.eclipse.jgit:5.13.3.202401111512-r")
 
     testImplementation("junit:junit:4.13.2")
