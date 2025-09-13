@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -130,7 +131,8 @@ fun MainScreen(navController: NavController) {
                     onRepositorySelected = {
                         selectedRepository = it
                         selectedTab = 1 // Switch to graph view
-                    }
+                    },
+                    navController = navController
                 )
                 1 -> {
                     // Use the new enhanced graph view with selected config
@@ -146,7 +148,8 @@ fun MainScreen(navController: NavController) {
                 )
                 3 -> SettingsView(
                     selectedGraphPreset = selectedGraphPreset,
-                    onGraphPresetChanged = { selectedGraphPreset = it }
+                    onGraphPresetChanged = { selectedGraphPreset = it },
+                    navController = navController
                 )
             }
         }
@@ -165,7 +168,8 @@ fun MainScreen(navController: NavController) {
 @Composable
 fun RepositoryListView(
     repositories: List<Repository>,
-    onRepositorySelected: (Repository) -> Unit
+    onRepositorySelected: (Repository) -> Unit,
+    navController: NavController
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
@@ -262,6 +266,10 @@ fun RepositoryListView(
             },
             isLoading = isLoading,
             errorMessage = errorMessage,
+            onNavigateToRemote = {
+                showAddDialog = false
+                navController.navigate("remote_repositories")
+            },
             onAdd = { name, url, isClone ->
                 scope.launch {
                     isLoading = true
@@ -898,7 +906,8 @@ fun GitOperationsSheet(
 @Composable
 fun SettingsView(
     selectedGraphPreset: String,
-    onGraphPresetChanged: (String) -> Unit
+    onGraphPresetChanged: (String) -> Unit,
+    navController: NavController
 ) {
     var showGraphPresetDialog by remember { mutableStateOf(false) }
 
@@ -950,12 +959,14 @@ fun SettingsView(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Button(
-                    onClick = { },
+                    onClick = { 
+                        navController.navigate("auth")
+                    },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(Icons.Default.Login, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Sign in with GitHub")
+                    Text("Manage Accounts")
                 }
             }
         }
@@ -1094,7 +1105,8 @@ fun AddRepositoryDialog(
     isLoading: Boolean = false,
     errorMessage: String? = null,
     onAdd: (String, String, Boolean) -> Unit,
-    onAddLocal: (String) -> Unit = {}
+    onAddLocal: (String) -> Unit = {},
+    onNavigateToRemote: () -> Unit = {}
 ) {
     var name by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
@@ -1151,6 +1163,11 @@ fun AddRepositoryDialog(
                         selected = selectedTab == 2,
                         onClick = { selectedTab = 2 },
                         text = { Text("Create") }
+                    )
+                    Tab(
+                        selected = selectedTab == 3,
+                        onClick = { selectedTab = 3 },
+                        text = { Text("Remote") }
                     )
                 }
 
@@ -1268,6 +1285,43 @@ fun AddRepositoryDialog(
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                    3 -> {
+                        // Remote tab
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Cloud,
+                                contentDescription = null,
+                                modifier = Modifier.size(64.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "Browse Remote Repositories",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "Connect to GitHub or GitLab to browse and clone your remote repositories",
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            Button(
+                                onClick = {
+                                    onDismiss()
+                                    onNavigateToRemote()
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.CloudDownload, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Browse Repositories")
+                            }
+                        }
                     }
                 }
 

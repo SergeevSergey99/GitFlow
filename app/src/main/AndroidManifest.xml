@@ -25,6 +25,24 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        
+        <activity
+            android:name=".ui.auth.OAuthActivity"
+            android:exported="false"
+            android:theme="@style/Theme.GitFlow" />
+            
+        <!-- OAuth callback handling -->
+        <activity-alias
+            android:name=".OAuthCallbackActivity"
+            android:targetActivity=".ui.auth.OAuthActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="gitflow" android:host="oauth" />
+            </intent-filter>
+        </activity-alias>
     </application>
 
 </manifest>

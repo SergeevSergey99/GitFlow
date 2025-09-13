@@ -134,3 +134,52 @@ data class PushResult(
     val pushedCommits: Int,
     val message: String
 )
+
+// OAuth и авторизация модели
+@Serializable
+data class OAuthToken(
+    val accessToken: String,
+    val tokenType: String = "Bearer",
+    val scope: String? = null,
+    val refreshToken: String? = null,
+    val expiresAt: Long? = null
+)
+
+@Serializable
+data class GitUser(
+    val id: Long,
+    val login: String,
+    val name: String?,
+    val email: String?,
+    val avatarUrl: String?,
+    val provider: GitProvider
+)
+
+@Serializable
+enum class GitProvider {
+    GITHUB, GITLAB
+}
+
+@Serializable
+data class GitRemoteRepository(
+    val id: Long,
+    val name: String,
+    val fullName: String,
+    val description: String?,
+    val private: Boolean,
+    val cloneUrl: String,
+    val sshUrl: String,
+    val htmlUrl: String,
+    val defaultBranch: String,
+    val owner: GitUser,
+    val provider: GitProvider,
+    val updatedAt: String
+)
+
+// Результат авторизации
+data class AuthResult(
+    val success: Boolean,
+    val user: GitUser? = null,
+    val token: OAuthToken? = null,
+    val error: String? = null
+)

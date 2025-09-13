@@ -11,6 +11,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.gitflow.android.ui.screens.*
+import com.gitflow.android.ui.auth.AuthScreen
+import com.gitflow.android.ui.repositories.RemoteRepositoriesScreen
 import com.gitflow.android.ui.theme.GitFlowTheme
 
 class MainActivity : ComponentActivity() {
@@ -39,6 +41,19 @@ fun GitFlowApp() {
     ) {
         composable("main") {
             MainScreen(navController)
+        }
+        composable("auth") {
+            AuthScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+        composable("remote_repositories") {
+            RemoteRepositoriesScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onRepositoryCloned = { 
+                    navController.popBackStack()
+                }
+            )
         }
     }
 }
