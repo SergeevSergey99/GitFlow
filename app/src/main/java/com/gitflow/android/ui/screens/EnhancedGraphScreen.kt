@@ -127,7 +127,9 @@ private fun GraphCanvas(
     val horizontalScrollState = rememberScrollState()
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .horizontalScroll(horizontalScrollState)
     ) {
         itemsIndexed(graphData.commits, key = { _, c -> c.hash }) { _, commit ->
             val node = graphData.nodePositions.getValue(commit.hash)
@@ -161,11 +163,10 @@ private fun GraphCommitRow(
     onClick: () -> Unit
 ) {
     val nodeColor = laneColor(nodeData.lane)
-    val badgeScrollState = rememberScrollState()
 
     Row(
         modifier = Modifier
-            .fillMaxWidth()
+            .wrapContentWidth()
             .height(config.rowHeight)
             .clickable { onClick() }
             .padding(horizontal = config.rowPadding),
@@ -176,7 +177,6 @@ private fun GraphCommitRow(
             modifier = Modifier
                 .width(config.getGraphWidth(maxLanes))
                 .fillMaxHeight()
-                .horizontalScroll(horizontalScrollState)
                 .drawBehind {
                     // Все соединения для текущей строки
                     connections.forEach { connection ->
@@ -222,7 +222,7 @@ private fun GraphCommitRow(
         // Правая информационная часть с возможностью прокрутки
         Column(
             modifier = Modifier
-                .widthIn(min = config.infoMinWidth)
+                .wrapContentWidth()
                 .padding(start = config.infoStartPadding)
         ) {
             Row(
@@ -244,17 +244,15 @@ private fun GraphCommitRow(
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
-                    overflow = TextOverflow.Visible
+                    overflow = TextOverflow.Visible,
+                    softWrap = false
                 )
             }
 
             Spacer(Modifier.height(config.textSpacing))
 
             Row(
-                horizontalArrangement = Arrangement.spacedBy(config.badgeSpacing),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(badgeScrollState)
+                horizontalArrangement = Arrangement.spacedBy(config.badgeSpacing)
             ) {
                 // hash
                 Surface(
