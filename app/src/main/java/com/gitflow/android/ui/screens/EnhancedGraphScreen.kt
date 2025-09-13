@@ -161,13 +161,13 @@ private fun GraphCommitRow(
     onClick: () -> Unit
 ) {
     val nodeColor = laneColor(nodeData.lane)
+    val badgeScrollState = rememberScrollState()
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(config.rowHeight)
             .clickable { onClick() }
-            .horizontalScroll(horizontalScrollState)
             .padding(horizontal = config.rowPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -176,6 +176,7 @@ private fun GraphCommitRow(
             modifier = Modifier
                 .width(config.getGraphWidth(maxLanes))
                 .fillMaxHeight()
+                .horizontalScroll(horizontalScrollState)
                 .drawBehind {
                     // Все соединения для текущей строки
                     connections.forEach { connection ->
@@ -251,7 +252,9 @@ private fun GraphCommitRow(
 
             Row(
                 horizontalArrangement = Arrangement.spacedBy(config.badgeSpacing),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(badgeScrollState)
             ) {
                 // hash
                 Surface(
@@ -572,20 +575,20 @@ private fun Badge(
 /* ============================ Branch Colors ============================ */
 
 private fun getBranchColor(branchName: String): Color {
-    // Генерируем стабильный цвет для каждой ветки на основе её имени
+    // Генерируем стабильный контрастный цвет для каждой ветки
     val colors = listOf(
-        Color(0xFF4CAF50), // Green
-        Color(0xFF2196F3), // Blue  
-        Color(0xFFFF9800), // Orange
-        Color(0xFF9C27B0), // Purple
-        Color(0xFFE91E63), // Pink
-        Color(0xFF00BCD4), // Cyan
-        Color(0xFFFF5722), // Deep Orange
-        Color(0xFF795548), // Brown
-        Color(0xFF607D8B), // Blue Grey
-        Color(0xFF3F51B5), // Indigo
-        Color(0xFFCDDC39), // Lime
-        Color(0xFFFFEB3B)  // Yellow
+        Color(0xFF1B5E20), // Dark Green
+        Color(0xFF0D47A1), // Dark Blue  
+        Color(0xFFE65100), // Dark Orange
+        Color(0xFF4A148C), // Dark Purple
+        Color(0xFFAD1457), // Dark Pink
+        Color(0xFF006064), // Dark Cyan
+        Color(0xFFBF360C), // Deep Orange Red
+        Color(0xFF3E2723), // Dark Brown
+        Color(0xFF263238), // Dark Blue Grey
+        Color(0xFF1A237E), // Dark Indigo
+        Color(0xFF827717), // Dark Olive
+        Color(0xFF616161)  // Dark Grey
     )
     
     // Выбираем цвет на основе хеша имени ветки
