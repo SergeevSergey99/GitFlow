@@ -1,5 +1,9 @@
 package com.gitflow.android.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
@@ -21,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavController
+import androidx.documentfile.provider.DocumentFile
 import com.gitflow.android.data.models.*
 import com.gitflow.android.data.repository.RealGitRepository
 import com.gitflow.android.ui.config.GraphConfig
@@ -165,6 +170,7 @@ fun RepositoryListView(
     var showAddDialog by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var customDestination by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val gitRepository = remember { RealGitRepository(context) }
@@ -251,9 +257,16 @@ fun RepositoryListView(
                         if (isClone && url.isNotEmpty()) {
                             // Клонирование репозитория
                             val appDir = context.getExternalFilesDir(null) ?: context.filesDir
-                            val localPath = "${appDir.absolutePath}/repositories/$name"
+                            val defaultPath = "${appDir.absolutePath}/repositories/$name"
+                            
+                            // Используем пользовательский путь если указан, иначе стандартный
+                            val finalDestination = if (customDestination.isNotEmpty()) {
+                                "$customDestination/$name"
+                            } else {
+                                null
+                            }
 
-                            val result = gitRepository.cloneRepository(url, localPath)
+                            val result = gitRepository.cloneRepository(url, defaultPath, finalDestination)
                             result.onSuccess { repo ->
                                 // Репозиторий автоматически добавляется в DataStore через gitRepository.cloneRepository
                                 showAddDialog = false
@@ -261,14 +274,36 @@ fun RepositoryListView(
                                 errorMessage = "Failed to clone repository: ${exception.message}"
                             }
                         } else {
-                            // Добавление существующего репозитория
-                            val result = gitRepository.addRepository(name)
+                            // Создание нового репозитория
+                            val appDir = context.getExternalFilesDir(null) ?: context.filesDir
+                            val localPath = "${appDir.absolutePath}/repositories/$name"
+                            
+                            val result = gitRepository.createRepository(name, localPath)
                             result.onSuccess { repo ->
-                                // Репозиторий автоматически добавляется в DataStore через gitRepository.addRepository
                                 showAddDialog = false
                             }.onFailure { exception ->
-                                errorMessage = "Failed to add repository: ${exception.message}"
+                                errorMessage = "Failed to create repository: ${exception.message}"
                             }
+                        }
+                    } catch (e: Exception) {
+                        errorMessage = "Error: ${e.message}"
+                    } finally {
+                        isLoading = false
+                    }
+                }
+            },
+            onAddLocal = { localPath ->
+                scope.launch {
+                    isLoading = true
+                    errorMessage = null
+
+                    try {
+                        // Добавление существующего локального репозитория
+                        val result = gitRepository.addRepository(localPath)
+                        result.onSuccess { repo ->
+                            showAddDialog = false
+                        }.onFailure { exception ->
+                            errorMessage = "Failed to add local repository: ${exception.message}"
                         }
                     } catch (e: Exception) {
                         errorMessage = "Error: ${e.message}"
@@ -970,11 +1005,32 @@ fun AddRepositoryDialog(
     onDismiss: () -> Unit,
     isLoading: Boolean = false,
     errorMessage: String? = null,
-    onAdd: (String, String, Boolean) -> Unit
+    onAdd: (String, String, Boolean) -> Unit,
+    onAddLocal: (String) -> Unit = {}
 ) {
     var name by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
+    var localPath by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf(0) }
+    var customDestination by remember { mutableStateOf("") }
+    
+    // Launcher for choosing directory for cloning
+    val directoryPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        uri?.let { 
+            customDestination = getRealPathFromUri(it)
+        }
+    }
+    
+    // Launcher for choosing existing repository directory
+    val repoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        uri?.let { 
+            localPath = getRealPathFromUri(it)
+        }
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -1001,6 +1057,11 @@ fun AddRepositoryDialog(
                     Tab(
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
+                        text = { Text("Local") }
+                    )
+                    Tab(
+                        selected = selectedTab == 2,
+                        onClick = { selectedTab = 2 },
                         text = { Text("Create") }
                     )
                 }
@@ -1012,7 +1073,16 @@ fun AddRepositoryDialog(
                         // Clone tab
                         OutlinedTextField(
                             value = url,
-                            onValueChange = { url = it },
+                            onValueChange = { 
+                                url = it
+                                // Автоматически извлекаем имя из URL
+                                if (it.isNotEmpty()) {
+                                    val repoName = extractRepoNameFromUrl(it)
+                                    if (repoName.isNotEmpty()) {
+                                        name = repoName
+                                    }
+                                }
+                            },
                             label = { Text("Repository URL") },
                             placeholder = { Text("https://github.com/user/repo.git") },
                             modifier = Modifier.fillMaxWidth(),
@@ -1038,44 +1108,58 @@ fun AddRepositoryDialog(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // Quick clone options
+                        // Выбор папки назначения
+                        OutlinedTextField(
+                            value = customDestination,
+                            onValueChange = { customDestination = it },
+                            label = { Text("Destination (optional)") },
+                            placeholder = { Text("Leave empty for default location") },
+                            modifier = Modifier.fillMaxWidth(),
+                            leadingIcon = {
+                                Icon(Icons.Default.FolderOpen, contentDescription = null)
+                            },
+                            trailingIcon = {
+                                IconButton(
+                                    onClick = { directoryPickerLauncher.launch(null) },
+                                    enabled = !isLoading
+                                ) {
+                                    Icon(Icons.Default.Search, contentDescription = "Browse")
+                                }
+                            },
+                            enabled = !isLoading
+                        )
+                    }
+                    1 -> {
+                        // Local tab - добавление существующего репозитория
+                        OutlinedTextField(
+                            value = localPath,
+                            onValueChange = { localPath = it },
+                            label = { Text("Repository Path") },
+                            placeholder = { Text("/storage/emulated/0/MyRepos/project") },
+                            modifier = Modifier.fillMaxWidth(),
+                            leadingIcon = {
+                                Icon(Icons.Default.FolderOpen, contentDescription = null)
+                            },
+                            trailingIcon = {
+                                IconButton(
+                                    onClick = { repoPickerLauncher.launch(null) },
+                                    enabled = !isLoading
+                                ) {
+                                    Icon(Icons.Default.Search, contentDescription = "Browse")
+                                }
+                            },
+                            enabled = !isLoading
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
                         Text(
-                            text = "Quick clone:",
+                            text = "Select an existing Git repository from your device storage",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.padding(vertical = 8.dp)
-                        ) {
-                            AssistChip(
-                                onClick = {
-                                    url = "https://github.com/torvalds/linux.git"
-                                    name = "linux"
-                                },
-                                label = { Text("Linux", fontSize = 12.sp) },
-                                enabled = !isLoading
-                            )
-                            AssistChip(
-                                onClick = {
-                                    url = "https://github.com/facebook/react.git"
-                                    name = "react"
-                                },
-                                label = { Text("React", fontSize = 12.sp) },
-                                enabled = !isLoading
-                            )
-                            AssistChip(
-                                onClick = {
-                                    url = "https://github.com/flutter/flutter.git"
-                                    name = "flutter"
-                                },
-                                label = { Text("Flutter", fontSize = 12.sp) },
-                                enabled = !isLoading
-                            )
-                        }
                     }
-                    1 -> {
+                    2 -> {
                         // Create tab
                         OutlinedTextField(
                             value = name,
@@ -1127,7 +1211,12 @@ fun AddRepositoryDialog(
                         CircularProgressIndicator(modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (selectedTab == 0) "Cloning repository..." else "Creating repository...",
+                            text = when (selectedTab) {
+                                0 -> "Cloning repository..."
+                                1 -> "Adding local repository..."
+                                2 -> "Creating repository..."
+                                else -> "Processing..."
+                            },
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1149,11 +1238,30 @@ fun AddRepositoryDialog(
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
-                            if (name.isNotEmpty()) {
-                                onAdd(name, url, selectedTab == 0) // isClone = selectedTab == 0
+                            when (selectedTab) {
+                                0 -> { // Clone
+                                    if (name.isNotEmpty() && url.isNotEmpty()) {
+                                        onAdd(name, url, true)
+                                    }
+                                }
+                                1 -> { // Local
+                                    if (localPath.isNotEmpty()) {
+                                        onAddLocal(localPath)
+                                    }
+                                }
+                                2 -> { // Create
+                                    if (name.isNotEmpty()) {
+                                        onAdd(name, "", false)
+                                    }
+                                }
                             }
                         },
-                        enabled = name.isNotEmpty() && !isLoading
+                        enabled = when (selectedTab) {
+                            0 -> name.isNotEmpty() && url.isNotEmpty() && !isLoading
+                            1 -> localPath.isNotEmpty() && !isLoading
+                            2 -> name.isNotEmpty() && !isLoading
+                            else -> false
+                        }
                     ) {
                         if (isLoading) {
                             CircularProgressIndicator(
@@ -1161,7 +1269,14 @@ fun AddRepositoryDialog(
                                 color = MaterialTheme.colorScheme.onPrimary
                             )
                         } else {
-                            Text(if (selectedTab == 0) "Clone" else "Create")
+                            Text(
+                                when (selectedTab) {
+                                    0 -> "Clone"
+                                    1 -> "Add Local"
+                                    2 -> "Create"
+                                    else -> "Add"
+                                }
+                            )
                         }
                     }
                 }
@@ -1297,6 +1412,60 @@ fun getGraphConfig(preset: String): GraphConfig {
         "Large" -> GraphConfig.Large
         "Wide" -> GraphConfig.Wide
         else -> GraphConfig.Default
+    }
+}
+
+// Helper function to extract repository name from URL
+fun extractRepoNameFromUrl(url: String): String {
+    return try {
+        val trimmed = url.trim()
+        if (trimmed.isEmpty()) return ""
+        
+        // Remove .git suffix if present
+        val withoutGit = if (trimmed.endsWith(".git")) {
+            trimmed.removeSuffix(".git")
+        } else {
+            trimmed
+        }
+        
+        // Extract the last part of the URL path
+        val parts = withoutGit.split("/")
+        val repoName = parts.lastOrNull { it.isNotEmpty() }
+        
+        // Clean up the name (remove special characters, make it filesystem-safe)
+        repoName?.let { name ->
+            name.replace(Regex("[^a-zA-Z0-9_-]"), "_")
+                .take(50) // Limit length
+                .trim('_', '-')
+        } ?: ""
+    } catch (e: Exception) {
+        ""
+    }
+}
+
+// Helper function to get real path from URI
+fun getRealPathFromUri(uri: Uri): String {
+    return try {
+        // Extract path from the URI
+        val path = uri.path
+        if (path != null) {
+            // Clean up the path for external storage
+            when {
+                path.contains("/tree/primary:") -> {
+                    val relativePath = path.substringAfter("/tree/primary:")
+                    "/storage/emulated/0/$relativePath"
+                }
+                path.contains("/tree/") -> {
+                    // For other storage locations, try to extract meaningful path
+                    path.substringAfterLast("/")
+                }
+                else -> path
+            }
+        } else {
+            uri.toString()
+        }
+    } catch (e: Exception) {
+        uri.toString()
     }
 }
 

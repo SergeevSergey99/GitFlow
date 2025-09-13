@@ -23,6 +23,8 @@ import java.io.File
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
+import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 
 class RealGitRepository(private val context: Context) {
 
@@ -38,9 +40,22 @@ class RealGitRepository(private val context: Context) {
 
     suspend fun addRepository(path: String): Result<Repository> = withContext(Dispatchers.IO) {
         try {
-            val repoDir = File(path)
+            val repoDir = if (path.startsWith("content://")) {
+                // Handle URI from Storage Access Framework
+                val uri = Uri.parse(path)
+                val documentFile = DocumentFile.fromTreeUri(context, uri)
+                if (documentFile == null || !documentFile.exists()) {
+                    return@withContext Result.failure(Exception("Cannot access directory"))
+                }
+                // For SAF URIs, we need a different approach
+                // This is a simplified implementation - in production you'd need more robust URI handling
+                return@withContext Result.failure(Exception("SAF URI support needs additional implementation"))
+            } else {
+                File(path)
+            }
+            
             if (!repoDir.exists() || !File(repoDir, ".git").exists()) {
-                return@withContext Result.failure(Exception("Directory is not a Git repository"))
+                return@withContext Result.failure(Exception("Directory is not a Git repository: $path"))
             }
 
             val git = Git.open(repoDir)
@@ -76,12 +91,71 @@ class RealGitRepository(private val context: Context) {
         }
     }
 
-    suspend fun cloneRepository(url: String, localPath: String): Result<Repository> = withContext(Dispatchers.IO) {
+    suspend fun createRepository(name: String, localPath: String): Result<Repository> = withContext(Dispatchers.IO) {
         try {
-            val targetDir = File(localPath)
-            if (targetDir.exists()) {
-                return@withContext Result.failure(Exception("Directory already exists"))
+            val repoDir = File(localPath)
+            if (repoDir.exists()) {
+                return@withContext Result.failure(Exception("Directory already exists: ${repoDir.absolutePath}"))
             }
+
+            // Создаем директорию для репозитория
+            repoDir.mkdirs()
+
+            // Инициализируем новый Git репозиторий
+            val git = Git.init()
+                .setDirectory(repoDir)
+                .call()
+
+            // Создаем начальный коммит с README файлом
+            val readmeFile = File(repoDir, "README.md")
+            readmeFile.writeText("# $name\n\nThis repository was created with GitFlow Android.")
+            
+            git.add().addFilepattern("README.md").call()
+            git.commit()
+                .setMessage("Initial commit")
+                .setAuthor("GitFlow Android", "gitflow@android.local")
+                .call()
+
+            val currentBranch = git.repository.branch
+            val lastCommit = getLastCommitTime(git)
+
+            // Получаем информацию о ветках
+            val branches = getBranchesInternal(git)
+            val totalBranches = branches.size
+
+            val repository = Repository(
+                id = UUID.randomUUID().toString(),
+                name = name,
+                path = repoDir.absolutePath,
+                lastUpdated = lastCommit,
+                currentBranch = currentBranch,
+                totalBranches = totalBranches,
+                hasRemoteOrigin = false
+            )
+
+            dataStore.addRepository(repository)
+            git.close()
+
+            Result.success(repository)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun cloneRepository(url: String, localPath: String, customDestination: String? = null): Result<Repository> = withContext(Dispatchers.IO) {
+        try {
+            val targetDir = if (!customDestination.isNullOrEmpty()) {
+                File(customDestination)
+            } else {
+                File(localPath)
+            }
+            
+            if (targetDir.exists()) {
+                return@withContext Result.failure(Exception("Directory already exists: ${targetDir.absolutePath}"))
+            }
+
+            // Создаем родительские директории если они не существуют
+            targetDir.parentFile?.mkdirs()
 
             val git = Git.cloneRepository()
                 .setURI(url)
@@ -102,7 +176,7 @@ class RealGitRepository(private val context: Context) {
             val repository = Repository(
                 id = UUID.randomUUID().toString(),
                 name = name,
-                path = localPath,
+                path = targetDir.absolutePath,
                 lastUpdated = lastCommit,
                 currentBranch = currentBranch,
                 totalBranches = totalBranches,

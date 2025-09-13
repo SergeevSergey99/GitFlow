@@ -87,6 +87,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
 
     implementation("org.eclipse.jgit:org.eclipse.jgit:5.13.3.202401111512-r")
+    implementation("androidx.documentfile:documentfile:1.1.0")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
