@@ -15,13 +15,18 @@ class AuthManager(val context: Context) {
     private val preferences: SharedPreferences = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
     private val gson = Gson()
     
-    // OAuth конфигурация - в реальном приложении эти значения должны быть в секретном месте
+    init {
+        OAuthConfig.initialize(context)
+        
+        // Проверка инициализации OAuth конфигурации
+        if (!OAuthConfig.isConfigured()) {
+            android.util.Log.w("AuthManager", "OAuth конфигурация не загружена! Проверьте наличие oauth.properties файла или переменных окружения")
+        } else {
+            android.util.Log.i("AuthManager", "OAuth конфигурация успешно загружена")
+        }
+    }
+    
     companion object {
-        private const val GITHUB_CLIENT_ID = "your_github_client_id"
-        private const val GITHUB_CLIENT_SECRET = "your_github_client_secret"
-        private const val GITLAB_CLIENT_ID = "your_gitlab_client_id"
-        private const val GITLAB_CLIENT_SECRET = "your_gitlab_client_secret"
-        private const val REDIRECT_URI = "gitflow://oauth/callback"
         
         private const val GITHUB_AUTH_URL = "https://github.com/login/oauth/authorize"
         private const val GITHUB_API_URL = "https://github.com/"
@@ -52,14 +57,18 @@ class AuthManager(val context: Context) {
     
     // Генерация URL для авторизации
     fun getAuthUrl(provider: GitProvider): String {
+        if (!OAuthConfig.isConfigured()) {
+            throw IllegalStateException("OAuth конфигурация не загружена! Проверьте наличие oauth.properties файла или переменных окружения")
+        }
+        
         return when (provider) {
             GitProvider.GITHUB -> {
                 val scope = URLEncoder.encode("repo user", "UTF-8")
-                "$GITHUB_AUTH_URL?client_id=$GITHUB_CLIENT_ID&redirect_uri=${URLEncoder.encode(REDIRECT_URI, "UTF-8")}&scope=$scope&response_type=code"
+                "$GITHUB_AUTH_URL?client_id=${OAuthConfig.githubClientId}&redirect_uri=${URLEncoder.encode(OAuthConfig.REDIRECT_URI, "UTF-8")}&scope=$scope&response_type=code"
             }
             GitProvider.GITLAB -> {
                 val scope = URLEncoder.encode("read_user read_repository write_repository", "UTF-8")
-                "$GITLAB_AUTH_URL?client_id=$GITLAB_CLIENT_ID&redirect_uri=${URLEncoder.encode(REDIRECT_URI, "UTF-8")}&scope=$scope&response_type=code"
+                "$GITLAB_AUTH_URL?client_id=${OAuthConfig.gitlabClientId}&redirect_uri=${URLEncoder.encode(OAuthConfig.REDIRECT_URI, "UTF-8")}&scope=$scope&response_type=code"
             }
         }
     }
@@ -79,8 +88,8 @@ class AuthManager(val context: Context) {
     private suspend fun handleGitHubCallback(code: String): AuthResult {
         try {
             val tokenRequest = mapOf(
-                "client_id" to GITHUB_CLIENT_ID,
-                "client_secret" to GITHUB_CLIENT_SECRET,
+                "client_id" to OAuthConfig.githubClientId,
+                "client_secret" to OAuthConfig.githubClientSecret,
                 "code" to code
             )
             
@@ -124,10 +133,10 @@ class AuthManager(val context: Context) {
     private suspend fun handleGitLabCallback(code: String): AuthResult {
         try {
             val tokenResponse = gitlabApi.getAccessToken(
-                clientId = GITLAB_CLIENT_ID,
-                clientSecret = GITLAB_CLIENT_SECRET,
+                clientId = OAuthConfig.gitlabClientId,
+                clientSecret = OAuthConfig.gitlabClientSecret,
                 code = code,
-                redirectUri = REDIRECT_URI
+                redirectUri = OAuthConfig.REDIRECT_URI
             )
             
             if (!tokenResponse.isSuccessful) {
