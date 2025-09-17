@@ -29,7 +29,7 @@ class AuthManager(val context: Context) {
     companion object {
         
         private const val GITHUB_AUTH_URL = "https://github.com/login/oauth/authorize"
-        private const val GITHUB_API_URL = "https://github.com/"
+        private const val GITHUB_API_URL = "https://api.github.com/"
         private const val GITLAB_AUTH_URL = "https://gitlab.com/oauth/authorize"
         private const val GITLAB_API_URL = "https://gitlab.com/"
         
@@ -39,9 +39,31 @@ class AuthManager(val context: Context) {
         private const val KEY_GITLAB_USER = "gitlab_user"
     }
     
+    private val githubTokenApi: GitHubApi by lazy {
+        val okHttpClient = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+
+        Retrofit.Builder()
+            .baseUrl("https://github.com/")
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(GitHubApi::class.java)
+    }
+
     private val githubApi: GitHubApi by lazy {
+        val okHttpClient = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+
         Retrofit.Builder()
             .baseUrl(GITHUB_API_URL)
+            .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(GitHubApi::class.java)
@@ -90,35 +112,67 @@ class AuthManager(val context: Context) {
             val tokenRequest = mapOf(
                 "client_id" to OAuthConfig.githubClientId,
                 "client_secret" to OAuthConfig.githubClientSecret,
-                "code" to code
+                "code" to code,
+                "redirect_uri" to OAuthConfig.REDIRECT_URI
             )
-            
-            val tokenResponse = githubApi.getAccessToken(tokenRequest)
+
+            android.util.Log.d("AuthManager", "Отправляем запрос на получение токена GitHub")
+            android.util.Log.d("AuthManager", "Client ID: ${OAuthConfig.githubClientId}")
+            android.util.Log.d("AuthManager", "Code: $code")
+            val tokenResponse = githubTokenApi.getAccessToken(tokenRequest)
+
             if (!tokenResponse.isSuccessful) {
-                return AuthResult(success = false, error = "Не удалось получить токен")
+                val errorBody = tokenResponse.errorBody()?.string()
+                android.util.Log.e("AuthManager", "Ошибка получения токена: ${tokenResponse.code()}, $errorBody")
+                return AuthResult(success = false, error = "Не удалось получить токен: ${tokenResponse.code()}")
             }
             
             val oauthResponse = tokenResponse.body()!!
+            android.util.Log.d("AuthManager", "Токен GitHub успешно получен")
+
             val token = OAuthToken(
                 accessToken = oauthResponse.access_token,
                 tokenType = oauthResponse.token_type,
                 scope = oauthResponse.scope
             )
-            
-            val userResponse = githubApi.getCurrentUser("Bearer ${token.accessToken}")
-            if (!userResponse.isSuccessful) {
-                return AuthResult(success = false, error = "Не удалось получить информацию о пользователе")
+            android.util.Log.d("AuthManager", "Access Token: ${token.accessToken}")
+            android.util.Log.d("AuthManager", "Token Type: ${token.tokenType}")
+            android.util.Log.d("AuthManager", "Scope: ${token.scope}")
+
+            android.util.Log.d("AuthManager", "Начинаем запрос к GitHub API для получения пользователя")
+            val userResponse = try {
+                val response = githubApi.getCurrentUser("Bearer ${token.accessToken}")
+                android.util.Log.d("AuthManager", "Запрос к GitHub API выполнен")
+                android.util.Log.d("AuthManager", "userResponse isSuccessful: ${response.isSuccessful}")
+                android.util.Log.d("AuthManager", "userResponse code: ${response.code()}")
+                response
+            } catch (e: Exception) {
+                android.util.Log.e("AuthManager", "Ошибка при выполнении запроса к GitHub API: ${e.message}", e)
+                return AuthResult(success = false, error = "Ошибка сети: ${e.message}")
             }
-            
-            val githubUser = userResponse.body()!!
-            val user = GitUser(
-                id = githubUser.id,
-                login = githubUser.login,
-                name = githubUser.name,
-                email = githubUser.email,
-                avatarUrl = githubUser.avatar_url,
-                provider = GitProvider.GITHUB
-            )
+
+            if (!userResponse.isSuccessful) {
+                val errorBody = userResponse.errorBody()?.string()
+                android.util.Log.e("AuthManager", "Ошибка получения пользователя: ${userResponse.code()}, $errorBody")
+                return AuthResult(success = false, error = "Не удалось получить информацию о пользователе: ${userResponse.code()}")
+            }
+
+            android.util.Log.d("AuthManager", "Успешно получен ответ от GitHub API для пользователя")
+            val user = try {
+                val githubUser = userResponse.body()!!
+                android.util.Log.d("AuthManager", "GitHub пользователь: ${githubUser.login}, id: ${githubUser.id}")
+                GitUser(
+                    id = githubUser.id,
+                    login = githubUser.login,
+                    name = githubUser.name,
+                    email = githubUser.email,
+                    avatarUrl = githubUser.avatar_url,
+                    provider = GitProvider.GITHUB
+                )
+            } catch (e: Exception) {
+                android.util.Log.e("AuthManager", "Ошибка парсинга пользователя GitHub: ${e.message}", e)
+                return AuthResult(success = false, error = "Ошибка парсинга пользователя: ${e.message}")
+            }
             
             // Сохраняем токен и пользователя
             saveToken(GitProvider.GITHUB, token)
