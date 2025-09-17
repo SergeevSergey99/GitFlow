@@ -42,6 +42,7 @@ fun CommitDetailDialog(
     var selectedTab by remember { mutableStateOf(0) }
     var fileDiffs by remember { mutableStateOf<List<FileDiff>>(emptyList()) }
     var isLoadingDiffs by remember { mutableStateOf(true) }
+    var selectedFile by remember { mutableStateOf<FileDiff?>(null) }
     val scope = rememberCoroutineScope()
 
     // Загружаем диффы при открытии диалога
@@ -133,7 +134,7 @@ fun CommitDetailDialog(
                     Tab(
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
-                        text = { Text("Changes (${if (isLoadingDiffs) "..." else fileDiffs.size})") }
+                        text = { Text("Changes") }
                     )
                     Tab(
                         selected = selectedTab == 1,
@@ -162,7 +163,7 @@ fun CommitDetailDialog(
                             CircularProgressIndicator()
                         }
                     } else {
-                        DiffView(fileDiffs)
+                        DiffView(selectedFile)
                     }
                     1 -> if (isLoadingDiffs) {
                         Box(
@@ -172,7 +173,10 @@ fun CommitDetailDialog(
                             CircularProgressIndicator()
                         }
                     } else {
-                        FileListView(fileDiffs)
+                        FileListView(fileDiffs, selectedFile) { file ->
+                            selectedFile = file
+                            selectedTab = 0 // Переключаемся на вкладку Changes
+                        }
                     }
                     2 -> CommitInfoView(commit)
                     3 -> FileTreeView(commit, repository, gitRepository)
@@ -184,51 +188,36 @@ fun CommitDetailDialog(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DiffView(fileDiffs: List<FileDiff>) {
-    var selectedFile by remember { mutableStateOf(fileDiffs.firstOrNull()) }
+fun DiffView(selectedFile: FileDiff?) {
     var showSideBySide by remember { mutableStateOf(false) }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        // File selector
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+    if (selectedFile == null) {
+        // Пустое состояние когда файл не выбран
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
         ) {
-            items(fileDiffs) { diff ->
-                FilterChip(
-                    selected = selectedFile == diff,
-                    onClick = { selectedFile = diff },
-                    label = {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                when (diff.status) {
-                                    FileStatus.ADDED -> Icons.Default.Add
-                                    FileStatus.MODIFIED -> Icons.Default.Edit
-                                    FileStatus.DELETED -> Icons.Default.Delete
-                                    FileStatus.RENAMED -> Icons.Default.DriveFileRenameOutline
-                                },
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = when (diff.status) {
-                                    FileStatus.ADDED -> Color(0xFF4CAF50)
-                                    FileStatus.MODIFIED -> Color(0xFFFF9800)
-                                    FileStatus.DELETED -> Color(0xFFF44336)
-                                    FileStatus.RENAMED -> Color(0xFF2196F3)
-                                }
-                            )
-                            Text(
-                                text = diff.path.substringAfterLast("/"),
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    Icons.Default.Description,
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Select a file in the Files tab to view changes",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 16.sp
                 )
             }
         }
+        return
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
 
         // View mode toggle
         Row(
@@ -239,7 +228,7 @@ fun DiffView(fileDiffs: List<FileDiff>) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = selectedFile?.path ?: "",
+                text = selectedFile.path,
                 fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -276,12 +265,10 @@ fun DiffView(fileDiffs: List<FileDiff>) {
         Divider()
 
         // Diff content
-        selectedFile?.let { diff ->
-            if (showSideBySide) {
-                SideBySideDiffView(diff)
-            } else {
-                UnifiedDiffView(diff)
-            }
+        if (showSideBySide) {
+            SideBySideDiffView(selectedFile)
+        } else {
+            UnifiedDiffView(selectedFile)
         }
     }
 }
@@ -440,22 +427,42 @@ fun DiffLineView(line: DiffLine, compact: Boolean = false) {
 }
 
 @Composable
-fun FileListView(fileDiffs: List<FileDiff>) {
+fun FileListView(
+    fileDiffs: List<FileDiff>,
+    selectedFile: FileDiff?,
+    onFileSelected: (FileDiff) -> Unit
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         items(fileDiffs) { diff ->
-            FileItem(diff)
+            FileItem(
+                diff = diff,
+                isSelected = selectedFile == diff,
+                onClick = { onFileSelected(diff) }
+            )
         }
     }
 }
 
 @Composable
-fun FileItem(diff: FileDiff) {
+fun FileItem(
+    diff: FileDiff,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
     Card(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected)
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            else
+                MaterialTheme.colorScheme.surface
+        )
     ) {
         Row(
             modifier = Modifier
