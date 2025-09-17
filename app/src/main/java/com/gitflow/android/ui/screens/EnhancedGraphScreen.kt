@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.MergeType
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -291,6 +292,35 @@ private fun GraphCommitRow(
                         )
                         Spacer(Modifier.width(config.badgeIconSpacing))
                         Text(timeAgo(commit.timestamp), fontSize = 11.sp)
+                    }
+                }
+
+                // автор
+                Surface(
+                    shape = RoundedCornerShape(config.badgeCornerRadius),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(
+                            horizontal = config.badgeHorizontalPadding,
+                            vertical = config.badgeVerticalPadding
+                        )
+                    ) {
+                        androidx.compose.material3.Icon(
+                            Icons.Default.Person,
+                            contentDescription = null,
+                            modifier = Modifier.size(config.badgeIconSize),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(Modifier.width(config.badgeIconSpacing))
+                        Text(
+                            text = commit.author,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
 
