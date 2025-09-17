@@ -41,7 +41,7 @@ fun MainScreen(navController: NavController) {
     var selectedTab by remember { mutableStateOf(0) }
     val context = LocalContext.current
     val gitRepository = remember { RealGitRepository(context) }
-    
+
     // Используем Flow для автоматического обновления списка репозиториев
     val repositories by gitRepository.getRepositoriesFlow().collectAsState(initial = emptyList())
     
@@ -181,6 +181,7 @@ fun RepositoryListView(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val gitRepository = remember { RealGitRepository(context) }
+    val authManager = remember { com.gitflow.android.data.auth.AuthManager(context) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (repositories.isEmpty()) {
@@ -280,7 +281,7 @@ fun RepositoryListView(
                             // Клонирование репозитория
                             val appDir = context.getExternalFilesDir(null) ?: context.filesDir
                             val defaultPath = "${appDir.absolutePath}/repositories/$name"
-                            
+
                             // Используем пользовательский путь если указан, иначе стандартный
                             val finalDestination = if (customDestination.isNotEmpty()) {
                                 "$customDestination/$name"
@@ -288,11 +289,72 @@ fun RepositoryListView(
                                 null
                             }
 
-                            val result = gitRepository.cloneRepository(url, defaultPath, finalDestination)
+                            // Определяем провайдер и добавляем токен если необходимо
+                            val cloneUrl = when {
+                                url.contains("github.com") -> {
+                                    android.util.Log.d("MainScreen", "Detected GitHub repository: $url")
+                                    // Создаем временный объект репозитория для получения URL с токеном
+                                    val mockRepo = com.gitflow.android.data.models.GitRemoteRepository(
+                                        id = 0,
+                                        name = name,
+                                        fullName = "",
+                                        description = null,
+                                        private = true,
+                                        cloneUrl = url,
+                                        sshUrl = "",
+                                        htmlUrl = "",
+                                        defaultBranch = "main",
+                                        owner = com.gitflow.android.data.models.GitUser(
+                                            id = 0,
+                                            login = "",
+                                            name = null,
+                                            email = null,
+                                            avatarUrl = null,
+                                            provider = com.gitflow.android.data.models.GitProvider.GITHUB
+                                        ),
+                                        provider = com.gitflow.android.data.models.GitProvider.GITHUB,
+                                        updatedAt = ""
+                                    )
+                                    authManager.getCloneUrl(mockRepo) ?: url
+                                }
+                                url.contains("gitlab.com") -> {
+                                    android.util.Log.d("MainScreen", "Detected GitLab repository: $url")
+                                    val mockRepo = com.gitflow.android.data.models.GitRemoteRepository(
+                                        id = 0,
+                                        name = name,
+                                        fullName = "",
+                                        description = null,
+                                        private = true,
+                                        cloneUrl = url,
+                                        sshUrl = "",
+                                        htmlUrl = "",
+                                        defaultBranch = "main",
+                                        owner = com.gitflow.android.data.models.GitUser(
+                                            id = 0,
+                                            login = "",
+                                            name = null,
+                                            email = null,
+                                            avatarUrl = null,
+                                            provider = com.gitflow.android.data.models.GitProvider.GITLAB
+                                        ),
+                                        provider = com.gitflow.android.data.models.GitProvider.GITLAB,
+                                        updatedAt = ""
+                                    )
+                                    authManager.getCloneUrl(mockRepo) ?: url
+                                }
+                                else -> {
+                                    android.util.Log.d("MainScreen", "Unknown provider, using original URL: $url")
+                                    url
+                                }
+                            }
+
+                            android.util.Log.d("MainScreen", "Final clone URL: $cloneUrl")
+                            val result = gitRepository.cloneRepository(cloneUrl, defaultPath, finalDestination)
                             result.onSuccess { repo ->
                                 // Репозиторий автоматически добавляется в DataStore через gitRepository.cloneRepository
                                 showAddDialog = false
                             }.onFailure { exception ->
+                                android.util.Log.e("MainScreen", "Error cloning repo", exception)
                                 errorMessage = "Failed to clone repository: ${exception.message}"
                             }
                         } else {

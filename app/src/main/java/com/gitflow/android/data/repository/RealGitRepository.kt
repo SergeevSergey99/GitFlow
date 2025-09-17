@@ -157,10 +157,41 @@ class RealGitRepository(private val context: Context) {
             // Создаем родительские директории если они не существуют
             targetDir.parentFile?.mkdirs()
 
-            val git = Git.cloneRepository()
-                .setURI(url)
+            android.util.Log.d("RealGitRepository", "Начинаем клонирование репозитория")
+            android.util.Log.d("RealGitRepository", "URL: $url")
+            android.util.Log.d("RealGitRepository", "Директория: ${targetDir.absolutePath}")
+
+            // Проверяем, содержит ли URL токен
+            val (cleanUrl, token) = if (url.contains("@")) {
+                android.util.Log.d("RealGitRepository", "URL содержит токен, извлекаем его")
+                val tokenMatch = Regex("https://([^@]+)@(.+)").find(url)
+                if (tokenMatch != null) {
+                    val extractedToken = tokenMatch.groupValues[1]
+                    val cleanUrlValue = "https://${tokenMatch.groupValues[2]}"
+                    android.util.Log.d("RealGitRepository", "Чистый URL: $cleanUrlValue")
+                    android.util.Log.d("RealGitRepository", "Токен: ${extractedToken.take(7)}...")
+                    Pair(cleanUrlValue, extractedToken)
+                } else {
+                    Pair(url, null)
+                }
+            } else {
+                android.util.Log.d("RealGitRepository", "URL не содержит токен")
+                Pair(url, null)
+            }
+
+            val cloneCommand = Git.cloneRepository()
+                .setURI(cleanUrl)
                 .setDirectory(targetDir)
-                .call()
+
+            // Настраиваем аутентификацию если есть токен
+            token?.let {
+                android.util.Log.d("RealGitRepository", "Настраиваем CredentialsProvider с токеном")
+                val credentialsProvider = org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider(it, "")
+                cloneCommand.setCredentialsProvider(credentialsProvider)
+            }
+
+            val git = cloneCommand.call()
+            android.util.Log.d("RealGitRepository", "Клонирование завершено успешно")
 
             val name = targetDir.name
             val currentBranch = git.repository.branch

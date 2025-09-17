@@ -318,12 +318,23 @@ class AuthManager(val context: Context) {
     
     // Получение токена для клонирования
     fun getCloneUrl(repository: GitRemoteRepository, useHttps: Boolean = true): String? {
-        val token = getToken(repository.provider) ?: return null
-        
+        android.util.Log.d("AuthManager", "getCloneUrl вызван для репозитория: ${repository.fullName}")
+        android.util.Log.d("AuthManager", "Provider: ${repository.provider}")
+
+        val token = getToken(repository.provider)
+        if (token == null) {
+            android.util.Log.e("AuthManager", "Токен не найден для провайдера: ${repository.provider}")
+            return null
+        }
+
+        android.util.Log.d("AuthManager", "Формируем clone URL для репозитория: ${repository.fullName}")
+        android.util.Log.d("AuthManager", "Оригинальный clone URL: ${repository.cloneUrl}")
+        android.util.Log.d("AuthManager", "Токен найден: ${token.accessToken.take(7)}...")
+
         return if (useHttps) {
-            when (repository.provider) {
+            val cloneUrl = when (repository.provider) {
                 GitProvider.GITHUB -> {
-                    // Для GitHub используем токен в URL
+                    // Для GitHub используем токен в URL с именем пользователя
                     repository.cloneUrl.replace("https://", "https://${token.accessToken}@")
                 }
                 GitProvider.GITLAB -> {
@@ -331,8 +342,11 @@ class AuthManager(val context: Context) {
                     repository.cloneUrl.replace("https://", "https://oauth2:${token.accessToken}@")
                 }
             }
+            android.util.Log.d("AuthManager", "Итоговый clone URL: $cloneUrl")
+            cloneUrl
         } else {
             // SSH URL не требует токена в URL, но требует настроенного SSH ключа
+            android.util.Log.d("AuthManager", "Используем SSH URL: ${repository.sshUrl}")
             repository.sshUrl
         }
     }

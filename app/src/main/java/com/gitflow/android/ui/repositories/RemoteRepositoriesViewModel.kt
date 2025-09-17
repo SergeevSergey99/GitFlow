@@ -85,12 +85,15 @@ class RemoteRepositoriesViewModel : ViewModel() {
             _errorMessage.value = null
             
             try {
+                android.util.Log.d("RemoteRepositoriesViewModel", "Запрашиваем clone URL для репозитория: ${repository.fullName}")
                 val cloneUrl = authManager.getCloneUrl(repository, useHttps = true)
                     ?: throw Exception("Не удалось получить URL для клонирования")
-                
+
+                android.util.Log.d("RemoteRepositoriesViewModel", "Получен clone URL: $cloneUrl")
+
                 val gitRepo = gitRepository
                     ?: throw Exception("Git репозиторий не инициализирован")
-                
+
                 val result = gitRepo.cloneRepository(cloneUrl, localPath)
                 
                 if (result.isSuccess) {
