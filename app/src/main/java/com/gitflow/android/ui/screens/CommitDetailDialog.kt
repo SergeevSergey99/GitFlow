@@ -35,6 +35,7 @@ import java.util.*
 @Composable
 fun CommitDetailDialog(
     commit: Commit,
+    repository: Repository?,
     gitRepository: RealGitRepository,
     onDismiss: () -> Unit
 ) {
@@ -44,9 +45,15 @@ fun CommitDetailDialog(
     val scope = rememberCoroutineScope()
 
     // Загружаем диффы при открытии диалога
-    LaunchedEffect(commit) {
+    LaunchedEffect(commit, repository) {
         isLoadingDiffs = true
-        fileDiffs = gitRepository.getCommitDiffs(commit)
+        android.util.Log.d("CommitDetailDialog", "Loading diffs for commit: ${commit.hash}")
+        fileDiffs = if (repository != null) {
+            gitRepository.getCommitDiffs(commit, repository)
+        } else {
+            gitRepository.getCommitDiffs(commit)
+        }
+        android.util.Log.d("CommitDetailDialog", "Loaded ${fileDiffs.size} file diffs")
         isLoadingDiffs = false
     }
 
@@ -241,7 +248,7 @@ fun CommitDetailDialog(
                         FileListView(fileDiffs)
                     }
                     2 -> CommitInfoView(commit)
-                    3 -> FileTreeView(commit, gitRepository)
+                    3 -> FileTreeView(commit, repository, gitRepository)
                 }
             }
         }
@@ -468,8 +475,13 @@ fun DiffLineView(line: DiffLine, compact: Boolean = false) {
             modifier = Modifier.padding(horizontal = if (compact) 8.dp else 16.dp, vertical = 2.dp)
         ) {
             if (!compact) {
+                val lineNumberText = when (line.type) {
+                    LineType.ADDED -> line.newLineNumber?.toString() ?: ""
+                    LineType.DELETED -> line.oldLineNumber?.toString() ?: ""
+                    LineType.CONTEXT -> line.oldLineNumber?.toString() ?: ""
+                }
                 Text(
-                    text = line.lineNumber?.toString() ?: "",
+                    text = lineNumberText,
                     fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
@@ -806,16 +818,20 @@ fun formatFileSize(size: Long): String {
 }
 
 @Composable
-fun FileTreeView(commit: Commit, gitRepository: RealGitRepository) {
+fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGitRepository) {
     var fileTree by remember { mutableStateOf<FileTreeNode?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var selectedFileForViewing by remember { mutableStateOf<FileTreeNode?>(null) }
     val scope = rememberCoroutineScope()
 
     // Загружаем дерево файлов при открытии
-    LaunchedEffect(commit) {
+    LaunchedEffect(commit, repository) {
         isLoading = true
-        fileTree = gitRepository.getCommitFileTree(commit)
+        fileTree = if (repository != null) {
+            gitRepository.getCommitFileTree(commit, repository)
+        } else {
+            gitRepository.getCommitFileTree(commit)
+        }
         isLoading = false
     }
 
@@ -916,6 +932,7 @@ fun FileTreeView(commit: Commit, gitRepository: RealGitRepository) {
         FileViewerDialog(
             file = file,
             commit = commit,
+            repository = repository,
             gitRepository = gitRepository,
             onDismiss = { selectedFileForViewing = null }
         )
@@ -1036,15 +1053,20 @@ fun FileTreeNodeItem(
 fun FileViewerDialog(
     file: FileTreeNode,
     commit: Commit,
+    repository: Repository?,
     gitRepository: RealGitRepository,
     onDismiss: () -> Unit
 ) {
     var fileContent by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(true) }
 
-    LaunchedEffect(file) {
+    LaunchedEffect(file, repository) {
         isLoading = true
-        fileContent = gitRepository.getFileContent(commit, file.path)
+        fileContent = if (repository != null) {
+            gitRepository.getFileContent(commit, file.path, repository)
+        } else {
+            gitRepository.getFileContent(commit, file.path)
+        }
         isLoading = false
     }
 

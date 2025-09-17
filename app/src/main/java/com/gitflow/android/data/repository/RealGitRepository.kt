@@ -405,22 +405,140 @@ class RealGitRepository(private val context: Context) {
         }
     }
 
+    suspend fun getCommitDiffs(commit: Commit, repository: com.gitflow.android.data.models.Repository): List<FileDiff> = withContext(Dispatchers.IO) {
+        try {
+            android.util.Log.d("RealGitRepository", "Getting diffs for commit: ${commit.hash} in repository: ${repository.name}")
+
+            val git = openRepository(repository.path)
+            if (git == null) {
+                android.util.Log.e("RealGitRepository", "Failed to open repository: ${repository.path}")
+                return@withContext emptyList()
+            }
+
+            val jgitRepository = git.repository
+            val revWalk = RevWalk(jgitRepository)
+            val revCommit = revWalk.parseCommit(jgitRepository.resolve(commit.hash))
+
+            val diffs = mutableListOf<FileDiff>()
+
+            if (revCommit.parentCount > 0) {
+                val parent = revWalk.parseCommit(revCommit.getParent(0).id)
+
+                val oldTreeParser = CanonicalTreeParser()
+                val newTreeParser = CanonicalTreeParser()
+
+                jgitRepository.newObjectReader().use { reader ->
+                    oldTreeParser.reset(reader, parent.tree)
+                    newTreeParser.reset(reader, revCommit.tree)
+                }
+
+                val diffEntries = git.diff()
+                    .setOldTree(oldTreeParser)
+                    .setNewTree(newTreeParser)
+                    .call()
+
+                android.util.Log.d("RealGitRepository", "Found ${diffEntries.size} diff entries")
+
+                for (diffEntry in diffEntries) {
+                    val outputStream = ByteArrayOutputStream()
+                    val formatter = DiffFormatter(outputStream)
+                    formatter.setRepository(jgitRepository)
+                    formatter.format(diffEntry)
+                    formatter.close()
+
+                    val diffText = outputStream.toString()
+                    android.util.Log.d("RealGitRepository", "Processing diff for file: ${diffEntry.newPath ?: diffEntry.oldPath}")
+                    val fileDiff = parseDiffText(diffEntry, diffText)
+                    diffs.add(fileDiff)
+                }
+            } else {
+                // Первый коммит - показываем все файлы как добавленные
+                val treeWalk = TreeWalk(jgitRepository)
+                treeWalk.addTree(revCommit.tree)
+                treeWalk.isRecursive = true
+
+                while (treeWalk.next()) {
+                    val path = treeWalk.pathString
+                    val content = getFileContentFromCommit(jgitRepository, revCommit, path)
+                    val lines = content?.split('\n')?.size ?: 0
+
+                    diffs.add(
+                        FileDiff(
+                            path = path,
+                            status = FileStatus.ADDED,
+                            additions = lines,
+                            deletions = 0,
+                            hunks = listOf(
+                                DiffHunk(
+                                    header = "@@ -0,0 +1,$lines @@",
+                                    oldStart = 0,
+                                    oldLines = 0,
+                                    newStart = 1,
+                                    newLines = lines,
+                                    lines = content?.split('\n')?.mapIndexed { index, line ->
+                                        DiffLine(
+                                            type = LineType.ADDED,
+                                            content = line,
+                                            lineNumber = index + 1,
+                                            newLineNumber = index + 1
+                                        )
+                                    } ?: emptyList()
+                                )
+                            )
+                        )
+                    )
+                }
+                treeWalk.close()
+            }
+
+            revWalk.close()
+            git.close()
+            android.util.Log.d("RealGitRepository", "Returning ${diffs.size} diffs")
+            diffs
+        } catch (e: Exception) {
+            android.util.Log.e("RealGitRepository", "Error getting commit diffs", e)
+            emptyList()
+        }
+    }
+
     suspend fun getCommitDiffs(commit: Commit): List<FileDiff> = withContext(Dispatchers.IO) {
         try {
+            android.util.Log.d("RealGitRepository", "Getting diffs for commit: ${commit.hash}")
+
             // Находим репозиторий по коммиту
             val repositories = getRepositories()
+            android.util.Log.d("RealGitRepository", "Searching through ${repositories.size} repositories for commit")
+
             val repo = repositories.find { repository ->
                 try {
+                    android.util.Log.d("RealGitRepository", "Checking repository: ${repository.name} at ${repository.path}")
                     val git = openRepository(repository.path)
-                    val hasCommit = git?.repository?.resolve(commit.hash) != null
-                    git?.close()
+                    if (git == null) {
+                        android.util.Log.w("RealGitRepository", "Could not open repository at ${repository.path}")
+                        return@find false
+                    }
+                    val hasCommit = git.repository.resolve(commit.hash) != null
+                    android.util.Log.d("RealGitRepository", "Repository ${repository.name} has commit ${commit.hash}: $hasCommit")
+                    git.close()
                     hasCommit
                 } catch (e: Exception) {
+                    android.util.Log.e("RealGitRepository", "Error checking repository ${repository.name}", e)
                     false
                 }
-            } ?: return@withContext emptyList()
+            }
 
-            val git = openRepository(repo.path) ?: return@withContext emptyList()
+            if (repo == null) {
+                android.util.Log.e("RealGitRepository", "Repository not found for commit: ${commit.hash}")
+                return@withContext emptyList()
+            }
+
+            android.util.Log.d("RealGitRepository", "Found repository: ${repo.name}")
+
+            val git = openRepository(repo.path)
+            if (git == null) {
+                android.util.Log.e("RealGitRepository", "Failed to open repository: ${repo.path}")
+                return@withContext emptyList()
+            }
 
             val repository = git.repository
             val revWalk = RevWalk(repository)
@@ -444,6 +562,8 @@ class RealGitRepository(private val context: Context) {
                     .setNewTree(newTreeParser)
                     .call()
 
+                android.util.Log.d("RealGitRepository", "Found ${diffEntries.size} diff entries")
+
                 for (diffEntry in diffEntries) {
                     val outputStream = ByteArrayOutputStream()
                     val formatter = DiffFormatter(outputStream)
@@ -452,6 +572,7 @@ class RealGitRepository(private val context: Context) {
                     formatter.close()
 
                     val diffText = outputStream.toString()
+                    android.util.Log.d("RealGitRepository", "Processing diff for file: ${diffEntry.newPath ?: diffEntry.oldPath}")
                     val fileDiff = parseDiffText(diffEntry, diffText)
                     diffs.add(fileDiff)
                 }
@@ -497,8 +618,10 @@ class RealGitRepository(private val context: Context) {
 
             revWalk.close()
             git.close()
+            android.util.Log.d("RealGitRepository", "Returning ${diffs.size} diffs")
             diffs
         } catch (e: Exception) {
+            android.util.Log.e("RealGitRepository", "Error getting commit diffs", e)
             emptyList()
         }
     }
@@ -587,8 +710,64 @@ class RealGitRepository(private val context: Context) {
         }
     }
 
+    suspend fun getCommitFileTree(commit: Commit, repository: com.gitflow.android.data.models.Repository): FileTreeNode = withContext(Dispatchers.IO) {
+        try {
+            android.util.Log.d("RealGitRepository", "Getting file tree for commit: ${commit.hash} in repository: ${repository.name}")
+
+            val git = openRepository(repository.path)
+            if (git == null) {
+                android.util.Log.e("RealGitRepository", "Failed to open repository: ${repository.path}")
+                return@withContext FileTreeNode("", "", FileTreeNodeType.DIRECTORY)
+            }
+
+            val jgitRepository = git.repository
+            val revWalk = RevWalk(jgitRepository)
+            val revCommit = revWalk.parseCommit(jgitRepository.resolve(commit.hash))
+
+            val files = mutableListOf<CommitFileInfo>()
+            val treeWalk = TreeWalk(jgitRepository)
+            treeWalk.addTree(revCommit.tree)
+            treeWalk.isRecursive = true
+
+            while (treeWalk.next()) {
+                val path = treeWalk.pathString
+                val objectId = treeWalk.getObjectId(0)
+                val size = try {
+                    jgitRepository.newObjectReader().use { reader ->
+                        reader.getObjectSize(objectId, org.eclipse.jgit.lib.Constants.OBJ_BLOB).toLong()
+                    }
+                } catch (e: Exception) {
+                    0L // Если не удается получить размер, используем 0
+                }
+
+                files.add(
+                    CommitFileInfo(
+                        path = path,
+                        size = size,
+                        lastModified = commit.timestamp
+                    )
+                )
+            }
+
+            android.util.Log.d("RealGitRepository", "Found ${files.size} files in commit")
+
+            treeWalk.close()
+            revWalk.close()
+            git.close()
+
+            val result = buildFileTree(files)
+            android.util.Log.d("RealGitRepository", "Built file tree with ${result.children.size} root items")
+            result
+        } catch (e: Exception) {
+            android.util.Log.e("RealGitRepository", "Error getting commit file tree", e)
+            FileTreeNode("", "", FileTreeNodeType.DIRECTORY)
+        }
+    }
+
     suspend fun getCommitFileTree(commit: Commit): FileTreeNode = withContext(Dispatchers.IO) {
         try {
+            android.util.Log.d("RealGitRepository", "Getting file tree for commit: ${commit.hash}")
+
             // Находим репозиторий по коммиту
             val repositories = getRepositories()
             val repo = repositories.find { repository ->
@@ -600,9 +779,20 @@ class RealGitRepository(private val context: Context) {
                 } catch (e: Exception) {
                     false
                 }
-            } ?: return@withContext FileTreeNode("", "", FileTreeNodeType.DIRECTORY)
+            }
 
-            val git = openRepository(repo.path) ?: return@withContext FileTreeNode("", "", FileTreeNodeType.DIRECTORY)
+            if (repo == null) {
+                android.util.Log.e("RealGitRepository", "Repository not found for commit: ${commit.hash}")
+                return@withContext FileTreeNode("", "", FileTreeNodeType.DIRECTORY)
+            }
+
+            android.util.Log.d("RealGitRepository", "Found repository: ${repo.name}")
+
+            val git = openRepository(repo.path)
+            if (git == null) {
+                android.util.Log.e("RealGitRepository", "Failed to open repository: ${repo.path}")
+                return@withContext FileTreeNode("", "", FileTreeNodeType.DIRECTORY)
+            }
 
             val repository = git.repository
             val revWalk = RevWalk(repository)
@@ -616,8 +806,12 @@ class RealGitRepository(private val context: Context) {
             while (treeWalk.next()) {
                 val path = treeWalk.pathString
                 val objectId = treeWalk.getObjectId(0)
-                val size = repository.newObjectReader().use { reader ->
-                    reader.getObjectSize(objectId, org.eclipse.jgit.lib.Constants.OBJ_BLOB).toLong()
+                val size = try {
+                    repository.newObjectReader().use { reader ->
+                        reader.getObjectSize(objectId, org.eclipse.jgit.lib.Constants.OBJ_BLOB).toLong()
+                    }
+                } catch (e: Exception) {
+                    0L // Если не удается получить размер, используем 0
                 }
 
                 files.add(
@@ -629,13 +823,37 @@ class RealGitRepository(private val context: Context) {
                 )
             }
 
+            android.util.Log.d("RealGitRepository", "Found ${files.size} files in commit")
+
             treeWalk.close()
             revWalk.close()
             git.close()
 
-            buildFileTree(files)
+            val result = buildFileTree(files)
+            android.util.Log.d("RealGitRepository", "Built file tree with ${result.children.size} root items")
+            result
         } catch (e: Exception) {
+            android.util.Log.e("RealGitRepository", "Error getting commit file tree", e)
             FileTreeNode("", "", FileTreeNodeType.DIRECTORY)
+        }
+    }
+
+    suspend fun getFileContent(commit: Commit, filePath: String, repository: com.gitflow.android.data.models.Repository): String? = withContext(Dispatchers.IO) {
+        try {
+            val git = openRepository(repository.path) ?: return@withContext null
+
+            val jgitRepository = git.repository
+            val revWalk = RevWalk(jgitRepository)
+            val revCommit = revWalk.parseCommit(jgitRepository.resolve(commit.hash))
+
+            val content = getFileContentFromCommit(jgitRepository, revCommit, filePath)
+
+            revWalk.close()
+            git.close()
+
+            content
+        } catch (e: Exception) {
+            null
         }
     }
 
@@ -816,6 +1034,8 @@ class RealGitRepository(private val context: Context) {
 
         var additions = 0
         var deletions = 0
+        var oldLineNum = 0
+        var newLineNum = 0
 
         for (line in lines) {
             when {
@@ -828,6 +1048,8 @@ class RealGitRepository(private val context: Context) {
 
                     // Парсим новый hunk header
                     val hunkInfo = parseHunkHeader(line)
+                    oldLineNum = hunkInfo.first
+                    newLineNum = hunkInfo.third
                     currentHunk = DiffHunk(
                         header = line,
                         oldStart = hunkInfo.first,
@@ -839,14 +1061,36 @@ class RealGitRepository(private val context: Context) {
                 }
                 line.startsWith("+") && !line.startsWith("+++") -> {
                     additions++
-                    hunkLines.add(DiffLine(LineType.ADDED, line, newLineNumber = hunkLines.size + 1))
+                    hunkLines.add(DiffLine(
+                        type = LineType.ADDED,
+                        content = line.drop(1), // Убираем префикс +
+                        lineNumber = null,
+                        oldLineNumber = null,
+                        newLineNumber = newLineNum
+                    ))
+                    newLineNum++
                 }
                 line.startsWith("-") && !line.startsWith("---") -> {
                     deletions++
-                    hunkLines.add(DiffLine(LineType.DELETED, line, oldLineNumber = hunkLines.size + 1))
+                    hunkLines.add(DiffLine(
+                        type = LineType.DELETED,
+                        content = line.drop(1), // Убираем префикс -
+                        lineNumber = null,
+                        oldLineNumber = oldLineNum,
+                        newLineNumber = null
+                    ))
+                    oldLineNum++
                 }
                 line.startsWith(" ") -> {
-                    hunkLines.add(DiffLine(LineType.CONTEXT, line, oldLineNumber = hunkLines.size + 1, newLineNumber = hunkLines.size + 1))
+                    hunkLines.add(DiffLine(
+                        type = LineType.CONTEXT,
+                        content = line.drop(1), // Убираем префикс пробела
+                        lineNumber = oldLineNum,
+                        oldLineNumber = oldLineNum,
+                        newLineNumber = newLineNum
+                    ))
+                    oldLineNum++
+                    newLineNum++
                 }
             }
         }

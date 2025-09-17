@@ -107,6 +107,7 @@ fun EnhancedGraphView(
     if (showCommitDetail && selectedCommit != null) {
         CommitDetailDialog(
             commit = selectedCommit!!,
+            repository = repository,
             gitRepository = gitRepository,
             onDismiss = {
                 showCommitDetail = false
