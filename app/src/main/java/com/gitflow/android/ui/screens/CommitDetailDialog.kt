@@ -75,154 +75,81 @@ fun CommitDetailDialog(
                     modifier = Modifier.fillMaxWidth(),
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
-                    Column {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.Top
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Commit Details",
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = commit.hash,
-                                    fontSize = 14.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                                )
-                            }
-                            IconButton(onClick = onDismiss) {
-                                Icon(Icons.Default.Close, contentDescription = "Close")
-                            }
-                        }
-
-                        // Commit info
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surface
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = commit.message,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp)
-                            ) {
-                                // Author info
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Stats
+                            if (isLoadingDiffs) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                            } else {
                                 Row(
-                                    verticalAlignment = Alignment.CenterVertically
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    Surface(
-                                        modifier = Modifier.size(40.dp),
-                                        shape = CircleShape,
-                                        color = MaterialTheme.colorScheme.secondaryContainer
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Text(
-                                                text = commit.author.first().uppercase(),
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 18.sp
-                                            )
-                                        }
-                                    }
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column {
-                                        Text(
-                                            text = commit.author,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                        Text(
-                                            text = commit.email,
-                                            fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Text(
-                                            text = formatDate(commit.timestamp),
-                                            fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                // Commit message
-                                Text(
-                                    text = commit.message,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-
-                                if (commit.description.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = commit.description,
-                                        fontSize = 14.sp,
+                                    StatChip(
+                                        icon = Icons.Default.Add,
+                                        value = "+${fileDiffs.sumOf { it.additions }}",
+                                        color = Color(0xFF4CAF50)
+                                    )
+                                    StatChip(
+                                        icon = Icons.Default.Remove,
+                                        value = "-${fileDiffs.sumOf { it.deletions }}",
+                                        color = Color(0xFFF44336)
+                                    )
+                                    StatChip(
+                                        icon = Icons.Default.Description,
+                                        value = "${fileDiffs.size} files",
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-
-                                // Stats
-                                Spacer(modifier = Modifier.height(12.dp))
-                                if (isLoadingDiffs) {
-                                    CircularProgressIndicator(modifier = Modifier.size(16.dp))
-                                } else {
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                    ) {
-                                        StatChip(
-                                            icon = Icons.Default.Add,
-                                            value = "+${fileDiffs.sumOf { it.additions }}",
-                                            color = Color(0xFF4CAF50)
-                                        )
-                                        StatChip(
-                                            icon = Icons.Default.Remove,
-                                            value = "-${fileDiffs.sumOf { it.deletions }}",
-                                            color = Color(0xFFF44336)
-                                        )
-                                        StatChip(
-                                            icon = Icons.Default.Description,
-                                            value = "${fileDiffs.size} files",
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
                             }
                         }
 
-                        // Tabs
-                        TabRow(
-                            selectedTabIndex = selectedTab,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Tab(
-                                selected = selectedTab == 0,
-                                onClick = { selectedTab = 0 },
-                                text = { Text("Changes (${if (isLoadingDiffs) "..." else fileDiffs.size})") }
-                            )
-                            Tab(
-                                selected = selectedTab == 1,
-                                onClick = { selectedTab = 1 },
-                                text = { Text("Files") }
-                            )
-                            Tab(
-                                selected = selectedTab == 2,
-                                onClick = { selectedTab = 2 },
-                                text = { Text("Info") }
-                            )
-                            Tab(
-                                selected = selectedTab == 3,
-                                onClick = { selectedTab = 3 },
-                                text = { Text("File Tree") }
-                            )
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.Default.Close, contentDescription = "Close")
                         }
                     }
+                }
+
+                // Tabs
+                TabRow(
+                    selectedTabIndex = selectedTab,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Tab(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        text = { Text("Changes (${if (isLoadingDiffs) "..." else fileDiffs.size})") }
+                    )
+                    Tab(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        text = { Text("Files") }
+                    )
+                    Tab(
+                        selected = selectedTab == 2,
+                        onClick = { selectedTab = 2 },
+                        text = { Text("Info") }
+                    )
+                    Tab(
+                        selected = selectedTab == 3,
+                        onClick = { selectedTab = 3 },
+                        text = { Text("File Tree") }
+                    )
                 }
 
                 // Tab content
@@ -606,6 +533,59 @@ fun CommitInfoView(commit: Commit) {
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Commit message
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "Message",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    SelectionContainer {
+                        Text(
+                            text = commit.message,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    if (commit.description.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Description",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        SelectionContainer {
+                            Text(
+                                text = commit.description,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         item {
             InfoCard(
                 title = "Commit Hash",

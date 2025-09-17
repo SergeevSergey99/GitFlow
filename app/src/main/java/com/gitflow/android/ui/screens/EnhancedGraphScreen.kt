@@ -257,7 +257,7 @@ private fun GraphCommitRow(
                 horizontalArrangement = Arrangement.spacedBy(config.badgeSpacing)
             ) {
                 // hash
-                Surface(
+                /*Surface(
                     shape = RoundedCornerShape(config.badgeCornerRadius),
                     color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
                 ) {
@@ -270,7 +270,7 @@ private fun GraphCommitRow(
                             vertical = config.badgeVerticalPadding
                         )
                     )
-                }
+                }*/
 
                 // время
                 Surface(
