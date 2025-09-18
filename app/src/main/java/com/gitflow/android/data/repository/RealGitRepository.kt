@@ -293,22 +293,25 @@ class RealGitRepository(private val context: Context) {
             val commits = mutableListOf<Commit>()
             val revWalk = RevWalk(git.repository)
 
+            // Устанавливаем топологическую сортировку
+            revWalk.sort(org.eclipse.jgit.revwalk.RevSort.TOPO)
+
             // Получаем все ветки
             val branches = git.branchList().call()
             val remoteBranches = git.branchList().setListMode(org.eclipse.jgit.api.ListBranchCommand.ListMode.REMOTE).call()
 
             val allRefs = branches + remoteBranches
             val processedCommits = mutableSetOf<String>()
-            
+
             // Создаем мапу коммит -> список веток, где он является HEAD
             val commitToBranchHeads = mutableMapOf<String, MutableList<String>>()
-            
+
             // Сначала определяем HEAD коммиты для каждой ветки
             for (ref in allRefs) {
                 try {
                     val branchName = getBranchName(ref)
                     val head = git.repository.resolve(ref.objectId.name)
-                    
+
                     if (head != null) {
                         val headCommitHash = head.name
                         commitToBranchHeads.getOrPut(headCommitHash) { mutableListOf() }.add(branchName)
@@ -318,53 +321,53 @@ class RealGitRepository(private val context: Context) {
                 }
             }
 
+            // Добавляем все ветки как стартовые точки
             for (ref in allRefs) {
                 try {
-                    val branchName = getBranchName(ref)
                     val head = git.repository.resolve(ref.objectId.name)
-
                     if (head != null) {
                         val revCommit = revWalk.parseCommit(head)
                         revWalk.markStart(revCommit)
-
-                        for (commit in revWalk) {
-                            if (processedCommits.contains(commit.id.name)) continue
-                            processedCommits.add(commit.id.name)
-
-                            val parents = commit.parents.map { it.id.name }
-                            val tags = getTagsForCommit(git, commit.id.name)
-                            val branchHeads = commitToBranchHeads[commit.id.name] ?: emptyList()
-                            val isMergeCommit = commit.parentCount > 1
-
-                            commits.add(
-                                Commit(
-                                    hash = commit.id.name,
-                                    message = commit.shortMessage,
-                                    description = commit.fullMessage.removePrefix(commit.shortMessage).trim(),
-                                    author = commit.authorIdent.name,
-                                    email = commit.authorIdent.emailAddress,
-                                    timestamp = commit.authorIdent.`when`.time,
-                                    parents = parents,
-                                    branch = branchName,
-                                    tags = tags,
-                                    branchHeads = branchHeads,
-                                    isMergeCommit = isMergeCommit
-                                )
-                            )
-                        }
-                        revWalk.reset()
                     }
                 } catch (e: Exception) {
-                    // Пропускаем ветки с ошибками
                     continue
                 }
+            }
+
+            // Проходим по коммитам в топологическом порядке
+            for (commit in revWalk) {
+                if (processedCommits.contains(commit.id.name)) continue
+                processedCommits.add(commit.id.name)
+
+                val parents = commit.parents.map { it.id.name }
+                val tags = getTagsForCommit(git, commit.id.name)
+                val branchHeads = commitToBranchHeads[commit.id.name] ?: emptyList()
+                val isMergeCommit = commit.parentCount > 1
+
+                // Определяем основную ветку для коммита
+                val mainBranch = branchHeads.firstOrNull() ?: "unknown"
+
+                commits.add(
+                    Commit(
+                        hash = commit.id.name,
+                        message = commit.shortMessage,
+                        description = commit.fullMessage.removePrefix(commit.shortMessage).trim(),
+                        author = commit.authorIdent.name,
+                        email = commit.authorIdent.emailAddress,
+                        timestamp = commit.authorIdent.`when`.time,
+                        parents = parents,
+                        branch = mainBranch,
+                        tags = tags,
+                        branchHeads = branchHeads,
+                        isMergeCommit = isMergeCommit
+                    )
+                )
             }
 
             revWalk.close()
             git.close()
 
-            // Сортируем по времени (новые сначала)
-            commits.sortedByDescending { it.timestamp }
+            commits
         } catch (e: Exception) {
             emptyList()
         }
@@ -1219,6 +1222,7 @@ class RealGitRepository(private val context: Context) {
             else -> throw IllegalArgumentException("Unknown node type: ${node::class}")
         }
     }
+
 }
 
 // Helper data class
