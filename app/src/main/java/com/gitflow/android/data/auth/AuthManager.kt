@@ -16,13 +16,20 @@ class AuthManager(val context: Context) {
     private val gson = Gson()
     
     init {
-        OAuthConfig.initialize(context)
-        
-        // Проверка инициализации OAuth конфигурации
-        if (!OAuthConfig.isConfigured()) {
-            android.util.Log.w("AuthManager", "OAuth конфигурация не загружена! Проверьте наличие oauth.properties файла или переменных окружения")
-        } else {
-            android.util.Log.i("AuthManager", "OAuth конфигурация успешно загружена")
+        try {
+            android.util.Log.d("AuthManager", "Начинаем инициализацию AuthManager")
+            OAuthConfig.initialize(context)
+
+            // Проверка инициализации OAuth конфигурации
+            if (!OAuthConfig.isConfigured()) {
+                android.util.Log.w("AuthManager", "OAuth конфигурация не загружена! Проверьте наличие oauth.properties файла или переменных окружения")
+            } else {
+                android.util.Log.i("AuthManager", "OAuth конфигурация успешно загружена")
+            }
+            android.util.Log.d("AuthManager", "AuthManager инициализирован успешно")
+        } catch (e: Exception) {
+            android.util.Log.e("AuthManager", "Ошибка инициализации AuthManager: ${e.message}", e)
+            throw e
         }
     }
     
@@ -234,57 +241,120 @@ class AuthManager(val context: Context) {
     // Получение списка доступных репозиториев
     suspend fun getRepositories(provider: GitProvider): List<GitRemoteRepository> = withContext(Dispatchers.IO) {
         try {
-            val token = getToken(provider) ?: return@withContext emptyList()
+            android.util.Log.d("AuthManager", "Начинаем получение репозиториев для провайдера: $provider")
+
+            val token = getToken(provider)
+            if (token == null) {
+                android.util.Log.e("AuthManager", "Токен не найден для провайдера: $provider")
+                throw Exception("Токен не найден для провайдера $provider")
+            }
+
             val authHeader = "Bearer ${token.accessToken}"
-            
-            when (provider) {
+            android.util.Log.d("AuthManager", "Токен найден, выполняем запрос к API")
+
+            val repositories = when (provider) {
                 GitProvider.GITHUB -> getGitHubRepositories(authHeader)
                 GitProvider.GITLAB -> getGitLabRepositories(authHeader)
             }
+
+            android.util.Log.d("AuthManager", "Получено ${repositories.size} репозиториев для провайдера $provider")
+            repositories
         } catch (e: Exception) {
-            emptyList()
+            android.util.Log.e("AuthManager", "Ошибка при получении репозиториев для провайдера $provider: ${e.message}", e)
+            throw e
         }
     }
     
     private suspend fun getGitHubRepositories(authHeader: String): List<GitRemoteRepository> {
-        val repositories = mutableListOf<GitRemoteRepository>()
-        
-        // Получаем репозитории пользователя
-        val userReposResponse = githubApi.getUserRepositories(authHeader)
-        if (userReposResponse.isSuccessful) {
-            userReposResponse.body()?.forEach { repo ->
-                repositories.add(repo.toGitRemoteRepository())
-            }
-        }
-        
-        // Получаем репозитории организаций
-        val orgsResponse = githubApi.getUserOrganizations(authHeader)
-        if (orgsResponse.isSuccessful) {
-            orgsResponse.body()?.forEach { org ->
-                val orgReposResponse = githubApi.getOrganizationRepositories(authHeader, org.login)
-                if (orgReposResponse.isSuccessful) {
-                    orgReposResponse.body()?.forEach { repo ->
-                        repositories.add(repo.toGitRemoteRepository())
-                    }
+        try {
+            android.util.Log.d("AuthManager", "Запрашиваем репозитории пользователя от GitHub API")
+            val repositories = mutableListOf<GitRemoteRepository>()
+
+            // Получаем репозитории пользователя
+            val userReposResponse = githubApi.getUserRepositories(authHeader)
+            android.util.Log.d("AuthManager", "Ответ от getUserRepositories: код ${userReposResponse.code()}, успешно: ${userReposResponse.isSuccessful}")
+
+            if (userReposResponse.isSuccessful) {
+                val userRepos = userReposResponse.body()
+                android.util.Log.d("AuthManager", "Получено ${userRepos?.size ?: 0} репозиториев пользователя")
+                userRepos?.forEach { repo ->
+                    repositories.add(repo.toGitRemoteRepository())
                 }
+            } else {
+                val errorBody = userReposResponse.errorBody()?.string()
+                android.util.Log.e("AuthManager", "Ошибка получения репозиториев пользователя: ${userReposResponse.code()}, $errorBody")
+                throw Exception("Ошибка получения репозиториев пользователя: ${userReposResponse.code()}")
             }
+
+            // Получаем репозитории организаций
+            try {
+                android.util.Log.d("AuthManager", "Запрашиваем организации пользователя")
+                val orgsResponse = githubApi.getUserOrganizations(authHeader)
+                android.util.Log.d("AuthManager", "Ответ от getUserOrganizations: код ${orgsResponse.code()}, успешно: ${orgsResponse.isSuccessful}")
+
+                if (orgsResponse.isSuccessful) {
+                    val orgs = orgsResponse.body()
+                    android.util.Log.d("AuthManager", "Найдено ${orgs?.size ?: 0} организаций")
+                    orgs?.forEach { org ->
+                        try {
+                            android.util.Log.d("AuthManager", "Запрашиваем репозитории для организации: ${org.login}")
+                            val orgReposResponse = githubApi.getOrganizationRepositories(authHeader, org.login)
+                            if (orgReposResponse.isSuccessful) {
+                                val orgRepos = orgReposResponse.body()
+                                android.util.Log.d("AuthManager", "Получено ${orgRepos?.size ?: 0} репозиториев для организации ${org.login}")
+                                orgRepos?.forEach { repo ->
+                                    repositories.add(repo.toGitRemoteRepository())
+                                }
+                            } else {
+                                android.util.Log.w("AuthManager", "Не удалось получить репозитории для организации ${org.login}: ${orgReposResponse.code()}")
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.w("AuthManager", "Ошибка при получении репозиториев организации ${org.login}: ${e.message}")
+                        }
+                    }
+                } else {
+                    android.util.Log.w("AuthManager", "Не удалось получить список организаций: ${orgsResponse.code()}")
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("AuthManager", "Ошибка при получении организаций: ${e.message}. Продолжаем только с пользовательскими репозиториями")
+            }
+
+            val result = repositories.distinctBy { it.id }
+            android.util.Log.d("AuthManager", "Итого уникальных репозиториев GitHub: ${result.size}")
+            return result
+        } catch (e: Exception) {
+            android.util.Log.e("AuthManager", "Ошибка в getGitHubRepositories: ${e.message}", e)
+            throw e
         }
-        
-        return repositories.distinctBy { it.id }
     }
     
     private suspend fun getGitLabRepositories(authHeader: String): List<GitRemoteRepository> {
-        val repositories = mutableListOf<GitRemoteRepository>()
-        
-        // Получаем проекты пользователя
-        val projectsResponse = gitlabApi.getUserProjects(authHeader)
-        if (projectsResponse.isSuccessful) {
-            projectsResponse.body()?.forEach { project ->
-                repositories.add(project.toGitRemoteRepository())
+        try {
+            android.util.Log.d("AuthManager", "Запрашиваем проекты пользователя от GitLab API")
+            val repositories = mutableListOf<GitRemoteRepository>()
+
+            // Получаем проекты пользователя
+            val projectsResponse = gitlabApi.getUserProjects(authHeader)
+            android.util.Log.d("AuthManager", "Ответ от getUserProjects: код ${projectsResponse.code()}, успешно: ${projectsResponse.isSuccessful}")
+
+            if (projectsResponse.isSuccessful) {
+                val projects = projectsResponse.body()
+                android.util.Log.d("AuthManager", "Получено ${projects?.size ?: 0} проектов GitLab")
+                projects?.forEach { project ->
+                    repositories.add(project.toGitRemoteRepository())
+                }
+            } else {
+                val errorBody = projectsResponse.errorBody()?.string()
+                android.util.Log.e("AuthManager", "Ошибка получения проектов GitLab: ${projectsResponse.code()}, $errorBody")
+                throw Exception("Ошибка получения проектов GitLab: ${projectsResponse.code()}")
             }
+
+            android.util.Log.d("AuthManager", "Итого репозиториев GitLab: ${repositories.size}")
+            return repositories
+        } catch (e: Exception) {
+            android.util.Log.e("AuthManager", "Ошибка в getGitLabRepositories: ${e.message}", e)
+            throw e
         }
-        
-        return repositories
     }
     
     // Проверка авторизации

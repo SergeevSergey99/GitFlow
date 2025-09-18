@@ -29,19 +29,50 @@ fun RemoteRepositoriesScreen(
     onRepositoryCloned: () -> Unit,
     viewModel: RemoteRepositoriesViewModel = viewModel()
 ) {
+    android.util.Log.d("RemoteRepositoriesScreen", "RemoteRepositoriesScreen началась")
+
     val context = LocalContext.current
-    val authManager = remember { AuthManager(context) }
-    
-    val repositories by viewModel.repositories.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
-    val errorMessage by viewModel.errorMessage.collectAsState()
-    val selectedProvider by viewModel.selectedProvider.collectAsState()
-    val isCloning by viewModel.isCloning.collectAsState()
-    
-    LaunchedEffect(Unit) {
-        viewModel.initializeRepositories(authManager)
+    android.util.Log.d("RemoteRepositoriesScreen", "Получен context")
+
+    val authManager = remember {
+        android.util.Log.d("RemoteRepositoriesScreen", "Создаем AuthManager")
+        try {
+            AuthManager(context)
+        } catch (e: Exception) {
+            android.util.Log.e("RemoteRepositoriesScreen", "Ошибка создания AuthManager: ${e.message}", e)
+            throw e
+        }
     }
-    
+
+    android.util.Log.d("RemoteRepositoriesScreen", "AuthManager создан, подписываемся на ViewModel")
+
+    val repositories by viewModel.repositories.collectAsState()
+    android.util.Log.d("RemoteRepositoriesScreen", "repositories collectAsState готово")
+
+    val isLoading by viewModel.isLoading.collectAsState()
+    android.util.Log.d("RemoteRepositoriesScreen", "isLoading collectAsState готово")
+
+    val errorMessage by viewModel.errorMessage.collectAsState()
+    android.util.Log.d("RemoteRepositoriesScreen", "errorMessage collectAsState готово")
+
+    val selectedProvider by viewModel.selectedProvider.collectAsState()
+    android.util.Log.d("RemoteRepositoriesScreen", "selectedProvider collectAsState готово")
+
+    val isCloning by viewModel.isCloning.collectAsState()
+    android.util.Log.d("RemoteRepositoriesScreen", "isCloning collectAsState готово")
+
+    LaunchedEffect(Unit) {
+        android.util.Log.d("RemoteRepositoriesScreen", "LaunchedEffect начался")
+        try {
+            viewModel.initializeRepositories(authManager)
+            android.util.Log.d("RemoteRepositoriesScreen", "initializeRepositories завершен")
+        } catch (e: Exception) {
+            android.util.Log.e("RemoteRepositoriesScreen", "Ошибка в initializeRepositories: ${e.message}", e)
+        }
+    }
+
+    android.util.Log.d("RemoteRepositoriesScreen", "Начинаем рендеринг Scaffold")
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -66,7 +97,9 @@ fun RemoteRepositoriesScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            
+
+            android.util.Log.d("RemoteRepositoriesScreen", "Вызываем ProviderTabs с selectedProvider=$selectedProvider")
+
             // Tabs для выбора провайдера
             ProviderTabs(
                 selectedProvider = selectedProvider,
@@ -122,16 +155,22 @@ fun ProviderTabs(
     isGitHubAuthenticated: Boolean,
     isGitLabAuthenticated: Boolean
 ) {
+    android.util.Log.d("ProviderTabs", "Рендеринг ProviderTabs: selectedProvider=$selectedProvider, github=$isGitHubAuthenticated, gitlab=$isGitLabAuthenticated")
+
     TabRow(
         selectedTabIndex = when (selectedProvider) {
             GitProvider.GITHUB -> 0
             GitProvider.GITLAB -> 1
-            null -> -1
+            null -> 0 // Вместо -1 используем 0 чтобы избежать падения
         }
     ) {
         Tab(
             selected = selectedProvider == GitProvider.GITHUB,
-            onClick = { if (isGitHubAuthenticated) onProviderSelected(GitProvider.GITHUB) },
+            onClick = {
+                if (isGitHubAuthenticated) {
+                    onProviderSelected(GitProvider.GITHUB)
+                }
+            },
             enabled = isGitHubAuthenticated
         ) {
             Row(
@@ -158,7 +197,11 @@ fun ProviderTabs(
         
         Tab(
             selected = selectedProvider == GitProvider.GITLAB,
-            onClick = { if (isGitLabAuthenticated) onProviderSelected(GitProvider.GITLAB) },
+            onClick = {
+                if (isGitLabAuthenticated) {
+                    onProviderSelected(GitProvider.GITLAB)
+                }
+            },
             enabled = isGitLabAuthenticated
         ) {
             Row(

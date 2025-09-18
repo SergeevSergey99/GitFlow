@@ -31,24 +31,49 @@ class RemoteRepositoriesViewModel : ViewModel() {
     private var gitRepository: RealGitRepository? = null
     
     fun initializeRepositories(authManager: AuthManager) {
-        gitRepository = RealGitRepository(authManager.context)
-        
-        // Выбираем первый доступный провайдер
-        when {
-            authManager.isAuthenticated(GitProvider.GITHUB) -> selectProvider(GitProvider.GITHUB, authManager)
-            authManager.isAuthenticated(GitProvider.GITLAB) -> selectProvider(GitProvider.GITLAB, authManager)
-            else -> _errorMessage.value = "Необходимо авторизоваться в GitHub или GitLab"
+        try {
+            android.util.Log.d("RemoteRepositoriesViewModel", "Инициализация RemoteRepositoriesViewModel")
+            gitRepository = RealGitRepository(authManager.context)
+
+            // Выбираем первый доступный провайдер
+            when {
+                authManager.isAuthenticated(GitProvider.GITHUB) -> {
+                    android.util.Log.d("RemoteRepositoriesViewModel", "GitHub авторизован, выбираем GitHub")
+                    selectProvider(GitProvider.GITHUB, authManager)
+                }
+                authManager.isAuthenticated(GitProvider.GITLAB) -> {
+                    android.util.Log.d("RemoteRepositoriesViewModel", "GitLab авторизован, выбираем GitLab")
+                    selectProvider(GitProvider.GITLAB, authManager)
+                }
+                else -> {
+                    android.util.Log.w("RemoteRepositoriesViewModel", "Ни один из провайдеров не авторизован")
+                    _errorMessage.value = "Необходимо авторизоваться в GitHub или GitLab. Настройте OAuth конфигурацию в oauth.properties"
+                    _isLoading.value = false
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("RemoteRepositoriesViewModel", "Ошибка при инициализации: ${e.message}", e)
+            _errorMessage.value = "Ошибка инициализации: ${e.message}"
         }
     }
     
     fun selectProvider(provider: GitProvider, authManager: AuthManager) {
-        if (!authManager.isAuthenticated(provider)) {
-            _errorMessage.value = "Необходимо авторизоваться в ${provider.name}"
-            return
+        try {
+            android.util.Log.d("RemoteRepositoriesViewModel", "Выбор провайдера: $provider")
+
+            if (!authManager.isAuthenticated(provider)) {
+                android.util.Log.e("RemoteRepositoriesViewModel", "Провайдер $provider не авторизован")
+                _errorMessage.value = "Необходимо авторизоваться в ${provider.name}"
+                return
+            }
+
+            android.util.Log.d("RemoteRepositoriesViewModel", "Провайдер $provider выбран, загружаем репозитории")
+            _selectedProvider.value = provider
+            loadRepositories(provider, authManager)
+        } catch (e: Exception) {
+            android.util.Log.e("RemoteRepositoriesViewModel", "Ошибка при выборе провайдера $provider: ${e.message}", e)
+            _errorMessage.value = "Ошибка при выборе провайдера: ${e.message}"
         }
-        
-        _selectedProvider.value = provider
-        loadRepositories(provider, authManager)
     }
     
     fun refreshRepositories(authManager: AuthManager) {
@@ -59,16 +84,20 @@ class RemoteRepositoriesViewModel : ViewModel() {
     
     private fun loadRepositories(provider: GitProvider, authManager: AuthManager) {
         viewModelScope.launch {
-            _isLoading.value = true
-            _errorMessage.value = null
-            
             try {
+                android.util.Log.d("RemoteRepositoriesViewModel", "Начинаем загрузку репозиториев для провайдера: $provider")
+                _isLoading.value = true
+                _errorMessage.value = null
+
                 val repos = authManager.getRepositories(provider)
+                android.util.Log.d("RemoteRepositoriesViewModel", "Успешно загружено ${repos.size} репозиториев")
                 _repositories.value = repos.sortedByDescending { it.updatedAt }
             } catch (e: Exception) {
+                android.util.Log.e("RemoteRepositoriesViewModel", "Ошибка загрузки репозиториев для провайдера $provider: ${e.message}", e)
                 _errorMessage.value = "Ошибка загрузки репозиториев: ${e.message}"
                 _repositories.value = emptyList()
             } finally {
+                android.util.Log.d("RemoteRepositoriesViewModel", "Загрузка репозиториев завершена")
                 _isLoading.value = false
             }
         }
