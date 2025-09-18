@@ -976,6 +976,14 @@ fun SettingsView(
     onGraphPresetChanged: (String) -> Unit,
     navController: NavController
 ) {
+    val context = LocalContext.current
+    val authManager = remember { com.gitflow.android.data.auth.AuthManager(context) }
+
+    // Получаем информацию о пользователях
+    val githubUser = authManager.getCurrentUser(com.gitflow.android.data.models.GitProvider.GITHUB)
+    val gitlabUser = authManager.getCurrentUser(com.gitflow.android.data.models.GitProvider.GITLAB)
+    val hasAnyAuth = githubUser != null || gitlabUser != null
+
     var showGraphPresetDialog by remember { mutableStateOf(false) }
 
     Column(
@@ -997,43 +1005,66 @@ fun SettingsView(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(
-                        modifier = Modifier.size(48.dp),
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primaryContainer
-                    ) {
-                        Icon(
-                            Icons.Default.Person,
-                            contentDescription = null,
-                            modifier = Modifier.padding(12.dp)
-                        )
+                if (hasAnyAuth) {
+                    // Показываем информацию об авторизованных аккаунтах
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        githubUser?.let { user ->
+                            UserAccountRow(
+                                user = user,
+                                provider = com.gitflow.android.data.models.GitProvider.GITHUB
+                            )
+                        }
+                        gitlabUser?.let { user ->
+                            UserAccountRow(
+                                user = user,
+                                provider = com.gitflow.android.data.models.GitProvider.GITLAB
+                            )
+                        }
                     }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text("Guest User", fontWeight = FontWeight.Medium)
-                        Text(
-                            "Not signed in",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                } else {
+                    // Показываем состояние "гость"
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(48.dp),
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer
+                        ) {
+                            Icon(
+                                Icons.Default.Person,
+                                contentDescription = null,
+                                modifier = Modifier.padding(12.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("Guest User", fontWeight = FontWeight.Medium)
+                            Text(
+                                "Not signed in",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Button(
-                    onClick = { 
+                    onClick = {
                         navController.navigate("auth")
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.Login, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(
+                        if (hasAnyAuth) Icons.Default.Settings else Icons.Default.Login,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Manage Accounts")
+                    Text(if (hasAnyAuth) "Manage Accounts" else "Sign In")
                 }
             }
         }
@@ -1858,6 +1889,63 @@ fun DeleteRepositoryDialog(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun UserAccountRow(
+    user: com.gitflow.android.data.models.GitUser,
+    provider: com.gitflow.android.data.models.GitProvider
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            modifier = Modifier.size(48.dp),
+            shape = CircleShape,
+            color = when (provider) {
+                com.gitflow.android.data.models.GitProvider.GITHUB -> Color(0xFF24292F).copy(alpha = 0.1f)
+                com.gitflow.android.data.models.GitProvider.GITLAB -> Color(0xFFFC6D26).copy(alpha = 0.1f)
+            }
+        ) {
+            Icon(
+                when (provider) {
+                    com.gitflow.android.data.models.GitProvider.GITHUB -> Icons.Default.Code
+                    com.gitflow.android.data.models.GitProvider.GITLAB -> Icons.Default.Storage
+                },
+                contentDescription = null,
+                modifier = Modifier.padding(12.dp),
+                tint = when (provider) {
+                    com.gitflow.android.data.models.GitProvider.GITHUB -> Color(0xFF24292F)
+                    com.gitflow.android.data.models.GitProvider.GITLAB -> Color(0xFFFC6D26)
+                }
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = user.name ?: user.login,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = "${provider.name} • @${user.login}",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.primaryContainer
+        ) {
+            Text(
+                text = "Connected",
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
         }
     }
 }
