@@ -617,7 +617,7 @@ fun CommitInfoView(commit: Commit) {
             )
         }
 
-        if (commit.branch != null) {
+        /*if (commit.branch != null) {
             item {
                 InfoCard(
                     title = "Branch",
@@ -625,7 +625,7 @@ fun CommitInfoView(commit: Commit) {
                     icon = Icons.Default.AccountTree
                 )
             }
-        }
+        }*/
 
         if (commit.tags.isNotEmpty()) {
             item {

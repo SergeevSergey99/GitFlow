@@ -1,4 +1,6 @@
 package com.gitflow.android.ui.screens
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onGloballyPositioned
 
 import android.content.Intent
 import android.net.Uri
@@ -34,6 +36,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1033,6 +1038,7 @@ fun SettingsView(
             }
         }
 
+        /*
         Card(
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -1073,7 +1079,7 @@ fun SettingsView(
                 }
             }
         }
-
+*/
         // Новая секция для настроек графа
         Card(
             modifier = Modifier.fillMaxWidth()
@@ -1200,7 +1206,7 @@ fun AddRepositoryDialog(
             shape = RoundedCornerShape(16.dp)
         ) {
             Column(
-                modifier = Modifier.padding(20.dp)
+                modifier = Modifier.padding(10.dp)
             ) {
                 Text(
                     text = "Add Repository",
@@ -1209,28 +1215,38 @@ fun AddRepositoryDialog(
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
+                val tabTitles = listOf("Clone", "Local", "Create", "Remote")
+                var containerWidth by remember { mutableStateOf(0) }
+                val tabCount = tabTitles.size
+                val maxChars = tabTitles.maxOf { it.length }
+                val density = LocalDensity.current
 
-                TabRow(selectedTabIndex = selectedTab) {
-                    Tab(
-                        selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
-                        text = { Text("Clone") }
-                    )
-                    Tab(
-                        selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
-                        text = { Text("Local") }
-                    )
-                    Tab(
-                        selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
-                        text = { Text("Create") }
-                    )
-                    Tab(
-                        selected = selectedTab == 3,
-                        onClick = { selectedTab = 3 },
-                        text = { Text("Remote") }
-                    )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onGloballyPositioned { coordinates ->
+                            containerWidth = coordinates.size.width
+                        }
+                ) {
+                    val tabWidthPx = if (tabCount > 0) containerWidth / tabCount else 0
+                    val fontSizePx = if (maxChars > 0) tabWidthPx / (maxChars) else 14f
+                    val fontSizeSp = with(density) { fontSizePx.toFloat().toSp() }
+
+                    TabRow(selectedTabIndex = selectedTab) {
+                        tabTitles.forEachIndexed { index, title ->
+                            Tab(
+                                selected = selectedTab == index,
+                                onClick = { selectedTab = index },
+                                text = {
+                                    Text(
+                                        title,
+                                        fontSize = fontSizeSp,
+                                        maxLines = 1
+                                    )
+                                }
+                            )
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -1238,11 +1254,12 @@ fun AddRepositoryDialog(
                 when (selectedTab) {
                     0 -> {
                         // Clone tab
+                        val clipboardManager = LocalClipboardManager.current
+
                         OutlinedTextField(
                             value = url,
-                            onValueChange = { 
+                            onValueChange = {
                                 url = it
-                                // Автоматически извлекаем имя из URL
                                 if (it.isNotEmpty()) {
                                     val repoName = extractRepoNameFromUrl(it)
                                     if (repoName.isNotEmpty()) {
@@ -1254,7 +1271,21 @@ fun AddRepositoryDialog(
                             placeholder = { Text("https://github.com/user/repo.git") },
                             modifier = Modifier.fillMaxWidth(),
                             leadingIcon = {
-                                Icon(Icons.Default.Link, contentDescription = null)
+                                IconButton(
+                                    onClick = {
+                                        val clipboardText = clipboardManager.getText()?.text ?: ""
+                                        if (clipboardText.isNotEmpty()) {
+                                            url = clipboardText
+                                            val repoName = extractRepoNameFromUrl(clipboardText)
+                                            if (repoName.isNotEmpty()) {
+                                                name = repoName
+                                            }
+                                        }
+                                    },
+                                    enabled = !isLoading
+                                ) {
+                                    Icon(Icons.Default.Link, contentDescription = null)
+                                }
                             },
                             enabled = !isLoading
                         )
