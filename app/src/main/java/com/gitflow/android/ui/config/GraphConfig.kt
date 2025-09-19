@@ -4,98 +4,103 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.times
 
-/**
- * Конфигурация для настройки внешнего вида git-графа
- */
 data class GraphConfig(
-    // Размеры узлов
-    val nodeSize: Dp = 20.dp,
-    val nodeBorderWidth: Dp = 2.dp,
-
-    // Расстояния между элементами
-    val laneStep: Dp = 24.dp,
-    val nodeCenterOffset: Dp = 16.dp,
-    val rowHeight: Dp = 56.dp,
-    val rowPadding: Dp = 6.dp,
-
-    // Линии соединений
-    val lineStrokeWidth: Dp = 2.dp,
-
-    // Информационная часть
-    val infoMinWidth: Dp = 300.dp,
-    val infoStartPadding: Dp = 8.dp,
-    val badgeSpacing: Dp = 8.dp,
-    val textSpacing: Dp = 2.dp,
-
-    // Бейджи
-    val badgeCornerRadius: Dp = 4.dp,
-    val badgeHorizontalPadding: Dp = 6.dp,
-    val badgeVerticalPadding: Dp = 2.dp,
-    val badgeIconSize: Dp = 12.dp,
-    val badgeIconSpacing: Dp = 4.dp,
-
-    // Минимальная ширина области графа
-    val graphMinWidth: Dp = 60.dp
+    val rowHeight: Dp,
+    val rowPadding: Dp,
+    val laneStep: Dp,
+    val nodeSize: Dp,
+    val nodeCenterOffset: Dp,
+    val nodeBorderWidth: Dp,
+    val lineStrokeWidth: Dp,
+    val infoMinWidth: Dp,
+    val infoStartPadding: Dp,
+    val textSpacing: Dp,
+    val badgeSpacing: Dp,
+    val badgeCornerRadius: Dp,
+    val badgeHorizontalPadding: Dp,
+    val badgeVerticalPadding: Dp,
+    val badgeIconSize: Dp,
+    val badgeIconSpacing: Dp
 ) {
-    companion object {
-        /**
-         * Конфигурация по умолчанию
-         */
-        val Default = GraphConfig()
-
-        /**
-         * Компактная конфигурация для небольших экранов
-         */
-        val Compact = GraphConfig(
-            nodeSize = 16.dp,
-            nodeBorderWidth = 1.5.dp,
-            laneStep = 20.dp,
-            nodeCenterOffset = 14.dp,
-            rowHeight = 48.dp,
-            rowPadding = 4.dp,
-            lineStrokeWidth = 1.5.dp,
-            infoMinWidth = 250.dp,
-            infoStartPadding = 6.dp,
-            badgeSpacing = 6.dp
-        )
-
-        /**
-         * Крупная конфигурация для больших экранов
-         */
-        val Large = GraphConfig(
-            nodeSize = 24.dp,
-            nodeBorderWidth = 3.dp,
-            laneStep = 28.dp,
-            nodeCenterOffset = 18.dp,
-            rowHeight = 64.dp,
-            rowPadding = 8.dp,
-            lineStrokeWidth = 2.5.dp,
-            infoMinWidth = 350.dp,
-            infoStartPadding = 10.dp,
-            badgeSpacing = 10.dp
-        )
-
-        /**
-         * Конфигурация для широких графов с большим количеством веток
-         */
-        val Wide = GraphConfig(
-            nodeSize = 18.dp,
-            nodeBorderWidth = 2.dp,
-            laneStep = 20.dp,
-            nodeCenterOffset = 14.dp,
-            rowHeight = 52.dp,
-            rowPadding = 6.dp,
-            lineStrokeWidth = 1.5.dp,
-            infoMinWidth = 400.dp,
-            infoStartPadding = 8.dp,
-            badgeSpacing = 8.dp
-        )
+    fun getGraphWidth(maxLanes: Int): Dp {
+        return maxLanes * laneStep + nodeCenterOffset + nodeSize
     }
 
-    /**
-     * Вычисляет ширину области графа в зависимости от количества полос
-     */
-    fun getGraphWidth(maxLanes: Int): Dp {
-        return maxOf(graphMinWidth, (maxLanes + 1) * laneStep + nodeCenterOffset)
+    companion object {
+        val Default = GraphConfig(
+            rowHeight = 64.dp,
+            rowPadding = 16.dp,
+            laneStep = 32.dp,
+            nodeSize = 10.dp,
+            nodeCenterOffset = 16.dp,
+            nodeBorderWidth = 2.dp,
+            lineStrokeWidth = 3.dp,
+            infoMinWidth = 300.dp,
+            infoStartPadding = 12.dp,
+            textSpacing = 4.dp,
+            badgeSpacing = 8.dp,
+            badgeCornerRadius = 4.dp,
+            badgeHorizontalPadding = 6.dp,
+            badgeVerticalPadding = 2.dp,
+            badgeIconSize = 12.dp,
+            badgeIconSpacing = 4.dp
+        )
+
+        val Compact = GraphConfig(
+            rowHeight = 48.dp,
+            rowPadding = 12.dp,
+            laneStep = 24.dp,
+            nodeSize = 8.dp,
+            nodeCenterOffset = 12.dp,
+            nodeBorderWidth = 1.5.dp,
+            lineStrokeWidth = 2.dp,
+            infoMinWidth = 250.dp,
+            infoStartPadding = 8.dp,
+            textSpacing = 2.dp,
+            badgeSpacing = 6.dp,
+            badgeCornerRadius = 3.dp,
+            badgeHorizontalPadding = 4.dp,
+            badgeVerticalPadding = 1.dp,
+            badgeIconSize = 10.dp,
+            badgeIconSpacing = 3.dp
+        )
+
+        val Large = GraphConfig(
+            rowHeight = 80.dp,
+            rowPadding = 20.dp,
+            laneStep = 40.dp,
+            nodeSize = 12.dp,
+            nodeCenterOffset = 20.dp,
+            nodeBorderWidth = 2.5.dp,
+            lineStrokeWidth = 4.dp,
+            infoMinWidth = 400.dp,
+            infoStartPadding = 16.dp,
+            textSpacing = 6.dp,
+            badgeSpacing = 10.dp,
+            badgeCornerRadius = 6.dp,
+            badgeHorizontalPadding = 8.dp,
+            badgeVerticalPadding = 3.dp,
+            badgeIconSize = 14.dp,
+            badgeIconSpacing = 5.dp
+        )
+
+        val Wide = GraphConfig(
+            rowHeight = 64.dp,
+            rowPadding = 16.dp,
+            laneStep = 48.dp,
+            nodeSize = 10.dp,
+            nodeCenterOffset = 24.dp,
+            nodeBorderWidth = 2.dp,
+            lineStrokeWidth = 3.dp,
+            infoMinWidth = 350.dp,
+            infoStartPadding = 12.dp,
+            textSpacing = 4.dp,
+            badgeSpacing = 8.dp,
+            badgeCornerRadius = 4.dp,
+            badgeHorizontalPadding = 6.dp,
+            badgeVerticalPadding = 2.dp,
+            badgeIconSize = 12.dp,
+            badgeIconSpacing = 4.dp
+        )
     }
 }

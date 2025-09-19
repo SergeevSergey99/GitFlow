@@ -36,3 +36,7 @@ local.properties
 ehthumbs.db
 Thumbs.db
 .idea
+
+# OAuth configuration files
+oauth.properties
+app/src/main/assets/oauth.properties

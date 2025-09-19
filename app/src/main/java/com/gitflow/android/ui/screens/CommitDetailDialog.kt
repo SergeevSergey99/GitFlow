@@ -27,6 +27,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.gitflow.android.data.models.*
 import com.gitflow.android.data.repository.MockGitRepository
+import com.gitflow.android.data.repository.RealGitRepository
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -34,11 +35,28 @@ import java.util.*
 @Composable
 fun CommitDetailDialog(
     commit: Commit,
-    gitRepository: MockGitRepository,
+    repository: Repository?,
+    gitRepository: RealGitRepository,
     onDismiss: () -> Unit
 ) {
     var selectedTab by remember { mutableStateOf(0) }
-    val fileDiffs = remember { gitRepository.getCommitDiffs(commit) }
+    var fileDiffs by remember { mutableStateOf<List<FileDiff>>(emptyList()) }
+    var isLoadingDiffs by remember { mutableStateOf(true) }
+    var selectedFile by remember { mutableStateOf<FileDiff?>(null) }
+    val scope = rememberCoroutineScope()
+
+    // Загружаем диффы при открытии диалога
+    LaunchedEffect(commit, repository) {
+        isLoadingDiffs = true
+        android.util.Log.d("CommitDetailDialog", "Loading diffs for commit: ${commit.hash}")
+        fileDiffs = if (repository != null) {
+            gitRepository.getCommitDiffs(commit, repository)
+        } else {
+            gitRepository.getCommitDiffs(commit)
+        }
+        android.util.Log.d("CommitDetailDialog", "Loaded ${fileDiffs.size} file diffs")
+        isLoadingDiffs = false
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -58,103 +76,30 @@ fun CommitDetailDialog(
                     modifier = Modifier.fillMaxWidth(),
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
-                    Column {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.Top
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Commit Details",
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = commit.hash,
-                                    fontSize = 14.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                                )
-                            }
-                            IconButton(onClick = onDismiss) {
-                                Icon(Icons.Default.Close, contentDescription = "Close")
-                            }
-                        }
-
-                        // Commit info
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surface
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = commit.message,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp)
-                            ) {
-                                // Author info
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Stats
+                            if (isLoadingDiffs) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                            } else {
                                 Row(
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Surface(
-                                        modifier = Modifier.size(40.dp),
-                                        shape = CircleShape,
-                                        color = MaterialTheme.colorScheme.secondaryContainer
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Text(
-                                                text = commit.author.first().uppercase(),
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 18.sp
-                                            )
-                                        }
-                                    }
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column {
-                                        Text(
-                                            text = commit.author,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                        Text(
-                                            text = commit.email,
-                                            fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Text(
-                                            text = formatDate(commit.timestamp),
-                                            fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                // Commit message
-                                Text(
-                                    text = commit.message,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-
-                                if (commit.description.isNotEmpty()) {
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = commit.description,
-                                        fontSize = 14.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-
-                                // Stats
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     StatChip(
                                         icon = Icons.Default.Add,
@@ -175,41 +120,66 @@ fun CommitDetailDialog(
                             }
                         }
 
-                        // Tabs
-                        TabRow(
-                            selectedTabIndex = selectedTab,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Tab(
-                                selected = selectedTab == 0,
-                                onClick = { selectedTab = 0 },
-                                text = { Text("Changes (${fileDiffs.size})") }
-                            )
-                            Tab(
-                                selected = selectedTab == 1,
-                                onClick = { selectedTab = 1 },
-                                text = { Text("Files") }
-                            )
-                            Tab(
-                                selected = selectedTab == 2,
-                                onClick = { selectedTab = 2 },
-                                text = { Text("Info") }
-                            )
-                            Tab(
-                                selected = selectedTab == 3,
-                                onClick = { selectedTab = 3 },
-                                text = { Text("File Tree") }
-                            )
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.Default.Close, contentDescription = "Close")
                         }
                     }
                 }
 
+                // Tabs
+                TabRow(
+                    selectedTabIndex = selectedTab,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Tab(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        text = { Text("Changes") }
+                    )
+                    Tab(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        text = { Text("Files") }
+                    )
+                    Tab(
+                        selected = selectedTab == 2,
+                        onClick = { selectedTab = 2 },
+                        text = { Text("Info") }
+                    )
+                    Tab(
+                        selected = selectedTab == 3,
+                        onClick = { selectedTab = 3 },
+                        text = { Text("File Tree") }
+                    )
+                }
+
                 // Tab content
                 when (selectedTab) {
-                    0 -> DiffView(fileDiffs)
-                    1 -> FileListView(fileDiffs)
+                    0 -> if (isLoadingDiffs) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    } else {
+                        DiffView(selectedFile)
+                    }
+                    1 -> if (isLoadingDiffs) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    } else {
+                        FileListView(fileDiffs, selectedFile) { file ->
+                            selectedFile = file
+                            selectedTab = 0 // Переключаемся на вкладку Changes
+                        }
+                    }
                     2 -> CommitInfoView(commit)
-                    3 -> FileTreeView(commit, gitRepository)
+                    3 -> FileTreeView(commit, repository, gitRepository)
                 }
             }
         }
@@ -218,51 +188,36 @@ fun CommitDetailDialog(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DiffView(fileDiffs: List<FileDiff>) {
-    var selectedFile by remember { mutableStateOf(fileDiffs.firstOrNull()) }
+fun DiffView(selectedFile: FileDiff?) {
     var showSideBySide by remember { mutableStateOf(false) }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        // File selector
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+    if (selectedFile == null) {
+        // Пустое состояние когда файл не выбран
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
         ) {
-            items(fileDiffs) { diff ->
-                FilterChip(
-                    selected = selectedFile == diff,
-                    onClick = { selectedFile = diff },
-                    label = {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                when (diff.status) {
-                                    FileStatus.ADDED -> Icons.Default.Add
-                                    FileStatus.MODIFIED -> Icons.Default.Edit
-                                    FileStatus.DELETED -> Icons.Default.Delete
-                                    FileStatus.RENAMED -> Icons.Default.DriveFileRenameOutline
-                                },
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = when (diff.status) {
-                                    FileStatus.ADDED -> Color(0xFF4CAF50)
-                                    FileStatus.MODIFIED -> Color(0xFFFF9800)
-                                    FileStatus.DELETED -> Color(0xFFF44336)
-                                    FileStatus.RENAMED -> Color(0xFF2196F3)
-                                }
-                            )
-                            Text(
-                                text = diff.path.substringAfterLast("/"),
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    Icons.Default.Description,
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Select a file in the Files tab to view changes",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 16.sp
                 )
             }
         }
+        return
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
 
         // View mode toggle
         Row(
@@ -273,7 +228,7 @@ fun DiffView(fileDiffs: List<FileDiff>) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = selectedFile?.path ?: "",
+                text = selectedFile.path,
                 fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -310,12 +265,10 @@ fun DiffView(fileDiffs: List<FileDiff>) {
         Divider()
 
         // Diff content
-        selectedFile?.let { diff ->
-            if (showSideBySide) {
-                SideBySideDiffView(diff)
-            } else {
-                UnifiedDiffView(diff)
-            }
+        if (showSideBySide) {
+            SideBySideDiffView(selectedFile)
+        } else {
+            UnifiedDiffView(selectedFile)
         }
     }
 }
@@ -436,8 +389,13 @@ fun DiffLineView(line: DiffLine, compact: Boolean = false) {
             modifier = Modifier.padding(horizontal = if (compact) 8.dp else 16.dp, vertical = 2.dp)
         ) {
             if (!compact) {
+                val lineNumberText = when (line.type) {
+                    LineType.ADDED -> line.newLineNumber?.toString() ?: ""
+                    LineType.DELETED -> line.oldLineNumber?.toString() ?: ""
+                    LineType.CONTEXT -> line.oldLineNumber?.toString() ?: ""
+                }
                 Text(
-                    text = line.lineNumber?.toString() ?: "",
+                    text = lineNumberText,
                     fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
@@ -469,22 +427,42 @@ fun DiffLineView(line: DiffLine, compact: Boolean = false) {
 }
 
 @Composable
-fun FileListView(fileDiffs: List<FileDiff>) {
+fun FileListView(
+    fileDiffs: List<FileDiff>,
+    selectedFile: FileDiff?,
+    onFileSelected: (FileDiff) -> Unit
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         items(fileDiffs) { diff ->
-            FileItem(diff)
+            FileItem(
+                diff = diff,
+                isSelected = selectedFile == diff,
+                onClick = { onFileSelected(diff) }
+            )
         }
     }
 }
 
 @Composable
-fun FileItem(diff: FileDiff) {
+fun FileItem(
+    diff: FileDiff,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
     Card(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected)
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            else
+                MaterialTheme.colorScheme.surface
+        )
     ) {
         Row(
             modifier = Modifier
@@ -562,6 +540,59 @@ fun CommitInfoView(commit: Commit) {
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Commit message
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "Message",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    SelectionContainer {
+                        Text(
+                            text = commit.message,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    if (commit.description.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Description",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        SelectionContainer {
+                            Text(
+                                text = commit.description,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         item {
             InfoCard(
                 title = "Commit Hash",
@@ -586,7 +617,7 @@ fun CommitInfoView(commit: Commit) {
             )
         }
 
-        if (commit.branch != null) {
+        /*if (commit.branch != null) {
             item {
                 InfoCard(
                     title = "Branch",
@@ -594,7 +625,7 @@ fun CommitInfoView(commit: Commit) {
                     icon = Icons.Default.AccountTree
                 )
             }
-        }
+        }*/
 
         if (commit.tags.isNotEmpty()) {
             item {
@@ -774,9 +805,22 @@ fun formatFileSize(size: Long): String {
 }
 
 @Composable
-fun FileTreeView(commit: Commit, gitRepository: MockGitRepository) {
-    val fileTree = remember(commit) { gitRepository.getCommitFileTree(commit) }
+fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGitRepository) {
+    var fileTree by remember { mutableStateOf<FileTreeNode?>(null) }
+    var isLoading by remember { mutableStateOf(true) }
     var selectedFileForViewing by remember { mutableStateOf<FileTreeNode?>(null) }
+    val scope = rememberCoroutineScope()
+
+    // Загружаем дерево файлов при открытии
+    LaunchedEffect(commit, repository) {
+        isLoading = true
+        fileTree = if (repository != null) {
+            gitRepository.getCommitFileTree(commit, repository)
+        } else {
+            gitRepository.getCommitFileTree(commit)
+        }
+        isLoading = false
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Header
@@ -801,51 +845,68 @@ fun FileTreeView(commit: Commit, gitRepository: MockGitRepository) {
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp
                     )
-                    Text(
-                        text = "Commit: ${commit.hash.take(7)} • ${fileTree.children.sumOf { countFiles(it) }} files",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    if (isLoading) {
+                        Text(
+                            text = "Loading...",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Text(
+                            text = "Commit: ${commit.hash.take(7)} • ${fileTree?.children?.sumOf { countFiles(it) } ?: 0} files",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
 
         // File tree content
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            if (fileTree.children.isNotEmpty()) {
-                items(fileTree.children) { node ->
-                    FileTreeNodeItem(
-                        node = node,
-                        level = 0,
-                        onFileClicked = { selectedFileForViewing = it }
-                    )
-                }
-            } else {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                if (fileTree?.children?.isNotEmpty() == true) {
+                    items(fileTree!!.children) { node ->
+                        FileTreeNodeItem(
+                            node = node,
+                            level = 0,
+                            onFileClicked = { selectedFileForViewing = it }
+                        )
+                    }
+                } else {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(200.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                Icons.Default.FolderOpen,
-                                contentDescription = null,
-                                modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "No files found in this commit",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    Icons.Default.FolderOpen,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(48.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "No files found in this commit",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
@@ -858,6 +919,7 @@ fun FileTreeView(commit: Commit, gitRepository: MockGitRepository) {
         FileViewerDialog(
             file = file,
             commit = commit,
+            repository = repository,
             gitRepository = gitRepository,
             onDismiss = { selectedFileForViewing = null }
         )
@@ -978,15 +1040,20 @@ fun FileTreeNodeItem(
 fun FileViewerDialog(
     file: FileTreeNode,
     commit: Commit,
-    gitRepository: MockGitRepository,
+    repository: Repository?,
+    gitRepository: RealGitRepository,
     onDismiss: () -> Unit
 ) {
     var fileContent by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(true) }
 
-    LaunchedEffect(file) {
+    LaunchedEffect(file, repository) {
         isLoading = true
-        fileContent = gitRepository.getFileContent(commit, file.path)
+        fileContent = if (repository != null) {
+            gitRepository.getFileContent(commit, file.path, repository)
+        } else {
+            gitRepository.getFileContent(commit, file.path)
+        }
         isLoading = false
     }
 

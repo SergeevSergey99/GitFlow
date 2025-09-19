@@ -480,16 +480,3 @@ class MockGitRepository {
     private fun scenarioSingleBranchMerges(): List<Commit> = scenarioSample()
     private fun scenarioTenBranches(): List<Commit> = scenarioSample()
 }
-
-// Result classes
-data class PullResult(
-    val success: Boolean,
-    val newCommits: Int,
-    val conflicts: List<String>
-)
-
-data class PushResult(
-    val success: Boolean,
-    val pushedCommits: Int,
-    val message: String
-)

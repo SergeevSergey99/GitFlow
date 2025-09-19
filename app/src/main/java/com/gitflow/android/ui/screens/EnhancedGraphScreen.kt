@@ -14,8 +14,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.LocalOffer
+import androidx.compose.material.icons.filled.MergeType
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -40,6 +43,7 @@ import androidx.compose.ui.unit.times
 import com.gitflow.android.data.models.Commit
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.MockGitRepository
+import com.gitflow.android.data.repository.RealGitRepository
 import com.gitflow.android.ui.config.GraphConfig
 import java.text.SimpleDateFormat
 import java.util.*
@@ -56,7 +60,7 @@ import kotlin.math.max
 @Composable
 fun EnhancedGraphView(
     repository: Repository?,
-    gitRepository: MockGitRepository,
+    gitRepository: RealGitRepository,
     config: GraphConfig = GraphConfig.Default
 ) {
     if (repository == null) {
@@ -64,26 +68,47 @@ fun EnhancedGraphView(
         return
     }
 
-    var commits by remember { mutableStateOf(gitRepository.getCommits(repository)) }
+    var commits by remember { mutableStateOf<List<Commit>>(emptyList()) }
     var selectedCommit by remember { mutableStateOf<Commit?>(null) }
     var showCommitDetail by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
+
+    // Загружаем коммиты при смене репозитория
+    LaunchedEffect(repository) {
+        isLoading = true
+        commits = gitRepository.getCommits(repository)
+        isLoading = false
+    }
 
     val graphData = remember(commits) { buildGraphData(commits) }
 
     Box(Modifier.fillMaxSize()) {
-        GraphCanvas(
-            graphData = graphData,
-            config = config,
-            onCommitClick = { commit ->
-                selectedCommit = commit
-                showCommitDetail = true
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
             }
-        )
+        } else if (commits.isEmpty()) {
+            EmptyStateMessage("No commits found in this repository")
+        } else {
+            GraphCanvas(
+                graphData = graphData,
+                config = config,
+                onCommitClick = { commit ->
+                    selectedCommit = commit
+                    showCommitDetail = true
+                }
+            )
+        }
     }
 
     if (showCommitDetail && selectedCommit != null) {
         CommitDetailDialog(
             commit = selectedCommit!!,
+            repository = repository,
             gitRepository = gitRepository,
             onDismiss = {
                 showCommitDetail = false
@@ -104,7 +129,9 @@ private fun GraphCanvas(
     val horizontalScrollState = rememberScrollState()
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .horizontalScroll(horizontalScrollState)
     ) {
         itemsIndexed(graphData.commits, key = { _, c -> c.hash }) { _, commit ->
             val node = graphData.nodePositions.getValue(commit.hash)
@@ -141,10 +168,9 @@ private fun GraphCommitRow(
 
     Row(
         modifier = Modifier
-            .fillMaxWidth()
+            .wrapContentWidth()
             .height(config.rowHeight)
             .clickable { onClick() }
-            .horizontalScroll(horizontalScrollState)
             .padding(horizontal = config.rowPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -170,40 +196,68 @@ private fun GraphCommitRow(
                     .offset(x = (nodeData.lane * config.laneStep + config.nodeCenterOffset))
                     .align(Alignment.CenterStart)
             ) {
-                // Основная точка
-                Box(
-                    modifier = Modifier
-                        .size(config.nodeSize)
-                        .offset(x = -(config.nodeSize / 2), y = 0.dp)
-                        .clip(CircleShape)
-                        .background(nodeColor)
-                        .border(config.nodeBorderWidth, Color.White, CircleShape)
-                )
+                // Основная точка с учетом типа коммита
+                if (commit.isMergeCommit) {
+                    // Квадратный узел для merge коммитов
+                    Box(
+                        modifier = Modifier
+                            .size(config.nodeSize)
+                            .offset(x = -(config.nodeSize / 2), y = 0.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(nodeColor)
+                            .border(config.nodeBorderWidth, Color.White, RoundedCornerShape(2.dp))
+                    )
+                } else {
+                    // Круглый узел для обычных коммитов
+                    Box(
+                        modifier = Modifier
+                            .size(config.nodeSize)
+                            .offset(x = -(config.nodeSize / 2), y = 0.dp)
+                            .clip(CircleShape)
+                            .background(nodeColor)
+                            .border(config.nodeBorderWidth, Color.White, CircleShape)
+                    )
+                }
             }
         }
 
         // Правая информационная часть с возможностью прокрутки
         Column(
             modifier = Modifier
-                .widthIn(min = config.infoMinWidth)
+                .wrapContentWidth()
                 .padding(start = config.infoStartPadding)
         ) {
-            Text(
-                text = commit.message,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Visible
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Иконка merge коммита
+                if (commit.isMergeCommit) {
+                    androidx.compose.material3.Icon(
+                        Icons.Default.MergeType,
+                        contentDescription = "Merge commit",
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.width(4.dp))
+                }
+                
+                Text(
+                    text = commit.message,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Visible,
+                    softWrap = false
+                )
+            }
 
             Spacer(Modifier.height(config.textSpacing))
 
             Row(
-                horizontalArrangement = Arrangement.spacedBy(config.badgeSpacing),
-                modifier = Modifier.fillMaxWidth()
+                horizontalArrangement = Arrangement.spacedBy(config.badgeSpacing)
             ) {
                 // hash
-                Surface(
+                /*Surface(
                     shape = RoundedCornerShape(config.badgeCornerRadius),
                     color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
                 ) {
@@ -216,7 +270,7 @@ private fun GraphCommitRow(
                             vertical = config.badgeVerticalPadding
                         )
                     )
-                }
+                }*/
 
                 // время
                 Surface(
@@ -241,13 +295,43 @@ private fun GraphCommitRow(
                     }
                 }
 
-                // бейдж ветки
-                commit.branch?.let { b ->
+                // автор
+                Surface(
+                    shape = RoundedCornerShape(config.badgeCornerRadius),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(
+                            horizontal = config.badgeHorizontalPadding,
+                            vertical = config.badgeVerticalPadding
+                        )
+                    ) {
+                        androidx.compose.material3.Icon(
+                            Icons.Default.Person,
+                            contentDescription = null,
+                            modifier = Modifier.size(config.badgeIconSize),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(Modifier.width(config.badgeIconSpacing))
+                        Text(
+                            text = commit.author,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                // Показываем только ветки, где коммит является HEAD
+                commit.branchHeads.forEach { branchHead ->
+                    val branchColor = getBranchColor(branchHead)
                     Badge(
-                        text = b,
+                        text = branchHead,
                         icon = Icons.Default.AccountTree,
-                        background = nodeColor.copy(alpha = 0.15f),
-                        foreground = nodeColor,
+                        background = branchColor.copy(alpha = 0.15f),
+                        foreground = branchColor,
                         config = config
                     )
                 }
@@ -515,6 +599,30 @@ private fun Badge(
             )
         }
     }
+}
+
+/* ============================ Branch Colors ============================ */
+
+private fun getBranchColor(branchName: String): Color {
+    // Генерируем стабильный контрастный цвет для каждой ветки
+    val colors = listOf(
+        Color(0xFF1B5E20), // Dark Green
+        Color(0xFF0D47A1), // Dark Blue  
+        Color(0xFFE65100), // Dark Orange
+        Color(0xFF4A148C), // Dark Purple
+        Color(0xFFAD1457), // Dark Pink
+        Color(0xFF006064), // Dark Cyan
+        Color(0xFFBF360C), // Deep Orange Red
+        Color(0xFF3E2723), // Dark Brown
+        Color(0xFF263238), // Dark Blue Grey
+        Color(0xFF1A237E), // Dark Indigo
+        Color(0xFF827717), // Dark Olive
+        Color(0xFF616161)  // Dark Grey
+    )
+    
+    // Выбираем цвет на основе хеша имени ветки
+    val index = branchName.hashCode().let { if (it < 0) -it else it } % colors.size
+    return colors[index]
 }
 
 fun timeAgo(timestamp: Long): String {
