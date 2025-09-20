@@ -183,10 +183,19 @@ fun RepositoryListView(
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var repositoryToDelete by remember { mutableStateOf<Repository?>(null) }
     var deleteMessage by remember { mutableStateOf<String?>(null) }
+    var cloneProgressCallback by remember { mutableStateOf<com.gitflow.android.data.repository.CloneProgressCallback?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val gitRepository = remember { RealGitRepository(context) }
     val authManager = remember { com.gitflow.android.data.auth.AuthManager(context) }
+
+    // Observe clone progress
+    val cloneProgress by (cloneProgressCallback?.progress?.collectAsState() ?: remember { mutableStateOf(null) })
+
+    // Log progress changes
+    LaunchedEffect(cloneProgress) {
+        android.util.Log.d("MainScreen", "Clone progress updated: $cloneProgress")
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (repositories.isEmpty()) {
@@ -269,9 +278,11 @@ fun RepositoryListView(
             onDismiss = {
                 showAddDialog = false
                 errorMessage = null
+                cloneProgressCallback = null
             },
             isLoading = isLoading,
             errorMessage = errorMessage,
+            cloneProgress = cloneProgress,
             onNavigateToRemote = {
                 showAddDialog = false
                 navController.navigate("remote_repositories")
@@ -354,7 +365,13 @@ fun RepositoryListView(
                             }
 
                             android.util.Log.d("MainScreen", "Final clone URL: $cloneUrl")
-                            val result = gitRepository.cloneRepository(cloneUrl, defaultPath, finalDestination)
+
+                            // Создаем прогресс коллбэк для отслеживания
+                            val progressCallback = com.gitflow.android.data.repository.CloneProgressCallback()
+                            cloneProgressCallback = progressCallback
+                            android.util.Log.d("MainScreen", "Created progress callback: $progressCallback")
+
+                            val result = gitRepository.cloneRepository(cloneUrl, defaultPath, finalDestination, progressCallback)
                             result.onSuccess { repo ->
                                 // Репозиторий автоматически добавляется в DataStore через gitRepository.cloneRepository
                                 showAddDialog = false
@@ -1205,13 +1222,15 @@ fun AddRepositoryDialog(
     errorMessage: String? = null,
     onAdd: (String, String, Boolean) -> Unit,
     onAddLocal: (String) -> Unit = {},
-    onNavigateToRemote: () -> Unit = {}
+    onNavigateToRemote: () -> Unit = {},
+    cloneProgress: com.gitflow.android.data.repository.CloneProgress? = null
 ) {
     var name by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
     var localPath by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf(0) }
     var customDestination by remember { mutableStateOf("") }
+    var showLogs by remember { mutableStateOf(false) }
     
     // Launcher for choosing directory for cloning
     val directoryPickerLauncher = rememberLauncherForActivityResult(
@@ -1466,26 +1485,119 @@ fun AddRepositoryDialog(
                     }
                 }
 
-                // Loading indicator
+                // Loading indicator and progress for cloning
                 if (isLoading) {
                     Spacer(modifier = Modifier.height(16.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = when (selectedTab) {
-                                0 -> "Cloning repository..."
-                                1 -> "Adding local repository..."
-                                2 -> "Creating repository..."
-                                else -> "Processing..."
-                            },
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+
+                    // Progress for clone operation
+                    if (selectedTab == 0 && cloneProgress != null) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp)
+                            ) {
+                                // Progress header
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Cloning Repository",
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    TextButton(
+                                        onClick = { showLogs = !showLogs }
+                                    ) {
+                                        Text(
+                                            text = if (showLogs) "Hide Logs" else "Show Logs",
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // Current stage
+                                Text(
+                                    text = cloneProgress.stage,
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // Progress bar
+                                LinearProgressIndicator(
+                                    progress = cloneProgress.progress,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                // Progress text
+                                if (cloneProgress.total > 0) {
+                                    Text(
+                                        text = "${cloneProgress.completed} / ${cloneProgress.total} (${(cloneProgress.progress * 100).toInt()}%)",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+
+                                // Logs section
+                                if (showLogs && cloneProgress.logs.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(120.dp),
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.surface
+                                    ) {
+                                        LazyColumn(
+                                            modifier = Modifier.padding(8.dp),
+                                            reverseLayout = true
+                                        ) {
+                                            items(cloneProgress.logs.reversed()) { log ->
+                                                Text(
+                                                    text = log,
+                                                    fontSize = 10.sp,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Default loading indicator for other operations
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = when (selectedTab) {
+                                    0 -> "Cloning repository..."
+                                    1 -> "Adding local repository..."
+                                    2 -> "Creating repository..."
+                                    else -> "Processing..."
+                                },
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
 

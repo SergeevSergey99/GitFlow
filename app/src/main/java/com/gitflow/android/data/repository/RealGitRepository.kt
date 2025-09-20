@@ -6,6 +6,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.api.errors.GitAPIException
 import org.eclipse.jgit.diff.DiffFormatter
@@ -25,6 +28,81 @@ import java.text.SimpleDateFormat
 import java.util.*
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
+import org.eclipse.jgit.lib.ProgressMonitor
+
+data class CloneProgress(
+    val stage: String = "",
+    val progress: Float = 0f,
+    val total: Int = 0,
+    val completed: Int = 0,
+    val logs: List<String> = emptyList()
+)
+
+class CloneProgressCallback : ProgressMonitor {
+    private val _progress = MutableStateFlow(CloneProgress())
+    val progress: StateFlow<CloneProgress> = _progress.asStateFlow()
+
+    private val logs = mutableListOf<String>()
+    private var currentStage = ""
+    private var totalWork = 0
+    private var completedWork = 0
+
+    override fun start(totalTasks: Int) {
+        android.util.Log.d("CloneProgress", "start() called with totalTasks: $totalTasks")
+        totalWork = totalTasks
+        completedWork = 0
+        currentStage = "Starting clone..."
+        addLog("Starting repository clone...")
+        updateProgress()
+    }
+
+    override fun beginTask(title: String, totalWork: Int) {
+        android.util.Log.d("CloneProgress", "beginTask() called: $title, totalWork: $totalWork")
+        currentStage = title
+        this.totalWork = totalWork
+        this.completedWork = 0
+        addLog("Starting: $title")
+        updateProgress()
+    }
+
+    override fun update(completed: Int) {
+        completedWork += completed
+        updateProgress()
+    }
+
+    override fun endTask() {
+        addLog("Completed: $currentStage")
+        updateProgress()
+    }
+
+    override fun isCancelled(): Boolean = false
+
+    private fun addLog(message: String) {
+        logs.add("[${System.currentTimeMillis() % 100000}] $message")
+        if (logs.size > 50) {
+            logs.removeAt(0)
+        }
+    }
+
+    private fun updateProgress() {
+        val progressPercentage = if (totalWork > 0) {
+            (completedWork.toFloat() / totalWork.toFloat()).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
+
+        val newProgress = CloneProgress(
+            stage = currentStage,
+            progress = progressPercentage,
+            total = totalWork,
+            completed = completedWork,
+            logs = logs.toList()
+        )
+
+        android.util.Log.d("CloneProgress", "updateProgress: $newProgress")
+        _progress.value = newProgress
+    }
+}
 
 class RealGitRepository(private val context: Context) {
 
@@ -142,7 +220,12 @@ class RealGitRepository(private val context: Context) {
         }
     }
 
-    suspend fun cloneRepository(url: String, localPath: String, customDestination: String? = null): Result<Repository> = withContext(Dispatchers.IO) {
+    suspend fun cloneRepository(
+        url: String,
+        localPath: String,
+        customDestination: String? = null,
+        progressCallback: CloneProgressCallback? = null
+    ): Result<Repository> = withContext(Dispatchers.IO) {
         try {
             val targetDir = if (!customDestination.isNullOrEmpty()) {
                 File(customDestination)
@@ -188,6 +271,12 @@ class RealGitRepository(private val context: Context) {
                 android.util.Log.d("RealGitRepository", "Настраиваем CredentialsProvider с токеном")
                 val credentialsProvider = org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider(it, "")
                 cloneCommand.setCredentialsProvider(credentialsProvider)
+            }
+
+            // Добавляем прогресс мониторинг если предоставлен
+            progressCallback?.let {
+                android.util.Log.d("RealGitRepository", "Setting progress monitor: $it")
+                cloneCommand.setProgressMonitor(it)
             }
 
             val git = cloneCommand.call()
