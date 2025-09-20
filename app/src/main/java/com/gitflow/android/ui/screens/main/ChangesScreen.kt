@@ -1,7 +1,8 @@
 package com.gitflow.android.ui.screens.main
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -157,7 +158,7 @@ private fun FileChangesList(
     onFileToggle: (FileChange, Boolean) -> Unit
 ) {
     LazyColumn(
-        modifier = Modifier.weight(1f),
+        modifier = Modifier.fillMaxHeight(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         if (stagedFiles.isNotEmpty()) {
@@ -223,7 +224,7 @@ private fun FileChangesList(
 }
 
 @Composable
-private fun EmptyStateMessage(message: String) {
+fun EmptyStateMessage(message: String) {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center

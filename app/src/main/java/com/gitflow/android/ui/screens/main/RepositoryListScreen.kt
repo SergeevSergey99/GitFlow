@@ -105,12 +105,16 @@ fun RepositoryListScreen(
                         isLoading = true
                         errorMessage = null
 
+                        val appDir = context.getExternalFilesDir(null) ?: context.filesDir
+                        val defaultPath = "${appDir.absolutePath}/repositories/$name"
+
+
                         if (isClone && url.isNotEmpty()) {
                             // Cloning
                             val callback = CloneProgressCallback()
                             cloneProgressCallback = callback
 
-                            val result = gitRepository.cloneRepository(url, name, callback = callback)
+                            val result = gitRepository.cloneRepository(url,defaultPath, name, callback)
                             result.fold(
                                 onSuccess = {
                                     showAddDialog = false

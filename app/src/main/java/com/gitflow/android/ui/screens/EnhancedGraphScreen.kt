@@ -44,6 +44,7 @@ import com.gitflow.android.data.models.Commit
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.RealGitRepository
 import com.gitflow.android.ui.config.GraphConfig
+import com.gitflow.android.ui.screens.main.EmptyStateMessage
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
