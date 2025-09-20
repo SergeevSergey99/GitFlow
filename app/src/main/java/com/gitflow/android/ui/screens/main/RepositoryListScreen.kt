@@ -72,6 +72,10 @@ fun RepositoryListScreen(
                         }
                     )
                 }
+                // Добавляем пустое пространство снизу для видимости последней карточки
+                item {
+                    Spacer(modifier = Modifier.height(40.dp))
+                }
             }
         }
 
