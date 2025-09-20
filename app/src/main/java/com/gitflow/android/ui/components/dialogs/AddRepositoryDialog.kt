@@ -23,6 +23,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.gitflow.android.data.auth.AuthManager
+import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.repository.CloneProgress
 import com.gitflow.android.data.repository.CloneProgressCallback
 
@@ -36,7 +38,8 @@ fun AddRepositoryDialog(
     onAddLocal: (String) -> Unit = {},
     onNavigateToRemote: () -> Unit = {},
     cloneProgress: CloneProgress? = null,
-    cloneProgressCallback: CloneProgressCallback? = null
+    cloneProgressCallback: CloneProgressCallback? = null,
+    authManager: AuthManager? = null
 ) {
     var name by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
@@ -92,6 +95,7 @@ fun AddRepositoryDialog(
                         name = name,
                         customDestination = customDestination,
                         isLoading = isLoading,
+                        authManager = authManager,
                         onUrlChange = {
                             url = it
                             if (it.isNotEmpty()) {
@@ -220,6 +224,7 @@ private fun CloneTab(
     name: String,
     customDestination: String,
     isLoading: Boolean,
+    authManager: AuthManager?,
     onUrlChange: (String) -> Unit,
     onNameChange: (String) -> Unit,
     onDestinationChange: (String) -> Unit,
@@ -284,6 +289,70 @@ private fun CloneTab(
         },
         enabled = !isLoading
     )
+
+    // Показываем статус авторизации
+    authManager?.let { auth ->
+        Spacer(modifier = Modifier.height(8.dp))
+
+        val githubToken = auth.getAccessToken(GitProvider.GITHUB)
+        val gitlabToken = auth.getAccessToken(GitProvider.GITLAB)
+
+        if (!githubToken.isNullOrEmpty() || !gitlabToken.isNullOrEmpty()) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Check,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = when {
+                            !githubToken.isNullOrEmpty() && url.contains("github.com") -> "Authenticated with GitHub"
+                            !gitlabToken.isNullOrEmpty() && url.contains("gitlab.com") -> "Authenticated with GitLab"
+                            !githubToken.isNullOrEmpty() -> "GitHub token available"
+                            !gitlabToken.isNullOrEmpty() -> "GitLab token available"
+                            else -> "Authentication available"
+                        },
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+            }
+        } else {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Not authenticated - private repos may not be accessible",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -605,5 +674,10 @@ fun extractRepoNameFromUrl(url: String): String {
 }
 
 fun getRealPathFromUri(uri: Uri): String {
-    return uri.toString()
+    // Для простоты возвращаем строковое представление URI
+    // В реальном приложении здесь должна быть более сложная логика
+    // для преобразования content:// URI в реальные пути
+    return uri.toString().replace("content://com.android.externalstorage.documents/tree/", "/storage/emulated/0/")
+        .replace("%3A", "/")
+        .replace("%2F", "/")
 }

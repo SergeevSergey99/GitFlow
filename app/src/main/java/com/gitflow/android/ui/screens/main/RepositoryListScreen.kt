@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.gitflow.android.data.auth.AuthManager
+import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.CloneProgressCallback
 import com.gitflow.android.data.repository.RealGitRepository
@@ -99,22 +100,47 @@ fun RepositoryListScreen(
             errorMessage = errorMessage,
             cloneProgress = cloneProgress,
             cloneProgressCallback = cloneProgressCallback,
+            authManager = authManager,
             onAdd = { name, url, isClone ->
                 scope.launch {
                     try {
                         isLoading = true
                         errorMessage = null
 
-                        val appDir = context.getExternalFilesDir(null) ?: context.filesDir
-                        val defaultPath = "${appDir.absolutePath}/repositories/$name"
-
-
                         if (isClone && url.isNotEmpty()) {
                             // Cloning
                             val callback = CloneProgressCallback()
                             cloneProgressCallback = callback
 
-                            val result = gitRepository.cloneRepository(url,defaultPath, name, callback)
+                            // Создаем путь для клонирования в app-specific directory
+                            val appDir = context.getExternalFilesDir(null) ?: context.filesDir
+                            val clonePath = "${appDir.absolutePath}/repositories/$name"
+
+                            // Добавляем токен аутентификации к URL если пользователь авторизован
+                            val finalUrl = if (!url.contains("@")) {
+                                // Пытаемся получить токен GitHub
+                                val githubToken = authManager.getAccessToken(GitProvider.GITHUB)
+                                if (!githubToken.isNullOrEmpty() && url.contains("github.com")) {
+                                    url.replace("https://", "https://$githubToken@")
+                                } else {
+                                    // Пытаемся получить токен GitLab
+                                    val gitlabToken = authManager.getAccessToken(GitProvider.GITLAB)
+                                    if (!gitlabToken.isNullOrEmpty() && url.contains("gitlab.com")) {
+                                        url.replace("https://", "https://$gitlabToken@")
+                                    } else {
+                                        url
+                                    }
+                                }
+                            } else {
+                                url
+                            }
+
+                            val result = gitRepository.cloneRepository(
+                                url = finalUrl,
+                                localPath = clonePath,
+                                customDestination = null,
+                                progressCallback = callback
+                            )
                             result.fold(
                                 onSuccess = {
                                     showAddDialog = false
@@ -128,7 +154,10 @@ fun RepositoryListScreen(
                             )
                         } else {
                             // Creating new repository
-                            val result = gitRepository.createRepository(name, "")
+                            val appDir = context.getExternalFilesDir(null) ?: context.filesDir
+                            val localPath = "${appDir.absolutePath}/repositories/$name"
+
+                            val result = gitRepository.createRepository(name, localPath)
                             result.fold(
                                 onSuccess = {
                                     showAddDialog = false

@@ -369,7 +369,11 @@ class AuthManager(val context: Context) {
         }
         return userJson?.let { gson.fromJson(it, GitUser::class.java) }
     }
-    
+
+    fun getAccessToken(provider: GitProvider): String? {
+        return getToken(provider)?.accessToken
+    }
+
     // Выход из аккаунта
     fun logout(provider: GitProvider) {
         val editor = preferences.edit()
