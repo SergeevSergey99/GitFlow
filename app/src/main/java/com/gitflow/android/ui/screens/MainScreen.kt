@@ -283,6 +283,7 @@ fun RepositoryListView(
             isLoading = isLoading,
             errorMessage = errorMessage,
             cloneProgress = cloneProgress,
+            cloneProgressCallback = cloneProgressCallback,
             onNavigateToRemote = {
                 showAddDialog = false
                 navController.navigate("remote_repositories")
@@ -375,9 +376,15 @@ fun RepositoryListView(
                             result.onSuccess { repo ->
                                 // Репозиторий автоматически добавляется в DataStore через gitRepository.cloneRepository
                                 showAddDialog = false
+                                cloneProgressCallback = null
                             }.onFailure { exception ->
                                 android.util.Log.e("MainScreen", "Error cloning repo", exception)
-                                errorMessage = "Failed to clone repository: ${exception.message}"
+                                if (exception.message?.contains("cancelled") == true) {
+                                    errorMessage = "Clone operation was cancelled"
+                                } else {
+                                    errorMessage = "Failed to clone repository: ${exception.message}"
+                                }
+                                cloneProgressCallback = null
                             }
                         } else {
                             // Создание нового репозитория
@@ -393,6 +400,7 @@ fun RepositoryListView(
                         }
                     } catch (e: Exception) {
                         errorMessage = "Error: ${e.message}"
+                        cloneProgressCallback = null
                     } finally {
                         isLoading = false
                     }
@@ -1223,7 +1231,8 @@ fun AddRepositoryDialog(
     onAdd: (String, String, Boolean) -> Unit,
     onAddLocal: (String) -> Unit = {},
     onNavigateToRemote: () -> Unit = {},
-    cloneProgress: com.gitflow.android.data.repository.CloneProgress? = null
+    cloneProgress: com.gitflow.android.data.repository.CloneProgress? = null,
+    cloneProgressCallback: com.gitflow.android.data.repository.CloneProgressCallback? = null
 ) {
     var name by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
@@ -1541,13 +1550,26 @@ fun AddRepositoryDialog(
 
                                 Spacer(modifier = Modifier.height(4.dp))
 
-                                // Progress text
-                                if (cloneProgress.total > 0) {
-                                    Text(
-                                        text = "${cloneProgress.completed} / ${cloneProgress.total} (${(cloneProgress.progress * 100).toInt()}%)",
-                                        fontSize = 12.sp,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
+                                // Progress text and estimated time
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    if (cloneProgress.total > 0) {
+                                        Text(
+                                            text = "${cloneProgress.completed} / ${cloneProgress.total} (${(cloneProgress.progress * 100).toInt()}%)",
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+
+                                    if (cloneProgress.estimatedTimeRemaining.isNotEmpty()) {
+                                        Text(
+                                            text = "ETA: ${cloneProgress.estimatedTimeRemaining}",
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                        )
+                                    }
                                 }
 
                                 // Logs section
@@ -1608,10 +1630,24 @@ fun AddRepositoryDialog(
                     horizontalArrangement = Arrangement.End
                 ) {
                     TextButton(
-                        onClick = onDismiss,
-                        enabled = !isLoading
+                        onClick = {
+                            if (isLoading && selectedTab == 0 && cloneProgressCallback?.isCancelled() == false) {
+                                // Во время клонирования - отменяем операцию
+                                cloneProgressCallback?.cancel()
+                            } else {
+                                // В обычном состоянии - закрываем диалог
+                                onDismiss()
+                            }
+                        },
+                        enabled = true  // Всегда активна для отмены
                     ) {
-                        Text("Cancel")
+                        Text(
+                            if (isLoading && selectedTab == 0 && cloneProgressCallback?.isCancelled() == false) {
+                                "Cancel Clone"
+                            } else {
+                                "Cancel"
+                            }
+                        )
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(

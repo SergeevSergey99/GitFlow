@@ -35,7 +35,9 @@ data class CloneProgress(
     val progress: Float = 0f,
     val total: Int = 0,
     val completed: Int = 0,
-    val logs: List<String> = emptyList()
+    val logs: List<String> = emptyList(),
+    val estimatedTimeRemaining: String = "",
+    val isCancellable: Boolean = true
 )
 
 class CloneProgressCallback : ProgressMonitor {
@@ -46,12 +48,17 @@ class CloneProgressCallback : ProgressMonitor {
     private var currentStage = ""
     private var totalWork = 0
     private var completedWork = 0
+    private var cancelled = false
+    private var startTime = 0L
+    private val progressHistory = mutableListOf<Pair<Long, Int>>() // timestamp, completed work
 
     override fun start(totalTasks: Int) {
         android.util.Log.d("CloneProgress", "start() called with totalTasks: $totalTasks")
         totalWork = totalTasks
         completedWork = 0
         currentStage = "Starting clone..."
+        startTime = System.currentTimeMillis()
+        progressHistory.clear()
         addLog("Starting repository clone...")
         updateProgress()
     }
@@ -67,6 +74,16 @@ class CloneProgressCallback : ProgressMonitor {
 
     override fun update(completed: Int) {
         completedWork += completed
+
+        // Записываем прогресс для расчета времени
+        val now = System.currentTimeMillis()
+        progressHistory.add(Pair(now, completedWork))
+
+        // Оставляем только последние 10 записей для расчета средней скорости
+        if (progressHistory.size > 10) {
+            progressHistory.removeAt(0)
+        }
+
         updateProgress()
     }
 
@@ -75,7 +92,13 @@ class CloneProgressCallback : ProgressMonitor {
         updateProgress()
     }
 
-    override fun isCancelled(): Boolean = false
+    override fun isCancelled(): Boolean = cancelled
+
+    fun cancel() {
+        cancelled = true
+        addLog("Clone operation cancelled by user")
+        updateProgress()
+    }
 
     private fun addLog(message: String) {
         logs.add("[${System.currentTimeMillis() % 100000}] $message")
@@ -91,16 +114,63 @@ class CloneProgressCallback : ProgressMonitor {
             0f
         }
 
+        val estimatedTime = calculateEstimatedTime()
+
         val newProgress = CloneProgress(
             stage = currentStage,
             progress = progressPercentage,
             total = totalWork,
             completed = completedWork,
-            logs = logs.toList()
+            logs = logs.toList(),
+            estimatedTimeRemaining = estimatedTime,
+            isCancellable = !cancelled && totalWork > 0
         )
 
         android.util.Log.d("CloneProgress", "updateProgress: $newProgress")
         _progress.value = newProgress
+    }
+
+    private fun calculateEstimatedTime(): String {
+        if (totalWork <= 0 || completedWork <= 0 || progressHistory.size < 2) {
+            return "Calculating..."
+        }
+
+        val currentTime = System.currentTimeMillis()
+        val elapsedTime = currentTime - startTime
+
+        // Используем данные за последние несколько секунд для более точного расчета
+        val recentHistory = progressHistory.filter {
+            currentTime - it.first <= 5000 // последние 5 секунд
+        }
+
+        if (recentHistory.size < 2) {
+            return "Calculating..."
+        }
+
+        val firstEntry = recentHistory.first()
+        val lastEntry = recentHistory.last()
+
+        val timeSpan = lastEntry.first - firstEntry.first
+        val workSpan = lastEntry.second - firstEntry.second
+
+        if (timeSpan <= 0 || workSpan <= 0) {
+            return "Calculating..."
+        }
+
+        val workRemaining = totalWork - completedWork
+        val averageSpeed = workSpan.toDouble() / timeSpan.toDouble() // work per millisecond
+        val estimatedTimeMs = (workRemaining / averageSpeed).toLong()
+
+        return formatTime(estimatedTimeMs)
+    }
+
+    private fun formatTime(milliseconds: Long): String {
+        val seconds = milliseconds / 1000
+        return when {
+            seconds < 60 -> "${seconds}s"
+            seconds < 3600 -> "${seconds / 60}m ${seconds % 60}s"
+            else -> "${seconds / 3600}h ${(seconds % 3600) / 60}m"
+        }
     }
 }
 
@@ -279,7 +349,22 @@ class RealGitRepository(private val context: Context) {
                 cloneCommand.setProgressMonitor(it)
             }
 
-            val git = cloneCommand.call()
+            val git = try {
+                cloneCommand.call()
+            } catch (e: Exception) {
+                // Проверяем, была ли операция отменена
+                if (progressCallback?.isCancelled() == true) {
+                    android.util.Log.d("RealGitRepository", "Клонирование отменено пользователем")
+                    // Очищаем частично загруженные файлы
+                    if (targetDir.exists()) {
+                        targetDir.deleteRecursively()
+                        android.util.Log.d("RealGitRepository", "Удалены частично загруженные файлы: ${targetDir.absolutePath}")
+                    }
+                    return@withContext Result.failure(Exception("Clone cancelled by user"))
+                } else {
+                    throw e
+                }
+            }
             android.util.Log.d("RealGitRepository", "Клонирование завершено успешно")
 
             val name = targetDir.name
