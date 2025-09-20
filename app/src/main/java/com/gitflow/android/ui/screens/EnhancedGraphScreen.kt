@@ -42,7 +42,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.times
 import com.gitflow.android.data.models.Commit
 import com.gitflow.android.data.models.Repository
-import com.gitflow.android.data.repository.MockGitRepository
 import com.gitflow.android.data.repository.RealGitRepository
 import com.gitflow.android.ui.config.GraphConfig
 import java.text.SimpleDateFormat

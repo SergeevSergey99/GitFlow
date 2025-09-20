@@ -26,7 +26,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.gitflow.android.data.models.*
-import com.gitflow.android.data.repository.MockGitRepository
 import com.gitflow.android.data.repository.RealGitRepository
 import java.text.SimpleDateFormat
 import java.util.*
