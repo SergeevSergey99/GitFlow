@@ -15,12 +15,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -29,6 +34,10 @@ import com.gitflow.android.data.models.*
 import com.gitflow.android.data.repository.RealGitRepository
 import java.text.SimpleDateFormat
 import java.util.*
+
+private val CodeLineHorizontalPadding = 16.dp
+private val CodeLineNumberWidth = 48.dp
+private val CodeLineContentSpacing = 16.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1193,8 +1202,33 @@ fun SyntaxHighlightedFileContent(
     fileName: String,
     modifier: Modifier = Modifier
 ) {
-    val backgroundColor = MaterialTheme.colorScheme.surface
     val isCodeFile = isCodeFile(fileName)
+    val lines = remember(content) { content.split('\n') }
+    val density = LocalDensity.current
+    val textStyle = remember {
+        TextStyle(
+            fontSize = 13.sp,
+            fontFamily = FontFamily.Monospace,
+            lineHeight = 18.sp
+        )
+    }
+    val textMeasurer = rememberTextMeasurer()
+    val annotatedLines = remember(lines, fileName, isCodeFile) {
+        lines.map { line ->
+            if (isCodeFile) buildHighlightedAnnotatedString(line, fileName) else AnnotatedString(line)
+        }
+    }
+    val maxContentWidthPx = remember(annotatedLines) {
+        annotatedLines.maxOfOrNull { annotatedLine ->
+            textMeasurer.measure(annotatedLine, style = textStyle).size.width.toFloat()
+        } ?: 0f
+    }
+    val structuralWidthPx = with(density) {
+        (CodeLineHorizontalPadding * 2 + CodeLineNumberWidth + CodeLineContentSpacing).toPx()
+    }
+    val maxContentWidthDp = remember(maxContentWidthPx, structuralWidthPx) {
+        with(density) { (maxContentWidthPx + structuralWidthPx).toDp() }
+    }
 
     Column(modifier = modifier) {
         // File type indicator
@@ -1223,20 +1257,29 @@ fun SyntaxHighlightedFileContent(
             }
         }
 
-        // Content with line numbers and horizontal scroll
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .horizontalScroll(rememberScrollState())
-        ) {
-            val lines = content.split('\n')
-            itemsIndexed(lines) { index, line ->
-                CodeLine(
-                    lineNumber = index + 1,
-                    content = line,
-                    fileName = fileName,
-                    isCodeFile = isCodeFile
-                )
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val lineWidth = remember(maxWidth, maxContentWidthDp) {
+                if (maxContentWidthDp > maxWidth) maxContentWidthDp else maxWidth
+            }
+            val horizontalScrollState = rememberScrollState()
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .horizontalScroll(horizontalScrollState)
+            ) {
+                LazyColumn(
+                    modifier = Modifier.width(lineWidth)
+                ) {
+                    itemsIndexed(annotatedLines) { index, annotatedLine ->
+                        CodeLine(
+                            lineNumber = index + 1,
+                            content = annotatedLine,
+                            textStyle = textStyle,
+                            lineWidth = lineWidth
+                        )
+                    }
+                }
             }
         }
     }
@@ -1245,57 +1288,55 @@ fun SyntaxHighlightedFileContent(
 @Composable
 fun CodeLine(
     lineNumber: Int,
-    content: String,
-    fileName: String,
-    isCodeFile: Boolean
+    content: AnnotatedString,
+    textStyle: TextStyle,
+    lineWidth: Dp
 ) {
-    Row(
+    val backgroundColor = if (lineNumber % 2 == 0) {
+        MaterialTheme.colorScheme.surface
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+    }
+
+    Box(
         modifier = Modifier
-            .fillMaxWidth()
-            .background(
-                if (lineNumber % 2 == 0)
-                    MaterialTheme.colorScheme.surface
-                else
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-            )
-            .padding(horizontal = 16.dp, vertical = 2.dp)
+            .width(lineWidth)
     ) {
-        // Line number
-        Text(
-            text = lineNumber.toString().padStart(4, ' '),
-            fontSize = 12.sp,
-            fontFamily = FontFamily.Monospace,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-            modifier = Modifier.width(48.dp)
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(backgroundColor)
         )
 
-        Spacer(modifier = Modifier.width(16.dp))
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 16.dp, vertical = 2.dp)
+        ) {
+            Text(
+                text = lineNumber.toString().padStart(4, ' '),
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.width(48.dp)
+            )
 
-        // Content with basic syntax highlighting
-        SelectionContainer {
-            if (isCodeFile) {
-                HighlightedText(
-                    text = content,
-                    fileName = fileName
-                )
-            } else {
+            Spacer(modifier = Modifier.width(16.dp))
+
+            SelectionContainer {
                 Text(
                     text = content,
-                    fontSize = 13.sp,
-                    fontFamily = FontFamily.Monospace,
-                    lineHeight = 18.sp
+                    style = textStyle
                 )
             }
         }
     }
 }
 
-@Composable
-fun HighlightedText(
+fun buildHighlightedAnnotatedString(
     text: String,
     fileName: String
-) {
-    val highlightedText = buildAnnotatedString {
+): AnnotatedString {
+    return buildAnnotatedString {
         when {
             fileName.endsWith(".kt") -> highlightKotlin(text)
             fileName.endsWith(".java") -> highlightJava(text)
@@ -1306,13 +1347,6 @@ fun HighlightedText(
             else -> append(text)
         }
     }
-
-    Text(
-        text = highlightedText,
-        fontSize = 13.sp,
-        fontFamily = FontFamily.Monospace,
-        lineHeight = 18.sp
-    )
 }
 
 // Helper functions
