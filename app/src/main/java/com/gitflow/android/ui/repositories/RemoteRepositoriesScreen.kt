@@ -26,6 +26,7 @@ import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitRemoteRepository
 import com.gitflow.android.ui.components.CloneProgressOverlay
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -535,7 +536,12 @@ fun CloneDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit
 ) {
-    var localPath by remember { mutableStateOf("/storage/emulated/0/GitFlow/$repositoryName") }
+    val context = LocalContext.current
+    val defaultLocalPath = remember(context, repositoryName) {
+        val baseDir = context.getExternalFilesDir(null) ?: context.filesDir
+        File(File(baseDir, "repositories"), repositoryName).absolutePath
+    }
+    var localPath by remember(defaultLocalPath) { mutableStateOf(defaultLocalPath) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
