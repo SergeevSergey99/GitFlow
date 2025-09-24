@@ -30,7 +30,8 @@ data class GitHubRepository(
     val html_url: String,
     val default_branch: String,
     val owner: GitHubUser,
-    val updated_at: String
+    val updated_at: String,
+    val size: Int? = null
 )
 
 interface GitHubApi {

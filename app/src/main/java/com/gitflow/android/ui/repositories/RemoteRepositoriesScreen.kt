@@ -1,5 +1,9 @@
 package com.gitflow.android.ui.repositories
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,12 +19,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitRemoteRepository
 import java.text.SimpleDateFormat
 import java.util.*
+
+private const val SIZE_WARNING_THRESHOLD_BYTES = 50L * 1024L * 1024L
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,6 +68,27 @@ fun RemoteRepositoriesScreen(
 
     val isCloning by viewModel.isCloning.collectAsState()
     android.util.Log.d("RemoteRepositoriesScreen", "isCloning collectAsState готово")
+
+    data class PendingClone(val repository: GitRemoteRepository, val localPath: String)
+    var pendingClone by remember { mutableStateOf<PendingClone?>(null) }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val request = pendingClone
+        if (granted && request != null) {
+            viewModel.startCloneInBackground(
+                context = context,
+                repository = request.repository,
+                localPath = request.localPath,
+                authManager = authManager,
+                onStarted = onRepositoryCloned
+            )
+        } else if (!granted) {
+            viewModel.showError(context.getString(R.string.notification_permission_required))
+        }
+        pendingClone = null
+    }
 
     LaunchedEffect(Unit) {
         android.util.Log.d("RemoteRepositoriesScreen", "LaunchedEffect начался")
@@ -135,12 +164,20 @@ fun RemoteRepositoriesScreen(
                     repositories = repositories,
                     isCloning = isCloning,
                     onCloneRepository = { repository, localPath ->
-                        viewModel.cloneRepository(
-                            repository = repository,
-                            localPath = localPath,
-                            authManager = authManager,
-                            onSuccess = onRepositoryCloned
-                        )
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                        ) {
+                            pendingClone = PendingClone(repository, localPath)
+                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        } else {
+                            viewModel.startCloneInBackground(
+                                context = context,
+                                repository = repository,
+                                localPath = localPath,
+                                authManager = authManager,
+                                onStarted = onRepositoryCloned
+                            )
+                        }
                     }
                 )
             }
@@ -324,6 +361,8 @@ fun RepositoryCard(
     onClone: (String) -> Unit
 ) {
     var showCloneDialog by remember { mutableStateOf(false) }
+    var showSizeWarning by remember { mutableStateOf(false) }
+    var pendingClonePath by remember { mutableStateOf<String?>(null) }
     
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -416,10 +455,61 @@ fun RepositoryCard(
     if (showCloneDialog) {
         CloneDialog(
             repositoryName = repository.name,
+            approximateSizeBytes = repository.approximateSizeBytes,
             onDismiss = { showCloneDialog = false },
             onConfirm = { localPath ->
                 showCloneDialog = false
-                onClone(localPath)
+                val requiresWarning = shouldWarnAboutRepositorySize(repository.approximateSizeBytes)
+                if (requiresWarning) {
+                    pendingClonePath = localPath
+                    showSizeWarning = true
+                } else {
+                    onClone(localPath)
+                }
+            }
+        )
+    }
+
+    if (showSizeWarning) {
+        val formattedSize = formatRepositorySize(repository.approximateSizeBytes)
+        AlertDialog(
+            onDismissRequest = {
+                showSizeWarning = false
+                pendingClonePath = null
+            },
+            title = { Text("Большой репозиторий") },
+            text = {
+                Text(
+                    text = if (formattedSize != null) {
+                        "Примерный размер: $formattedSize. Точно хотите клонировать?"
+                    } else {
+                        "Размер репозитория больше 50 МБ. Точно хотите клонировать?"
+                    }
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val path = pendingClonePath
+                        showSizeWarning = false
+                        pendingClonePath = null
+                        if (path != null) {
+                            onClone(path)
+                        }
+                    }
+                ) {
+                    Text("Да, клонировать")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showSizeWarning = false
+                        pendingClonePath = null
+                    }
+                ) {
+                    Text("Отмена")
+                }
             }
         )
     }
@@ -428,17 +518,24 @@ fun RepositoryCard(
 @Composable
 fun CloneDialog(
     repositoryName: String,
+    approximateSizeBytes: Long?,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit
 ) {
     var localPath by remember { mutableStateOf("/storage/emulated/0/GitFlow/$repositoryName") }
-    
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Клонировать репозиторий") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text("Выберите путь для клонирования:")
+                formatRepositorySize(approximateSizeBytes)?.let { sizeString ->
+                    Text(
+                        text = "Примерный размер: $sizeString",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
                 OutlinedTextField(
                     value = localPath,
                     onValueChange = { localPath = it },
@@ -461,6 +558,23 @@ fun CloneDialog(
             }
         }
     )
+}
+
+private fun shouldWarnAboutRepositorySize(sizeBytes: Long?): Boolean {
+    val size = sizeBytes ?: return false
+    return size > SIZE_WARNING_THRESHOLD_BYTES
+}
+
+private fun formatRepositorySize(sizeBytes: Long?): String? {
+    val size = sizeBytes ?: return null
+    if (size <= 0) return null
+
+    val megabytes = size / 1024.0 / 1024.0
+    return if (megabytes >= 1024) {
+        String.format(Locale.getDefault(), "%.1f ГБ", megabytes / 1024.0)
+    } else {
+        String.format(Locale.getDefault(), "%.1f МБ", megabytes)
+    }
 }
 
 private fun formatDate(dateString: String): String {

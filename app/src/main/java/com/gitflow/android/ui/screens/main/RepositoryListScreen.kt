@@ -1,5 +1,11 @@
 package com.gitflow.android.ui.screens.main
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,7 +19,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
+import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.Repository
@@ -22,6 +30,8 @@ import com.gitflow.android.data.repository.RealGitRepository
 import com.gitflow.android.ui.components.RepositoryCard
 import com.gitflow.android.ui.components.dialogs.AddRepositoryDialog
 import com.gitflow.android.ui.components.dialogs.DeleteRepositoryDialog
+import com.gitflow.android.services.CloneRepositoryService
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 @Composable
@@ -37,6 +47,8 @@ fun RepositoryListScreen(
     var repositoryToDelete by remember { mutableStateOf<Repository?>(null) }
     var deleteMessage by remember { mutableStateOf<String?>(null) }
     var cloneProgressCallback by remember { mutableStateOf<CloneProgressCallback?>(null) }
+    data class PendingManualClone(val name: String, val url: String)
+    var pendingManualClone by remember { mutableStateOf<PendingManualClone?>(null) }
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -45,6 +57,31 @@ fun RepositoryListScreen(
 
     // Observe clone progress
     val cloneProgress by (cloneProgressCallback?.progress?.collectAsState() ?: remember { mutableStateOf(null) })
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val pending = pendingManualClone
+        if (granted && pending != null) {
+            isLoading = true
+            errorMessage = null
+            startManualClone(scope, context, authManager, pending.name, pending.url,
+                onSuccess = {
+                    showAddDialog = false
+                    isLoading = false
+                    errorMessage = null
+                    cloneProgressCallback = null
+                },
+                onError = { message ->
+                    errorMessage = message
+                    isLoading = false
+                }
+            )
+        } else if (!granted) {
+            errorMessage = context.getString(R.string.notification_permission_required)
+        }
+        pendingManualClone = null
+    }
 
     // Log progress changes
     LaunchedEffect(cloneProgress) {
@@ -106,57 +143,32 @@ fun RepositoryListScreen(
             cloneProgressCallback = cloneProgressCallback,
             authManager = authManager,
             onAdd = { name, url, isClone ->
-                scope.launch {
-                    try {
-                        isLoading = true
-                        errorMessage = null
+                if (isClone && url.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    pendingManualClone = PendingManualClone(name, url)
+                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else if (isClone && url.isNotEmpty()) {
+                    isLoading = true
+                    errorMessage = null
+                    startManualClone(scope, context, authManager, name, url,
+                        onSuccess = {
+                            showAddDialog = false
+                            isLoading = false
+                            errorMessage = null
+                            cloneProgressCallback = null
+                        },
+                        onError = { message ->
+                            errorMessage = message
+                            isLoading = false
+                        }
+                    )
+                } else {
+                    scope.launch {
+                        try {
+                            isLoading = true
+                            errorMessage = null
 
-                        if (isClone && url.isNotEmpty()) {
-                            // Cloning
-                            val callback = CloneProgressCallback()
-                            cloneProgressCallback = callback
-
-                            // Создаем путь для клонирования в app-specific directory
-                            val appDir = context.getExternalFilesDir(null) ?: context.filesDir
-                            val clonePath = "${appDir.absolutePath}/repositories/$name"
-
-                            // Добавляем токен аутентификации к URL если пользователь авторизован
-                            val finalUrl = if (!url.contains("@")) {
-                                // Пытаемся получить токен GitHub
-                                val githubToken = authManager.getAccessToken(GitProvider.GITHUB)
-                                if (!githubToken.isNullOrEmpty() && url.contains("github.com")) {
-                                    url.replace("https://", "https://$githubToken@")
-                                } else {
-                                    // Пытаемся получить токен GitLab
-                                    val gitlabToken = authManager.getAccessToken(GitProvider.GITLAB)
-                                    if (!gitlabToken.isNullOrEmpty() && url.contains("gitlab.com")) {
-                                        url.replace("https://", "https://$gitlabToken@")
-                                    } else {
-                                        url
-                                    }
-                                }
-                            } else {
-                                url
-                            }
-
-                            val result = gitRepository.cloneRepository(
-                                url = finalUrl,
-                                localPath = clonePath,
-                                customDestination = null,
-                                progressCallback = callback
-                            )
-                            result.fold(
-                                onSuccess = {
-                                    showAddDialog = false
-                                    isLoading = false
-                                    cloneProgressCallback = null
-                                },
-                                onFailure = { exception ->
-                                    errorMessage = exception.message ?: "Unknown error occurred"
-                                    isLoading = false
-                                }
-                            )
-                        } else {
                             // Creating new repository
                             val appDir = context.getExternalFilesDir(null) ?: context.filesDir
                             val localPath = "${appDir.absolutePath}/repositories/$name"
@@ -172,10 +184,10 @@ fun RepositoryListScreen(
                                     isLoading = false
                                 }
                             )
+                        } catch (e: Exception) {
+                            errorMessage = e.message ?: "Unknown error occurred"
+                            isLoading = false
                         }
-                    } catch (e: Exception) {
-                        errorMessage = e.message ?: "Unknown error occurred"
-                        isLoading = false
                     }
                 }
             },
@@ -284,6 +296,55 @@ private fun EmptyRepositoryState(
             Icon(Icons.Default.Add, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
             Text("Add Repository")
+        }
+    }
+}
+
+private fun startManualClone(
+    scope: CoroutineScope,
+    context: Context,
+    authManager: AuthManager,
+    name: String,
+    url: String,
+    onSuccess: () -> Unit,
+    onError: (String) -> Unit
+) {
+    scope.launch {
+        try {
+            val appDir = context.getExternalFilesDir(null) ?: context.filesDir
+            val fallbackName = url.substringAfterLast('/').removeSuffix(".git")
+            val targetName = if (name.isBlank()) fallbackName else name
+            val targetPath = "${appDir.absolutePath}/repositories/$targetName"
+
+            val finalUrl = if (!url.contains("@")) {
+                val githubToken = authManager.getAccessToken(GitProvider.GITHUB)
+                when {
+                    !githubToken.isNullOrEmpty() && url.contains("github.com") ->
+                        url.replace("https://", "https://$githubToken@")
+                    else -> {
+                        val gitlabToken = authManager.getAccessToken(GitProvider.GITLAB)
+                        if (!gitlabToken.isNullOrEmpty() && url.contains("gitlab.com")) {
+                            url.replace("https://", "https://$gitlabToken@")
+                        } else {
+                            url
+                        }
+                    }
+                }
+            } else {
+                url
+            }
+
+            CloneRepositoryService.start(
+                context = context,
+                repoName = targetName,
+                repoFullName = url,
+                cloneUrl = finalUrl,
+                localPath = targetPath
+            )
+
+            onSuccess()
+        } catch (e: Exception) {
+            onError(e.message ?: "Unknown error occurred")
         }
     }
 }

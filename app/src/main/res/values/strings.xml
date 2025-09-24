@@ -1,3 +1,19 @@
 <resources>
     <string name="app_name">GitFlow</string>
+    <string name="notification_channel_clone_name">Клонирование репозитория</string>
+    <string name="notification_channel_clone_description">Прогресс фонового клонирования репозиториев</string>
+    <string name="notification_clone_in_progress">Клонирование %1$s</string>
+    <string name="notification_clone_preparing">Подготовка клонирования...</string>
+    <string name="notification_clone_cancel">Отмена</string>
+    <string name="notification_clone_in_progress_default">Получение данных...</string>
+    <string name="notification_clone_eta">Осталось: %1$s</string>
+    <string name="notification_clone_completed">Клонирование завершено</string>
+    <string name="notification_clone_completed_detail">Репозиторий %1$s клонирован</string>
+    <string name="notification_clone_completed_with_size">Репозиторий %1$s клонирован (%2$s)</string>
+    <string name="notification_clone_failed">Ошибка клонирования</string>
+    <string name="notification_clone_failed_generic">Неизвестная ошибка</string>
+    <string name="notification_clone_failed_detail">Не удалось клонировать %1$s: %2$s</string>
+    <string name="notification_clone_cancelled">Клонирование отменено</string>
+    <string name="notification_clone_cancelled_detail">Клонирование %1$s отменено пользователем</string>
+    <string name="notification_permission_required">Для фонового клонирования разрешите уведомления в настройках приложения</string>
 </resources>

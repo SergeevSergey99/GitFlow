@@ -33,7 +33,8 @@ data class GitLabRepository(
     val default_branch: String?,
     val owner: GitLabUser?,
     val namespace: GitLabNamespace,
-    val last_activity_at: String
+    val last_activity_at: String,
+    val statistics: GitLabStatistics? = null
 )
 
 data class GitLabNamespace(
@@ -43,6 +44,11 @@ data class GitLabNamespace(
     val kind: String, // "user" or "group"
     val full_path: String,
     val avatar_url: String?
+)
+
+data class GitLabStatistics(
+    val repository_size: Long? = null,
+    val storage_size: Long? = null
 )
 
 data class GitLabGroup(
@@ -78,7 +84,8 @@ interface GitLabApi {
         @Query("order_by") orderBy: String = "last_activity_at",
         @Query("sort") sort: String = "desc",
         @Query("per_page") perPage: Int = 100,
-        @Query("page") page: Int = 1
+        @Query("page") page: Int = 1,
+        @Query("statistics") statistics: Boolean = true
     ): Response<List<GitLabRepository>>
     
     @GET("api/v4/groups")
@@ -95,6 +102,7 @@ interface GitLabApi {
         @Query("order_by") orderBy: String = "last_activity_at",
         @Query("sort") sort: String = "desc",
         @Query("per_page") perPage: Int = 100,
-        @Query("page") page: Int = 1
+        @Query("page") page: Int = 1,
+        @Query("statistics") statistics: Boolean = true
     ): Response<List<GitLabRepository>>
 }

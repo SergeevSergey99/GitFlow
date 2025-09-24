@@ -473,7 +473,8 @@ private fun GitHubRepository.toGitRemoteRepository(): GitRemoteRepository {
             provider = GitProvider.GITHUB
         ),
         provider = GitProvider.GITHUB,
-        updatedAt = this.updated_at
+        updatedAt = this.updated_at,
+        approximateSizeBytes = this.size?.let { it.toLong() * 1024L }
     )
 }
 
@@ -497,6 +498,7 @@ private fun GitLabRepository.toGitRemoteRepository(): GitRemoteRepository {
             provider = GitProvider.GITLAB
         ),
         provider = GitProvider.GITLAB,
-        updatedAt = this.last_activity_at
+        updatedAt = this.last_activity_at,
+        approximateSizeBytes = this.statistics?.repository_size ?: this.statistics?.storage_size
     )
 }

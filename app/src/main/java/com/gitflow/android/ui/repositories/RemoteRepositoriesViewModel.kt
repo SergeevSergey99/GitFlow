@@ -1,11 +1,17 @@
 package com.gitflow.android.ui.repositories
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitRemoteRepository
-import com.gitflow.android.data.repository.RealGitRepository
+import com.gitflow.android.services.CloneRepositoryService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,12 +34,9 @@ class RemoteRepositoriesViewModel : ViewModel() {
     private val _selectedProvider = MutableStateFlow<GitProvider?>(null)
     val selectedProvider: StateFlow<GitProvider?> = _selectedProvider.asStateFlow()
     
-    private var gitRepository: RealGitRepository? = null
-    
     fun initializeRepositories(authManager: AuthManager) {
         try {
             android.util.Log.d("RemoteRepositoriesViewModel", "Инициализация RemoteRepositoriesViewModel")
-            gitRepository = RealGitRepository(authManager.context)
 
             // Выбираем первый доступный провайдер
             when {
@@ -103,33 +106,39 @@ class RemoteRepositoriesViewModel : ViewModel() {
         }
     }
     
-    fun cloneRepository(
+    fun startCloneInBackground(
+        context: Context,
         repository: GitRemoteRepository,
         localPath: String,
         authManager: AuthManager,
-        onSuccess: () -> Unit
+        onStarted: () -> Unit
     ) {
         viewModelScope.launch {
             _isCloning.value = true
             _errorMessage.value = null
             
             try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    _errorMessage.value = context.getString(R.string.notification_permission_required)
+                    return@launch
+                }
+
                 android.util.Log.d("RemoteRepositoriesViewModel", "Запрашиваем clone URL для репозитория: ${repository.fullName}")
                 val cloneUrl = authManager.getCloneUrl(repository, useHttps = true)
                     ?: throw Exception("Не удалось получить URL для клонирования")
 
                 android.util.Log.d("RemoteRepositoriesViewModel", "Получен clone URL: $cloneUrl")
 
-                val gitRepo = gitRepository
-                    ?: throw Exception("Git репозиторий не инициализирован")
+                CloneRepositoryService.start(
+                    context = context,
+                    repository = repository,
+                    cloneUrl = cloneUrl,
+                    localPath = localPath
+                )
 
-                val result = gitRepo.cloneRepository(cloneUrl, localPath)
-                
-                if (result.isSuccess) {
-                    onSuccess()
-                } else {
-                    _errorMessage.value = "Ошибка клонирования: ${result.exceptionOrNull()?.message}"
-                }
+                onStarted()
             } catch (e: Exception) {
                 _errorMessage.value = "Ошибка клонирования: ${e.message}"
             } finally {
@@ -140,5 +149,9 @@ class RemoteRepositoriesViewModel : ViewModel() {
     
     fun clearError() {
         _errorMessage.value = null
+    }
+
+    fun showError(message: String) {
+        _errorMessage.value = message
     }
 }

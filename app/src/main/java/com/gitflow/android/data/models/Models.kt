@@ -173,7 +173,8 @@ data class GitRemoteRepository(
     val defaultBranch: String,
     val owner: GitUser,
     val provider: GitProvider,
-    val updatedAt: String
+    val updatedAt: String,
+    val approximateSizeBytes: Long? = null
 )
 
 // Результат авторизации
