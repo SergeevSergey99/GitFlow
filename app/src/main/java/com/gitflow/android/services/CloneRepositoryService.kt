@@ -17,6 +17,7 @@ import com.gitflow.android.R
 import com.gitflow.android.data.models.GitRemoteRepository
 import com.gitflow.android.data.repository.CloneProgress
 import com.gitflow.android.data.repository.CloneProgressCallback
+import com.gitflow.android.data.repository.CloneProgressTracker
 import com.gitflow.android.data.repository.RealGitRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +39,7 @@ class CloneRepositoryService : Service() {
 
     private var cloneJob: Job? = null
     private var progressCallback: CloneProgressCallback? = null
+    private var currentCloneKey: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -82,7 +84,17 @@ class CloneRepositoryService : Service() {
             return
         }
 
+        val cloneKey = customDestination?.takeIf { it.isNotBlank() } ?: localPath
+        currentCloneKey = cloneKey
+        CloneProgressTracker.registerClone(
+            key = cloneKey,
+            repoName = repoName,
+            repoFullName = repoFullName,
+            approximateSize = approximateSize
+        )
+
         startCloneJob(
+            cloneKey = cloneKey,
             cloneUrl = cloneUrl,
             localPath = localPath,
             customDestination = customDestination,
@@ -93,6 +105,7 @@ class CloneRepositoryService : Service() {
     }
 
     private fun startCloneJob(
+        cloneKey: String,
         cloneUrl: String,
         localPath: String,
         customDestination: String?,
@@ -114,7 +127,7 @@ class CloneRepositoryService : Service() {
 
         startForeground(NOTIFICATION_ID, initialNotification)
 
-        val callback = CloneProgressCallback()
+        val callback = CloneProgressCallback(cloneKey)
         progressCallback = callback
 
         cloneJob = serviceScope.launch {
@@ -136,9 +149,24 @@ class CloneRepositoryService : Service() {
             progressUpdates.cancelAndJoin()
             progressCallback = null
 
+            result.fold(
+                onSuccess = {
+                    CloneProgressTracker.markCompleted(cloneKey)
+                },
+                onFailure = { error ->
+                    val message = error.message
+                    if (message?.contains("cancel", ignoreCase = true) == true) {
+                        CloneProgressTracker.markCancelled(cloneKey, message)
+                    } else {
+                        CloneProgressTracker.markFailed(cloneKey, message)
+                    }
+                }
+            )
+
             val completionNotification = buildCompletionNotification(repoFullName, repoName, result, approximateSize)
             stopForeground(STOP_FOREGROUND_REMOVE)
             notifySafely(NOTIFICATION_ID, completionNotification)
+            currentCloneKey = null
             stopSelf()
         }
     }
@@ -231,6 +259,7 @@ class CloneRepositoryService : Service() {
     private fun handleCancelClone() {
         android.util.Log.d(TAG, "Отмена операции клонирования по запросу пользователя")
         progressCallback?.cancel()
+        currentCloneKey?.let { CloneProgressTracker.markCancelled(it) }
     }
 
     private fun ensureChannel() {
@@ -305,6 +334,14 @@ class CloneRepositoryService : Service() {
             approximateSize: Long? = null,
             customDestination: String? = null
         ) {
+            val cloneKey = customDestination?.takeIf { it.isNotBlank() } ?: localPath
+            CloneProgressTracker.registerClone(
+                key = cloneKey,
+                repoName = repoName,
+                repoFullName = repoFullName,
+                approximateSize = approximateSize
+            )
+
             val intent = Intent(context, CloneRepositoryService::class.java).apply {
                 action = ACTION_START_CLONE
                 putExtra(EXTRA_CLONE_URL, cloneUrl)
@@ -313,6 +350,13 @@ class CloneRepositoryService : Service() {
                 putExtra(EXTRA_REPO_FULL_NAME, repoFullName)
                 approximateSize?.let { putExtra(EXTRA_REPO_SIZE, it) }
                 customDestination?.let { putExtra(EXTRA_CUSTOM_DESTINATION, it) }
+            }
+            ContextCompat.startForegroundService(context, intent)
+        }
+
+        fun cancel(context: Context) {
+            val intent = Intent(context, CloneRepositoryService::class.java).apply {
+                action = ACTION_CANCEL_CLONE
             }
             ContextCompat.startForegroundService(context, intent)
         }

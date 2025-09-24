@@ -40,7 +40,7 @@ data class CloneProgress(
     val isCancellable: Boolean = true
 )
 
-class CloneProgressCallback : ProgressMonitor {
+class CloneProgressCallback(private val trackingKey: String? = null) : ProgressMonitor {
     private val _progress = MutableStateFlow(CloneProgress())
     val progress: StateFlow<CloneProgress> = _progress.asStateFlow()
 
@@ -98,6 +98,7 @@ class CloneProgressCallback : ProgressMonitor {
         cancelled = true
         addLog("Clone operation cancelled by user")
         updateProgress()
+        trackingKey?.let { CloneProgressTracker.markCancelled(it) }
     }
 
     private fun addLog(message: String) {
@@ -128,6 +129,7 @@ class CloneProgressCallback : ProgressMonitor {
 
         android.util.Log.d("CloneProgress", "updateProgress: $newProgress")
         _progress.value = newProgress
+        trackingKey?.let { CloneProgressTracker.updateProgress(it, newProgress) }
     }
 
     private fun calculateEstimatedTime(): String {

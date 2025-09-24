@@ -25,7 +25,6 @@ import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.Repository
-import com.gitflow.android.data.repository.CloneProgressCallback
 import com.gitflow.android.data.repository.RealGitRepository
 import com.gitflow.android.ui.components.RepositoryCard
 import com.gitflow.android.ui.components.dialogs.AddRepositoryDialog
@@ -46,7 +45,6 @@ fun RepositoryListScreen(
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var repositoryToDelete by remember { mutableStateOf<Repository?>(null) }
     var deleteMessage by remember { mutableStateOf<String?>(null) }
-    var cloneProgressCallback by remember { mutableStateOf<CloneProgressCallback?>(null) }
     data class PendingManualClone(val name: String, val url: String)
     var pendingManualClone by remember { mutableStateOf<PendingManualClone?>(null) }
 
@@ -56,7 +54,6 @@ fun RepositoryListScreen(
     val authManager = remember { AuthManager(context) }
 
     // Observe clone progress
-    val cloneProgress by (cloneProgressCallback?.progress?.collectAsState() ?: remember { mutableStateOf(null) })
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -70,8 +67,7 @@ fun RepositoryListScreen(
                     showAddDialog = false
                     isLoading = false
                     errorMessage = null
-                    cloneProgressCallback = null
-                },
+                    },
                 onError = { message ->
                     errorMessage = message
                     isLoading = false
@@ -81,11 +77,6 @@ fun RepositoryListScreen(
             errorMessage = context.getString(R.string.notification_permission_required)
         }
         pendingManualClone = null
-    }
-
-    // Log progress changes
-    LaunchedEffect(cloneProgress) {
-        android.util.Log.d("RepositoryListScreen", "Clone progress updated: $cloneProgress")
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -134,13 +125,9 @@ fun RepositoryListScreen(
                 showAddDialog = false
                 errorMessage = null
                 isLoading = false
-                cloneProgressCallback?.cancel()
-                cloneProgressCallback = null
             },
             isLoading = isLoading,
             errorMessage = errorMessage,
-            cloneProgress = cloneProgress,
-            cloneProgressCallback = cloneProgressCallback,
             authManager = authManager,
             onAdd = { name, url, isClone ->
                 if (isClone && url.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -156,7 +143,6 @@ fun RepositoryListScreen(
                             showAddDialog = false
                             isLoading = false
                             errorMessage = null
-                            cloneProgressCallback = null
                         },
                         onError = { message ->
                             errorMessage = message

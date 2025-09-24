@@ -25,6 +25,7 @@ import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitRemoteRepository
+import com.gitflow.android.ui.components.CloneProgressOverlay
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -121,66 +122,76 @@ fun RemoteRepositoriesScreen(
             )
         }
     ) { paddingValues ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
 
-            android.util.Log.d("RemoteRepositoriesScreen", "Вызываем ProviderTabs с selectedProvider=$selectedProvider")
+                android.util.Log.d("RemoteRepositoriesScreen", "Вызываем ProviderTabs с selectedProvider=$selectedProvider")
 
-            // Tabs для выбора провайдера
-            ProviderTabs(
-                selectedProvider = selectedProvider,
-                onProviderSelected = { provider ->
-                    viewModel.selectProvider(provider, authManager)
-                },
-                isGitHubAuthenticated = authManager.isAuthenticated(GitProvider.GITHUB),
-                isGitLabAuthenticated = authManager.isAuthenticated(GitProvider.GITLAB)
-            )
-            
-            if (isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        CircularProgressIndicator()
-                        Text("Загрузка репозиториев...")
-                    }
-                }
-            } else if (errorMessage != null) {
-                ErrorMessage(
-                    message = errorMessage!!,
-                    onRetry = { viewModel.refreshRepositories(authManager) }
+                // Tabs для выбора провайдера
+                ProviderTabs(
+                    selectedProvider = selectedProvider,
+                    onProviderSelected = { provider ->
+                        viewModel.selectProvider(provider, authManager)
+                    },
+                    isGitHubAuthenticated = authManager.isAuthenticated(GitProvider.GITHUB),
+                    isGitLabAuthenticated = authManager.isAuthenticated(GitProvider.GITLAB)
                 )
-            } else if (repositories.isEmpty()) {
-                EmptyRepositoriesMessage(selectedProvider)
-            } else {
-                RepositoriesList(
-                    repositories = repositories,
-                    isCloning = isCloning,
-                    onCloneRepository = { repository, localPath ->
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            pendingClone = PendingClone(repository, localPath)
-                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                        } else {
-                            viewModel.startCloneInBackground(
-                                context = context,
-                                repository = repository,
-                                localPath = localPath,
-                                authManager = authManager,
-                                onStarted = onRepositoryCloned
-                            )
+                            CircularProgressIndicator()
+                            Text("Загрузка репозиториев...")
                         }
                     }
-                )
+                } else if (errorMessage != null) {
+                    ErrorMessage(
+                        message = errorMessage!!,
+                        onRetry = { viewModel.refreshRepositories(authManager) }
+                    )
+                } else if (repositories.isEmpty()) {
+                    EmptyRepositoriesMessage(selectedProvider)
+                } else {
+                    RepositoriesList(
+                        repositories = repositories,
+                        isCloning = isCloning,
+                        onCloneRepository = { repository, localPath ->
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                            ) {
+                                pendingClone = PendingClone(repository, localPath)
+                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                viewModel.startCloneInBackground(
+                                    context = context,
+                                    repository = repository,
+                                    localPath = localPath,
+                                    authManager = authManager,
+                                    onStarted = onRepositoryCloned
+                                )
+                            }
+                        }
+                    )
+                }
             }
+
+            CloneProgressOverlay(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 48.dp)
+            )
         }
     }
 }
@@ -261,6 +272,7 @@ fun ProviderTabs(
                     )
                 }
             }
+
         }
     }
 }
@@ -302,6 +314,7 @@ fun ErrorMessage(
         }
     }
 }
+
 
 @Composable
 fun EmptyRepositoriesMessage(selectedProvider: GitProvider?) {

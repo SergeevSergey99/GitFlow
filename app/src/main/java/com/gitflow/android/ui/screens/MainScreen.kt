@@ -5,6 +5,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -14,6 +15,7 @@ import androidx.navigation.NavController
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.RealGitRepository
 import com.gitflow.android.ui.config.GraphConfig
+import com.gitflow.android.ui.components.CloneProgressOverlay
 import com.gitflow.android.ui.screens.main.ChangesScreen
 import com.gitflow.android.ui.screens.main.RepositoryListScreen
 import com.gitflow.android.ui.screens.main.SettingsScreen
@@ -135,6 +137,12 @@ fun MainScreen(navController: NavController) {
                     navController = navController
                 )
             }
+
+            CloneProgressOverlay(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 88.dp)
+            )
         }
     }
 

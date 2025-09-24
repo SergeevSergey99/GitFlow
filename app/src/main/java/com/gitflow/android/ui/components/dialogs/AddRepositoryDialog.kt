@@ -25,8 +25,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
-import com.gitflow.android.data.repository.CloneProgress
-import com.gitflow.android.data.repository.CloneProgressCallback
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,8 +35,6 @@ fun AddRepositoryDialog(
     onAdd: (String, String, Boolean) -> Unit,
     onAddLocal: (String) -> Unit = {},
     onNavigateToRemote: () -> Unit = {},
-    cloneProgress: CloneProgress? = null,
-    cloneProgressCallback: CloneProgressCallback? = null,
     authManager: AuthManager? = null
 ) {
     var name by remember { mutableStateOf("") }
@@ -46,8 +42,6 @@ fun AddRepositoryDialog(
     var localPath by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf(0) }
     var customDestination by remember { mutableStateOf("") }
-    var showLogs by remember { mutableStateOf(false) }
-
     // Launcher for choosing directory for cloning
     val directoryPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
@@ -148,16 +142,7 @@ fun AddRepositoryDialog(
                 // Loading indicator and progress
                 if (isLoading) {
                     Spacer(modifier = Modifier.height(16.dp))
-
-                    if (selectedTab == 0 && cloneProgress != null) {
-                        CloneProgressView(
-                            cloneProgress = cloneProgress,
-                            showLogs = showLogs,
-                            onToggleLogs = { showLogs = !showLogs }
-                        )
-                    } else {
-                        DefaultLoadingView(selectedTab)
-                    }
+                    DefaultLoadingView(selectedTab)
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -165,7 +150,6 @@ fun AddRepositoryDialog(
                 DialogActions(
                     selectedTab = selectedTab,
                     isLoading = isLoading,
-                    cloneProgressCallback = cloneProgressCallback,
                     name = name,
                     url = url,
                     localPath = localPath,
@@ -456,107 +440,6 @@ private fun RemoteTab(
 }
 
 @Composable
-private fun CloneProgressView(
-    cloneProgress: CloneProgress,
-    showLogs: Boolean,
-    onToggleLogs: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Cloning Repository",
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-                TextButton(onClick = onToggleLogs) {
-                    Text(
-                        text = if (showLogs) "Hide Logs" else "Show Logs",
-                        fontSize = 12.sp
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = cloneProgress.stage,
-                fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            LinearProgressIndicator(
-                progress = cloneProgress.progress,
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                if (cloneProgress.total > 0) {
-                    Text(
-                        text = "${cloneProgress.completed} / ${cloneProgress.total} (${(cloneProgress.progress * 100).toInt()}%)",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-
-                if (cloneProgress.estimatedTimeRemaining.isNotEmpty()) {
-                    Text(
-                        text = "ETA: ${cloneProgress.estimatedTimeRemaining}",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                    )
-                }
-            }
-
-            if (showLogs && cloneProgress.logs.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(120.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surface
-                ) {
-                    LazyColumn(
-                        modifier = Modifier.padding(8.dp),
-                        reverseLayout = true
-                    ) {
-                        items(cloneProgress.logs.reversed()) { log ->
-                            Text(
-                                text = log,
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun DefaultLoadingView(selectedTab: Int) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -582,7 +465,6 @@ private fun DefaultLoadingView(selectedTab: Int) {
 private fun DialogActions(
     selectedTab: Int,
     isLoading: Boolean,
-    cloneProgressCallback: CloneProgressCallback?,
     name: String,
     url: String,
     localPath: String,
@@ -595,22 +477,9 @@ private fun DialogActions(
         horizontalArrangement = Arrangement.End
     ) {
         TextButton(
-            onClick = {
-                if (isLoading && selectedTab == 0 && cloneProgressCallback?.isCancelled() == false) {
-                    cloneProgressCallback?.cancel()
-                } else {
-                    onDismiss()
-                }
-            },
-            enabled = true
+            onClick = onDismiss
         ) {
-            Text(
-                if (isLoading && selectedTab == 0 && cloneProgressCallback?.isCancelled() == false) {
-                    "Cancel Clone"
-                } else {
-                    "Cancel"
-                }
-            )
+            Text("Cancel")
         }
         Spacer(modifier = Modifier.width(8.dp))
         Button(
