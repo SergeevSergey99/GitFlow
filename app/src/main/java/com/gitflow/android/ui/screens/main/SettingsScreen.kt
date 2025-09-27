@@ -2,6 +2,8 @@ package com.gitflow.android.ui.screens.main
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -18,6 +20,7 @@ import androidx.navigation.NavController
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitUser
+import com.gitflow.android.data.settings.AppSettingsManager
 import com.gitflow.android.ui.components.dialogs.GraphPresetDialog
 
 @Composable
@@ -28,6 +31,7 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val authManager = remember { AuthManager(context) }
+    val settingsManager = remember { AppSettingsManager(context) }
 
     // Получаем информацию о пользователях
     val githubUser = authManager.getCurrentUser(GitProvider.GITHUB)
@@ -35,11 +39,15 @@ fun SettingsScreen(
     val hasAnyAuth = githubUser != null || gitlabUser != null
 
     var showGraphPresetDialog by remember { mutableStateOf(false) }
+    var wifiOnlyDownloads by remember { mutableStateOf(settingsManager.isWifiOnlyDownloadsEnabled()) }
+
+    val scrollState = rememberScrollState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .padding(16.dp)
+            .verticalScroll(scrollState),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         AccountSection(
@@ -54,6 +62,14 @@ fun SettingsScreen(
         GraphSettingsSection(
             selectedGraphPreset = selectedGraphPreset,
             onPresetClick = { showGraphPresetDialog = true }
+        )
+
+        NetworkSettingsSection(
+            wifiOnlyDownloads = wifiOnlyDownloads,
+            onWifiOnlyChanged = { enabled ->
+                wifiOnlyDownloads = enabled
+                settingsManager.setWifiOnlyDownloadsEnabled(enabled)
+            }
         )
 
         AboutSection()
@@ -289,6 +305,50 @@ fun UserAccountRow(
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
+        }
+    }
+}
+
+@Composable
+private fun NetworkSettingsSection(
+    wifiOnlyDownloads: Boolean,
+    onWifiOnlyChanged: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(
+                text = "Network",
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Wi-Fi only downloads",
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "Block cloning on mobile data to save traffic",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Switch(
+                    checked = wifiOnlyDownloads,
+                    onCheckedChange = onWifiOnlyChanged
+                )
+            }
         }
     }
 }

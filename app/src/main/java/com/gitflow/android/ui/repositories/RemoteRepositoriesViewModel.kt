@@ -131,12 +131,16 @@ class RemoteRepositoriesViewModel : ViewModel() {
 
                 android.util.Log.d("RemoteRepositoriesViewModel", "Получен clone URL: $cloneUrl")
 
-                CloneRepositoryService.start(
+                val started = CloneRepositoryService.start(
                     context = context,
                     repository = repository,
                     cloneUrl = cloneUrl,
                     localPath = localPath
                 )
+                if (!started) {
+                    _errorMessage.value = context.getString(R.string.clone_wifi_only_error)
+                    return@launch
+                }
 
                 onStarted()
             } catch (e: Exception) {

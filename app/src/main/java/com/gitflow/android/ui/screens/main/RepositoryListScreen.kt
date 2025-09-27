@@ -333,7 +333,7 @@ private fun startManualClone(
                 null
             }
 
-            CloneRepositoryService.start(
+            val started = CloneRepositoryService.start(
                 context = context,
                 repoName = targetName,
                 repoFullName = url,
@@ -341,6 +341,11 @@ private fun startManualClone(
                 localPath = targetPath,
                 approximateSize = resolvedSize
             )
+
+            if (!started) {
+                onError(context.getString(R.string.clone_wifi_only_error))
+                return@launch
+            }
 
             onSuccess()
         } catch (e: Exception) {

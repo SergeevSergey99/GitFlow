@@ -16,4 +16,5 @@
     <string name="notification_clone_cancelled">Клонирование отменено</string>
     <string name="notification_clone_cancelled_detail">Клонирование %1$s отменено пользователем</string>
     <string name="notification_permission_required">Для фонового клонирования разрешите уведомления в настройках приложения</string>
+    <string name="clone_wifi_only_error">Загрузка репозитория разрешена только по Wi‑Fi. Подключитесь к Wi‑Fi или отключите ограничение в настройках.</string>
 </resources>

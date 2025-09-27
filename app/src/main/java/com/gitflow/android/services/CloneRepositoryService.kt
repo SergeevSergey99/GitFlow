@@ -10,6 +10,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -19,6 +24,7 @@ import com.gitflow.android.data.repository.CloneProgress
 import com.gitflow.android.data.repository.CloneProgressCallback
 import com.gitflow.android.data.repository.CloneProgressTracker
 import com.gitflow.android.data.repository.RealGitRepository
+import com.gitflow.android.data.settings.AppSettingsManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -313,8 +319,8 @@ class CloneRepositoryService : Service() {
             cloneUrl: String,
             localPath: String,
             customDestination: String? = null
-        ) {
-            start(
+        ): Boolean {
+            return start(
                 context = context,
                 repoName = repository.name,
                 repoFullName = repository.fullName,
@@ -333,7 +339,13 @@ class CloneRepositoryService : Service() {
             localPath: String,
             approximateSize: Long? = null,
             customDestination: String? = null
-        ) {
+        ): Boolean {
+            val appContext = context.applicationContext
+            if (!isNetworkAllowed(appContext)) {
+                showWifiOnlyRestriction(appContext)
+                return false
+            }
+
             val cloneKey = customDestination?.takeIf { it.isNotBlank() } ?: localPath
             CloneProgressTracker.registerClone(
                 key = cloneKey,
@@ -352,6 +364,7 @@ class CloneRepositoryService : Service() {
                 customDestination?.let { putExtra(EXTRA_CUSTOM_DESTINATION, it) }
             }
             ContextCompat.startForegroundService(context, intent)
+            return true
         }
 
         fun cancel(context: Context) {
@@ -359,6 +372,40 @@ class CloneRepositoryService : Service() {
                 action = ACTION_CANCEL_CLONE
             }
             ContextCompat.startForegroundService(context, intent)
+        }
+
+        private fun isNetworkAllowed(context: Context): Boolean {
+            val settingsManager = AppSettingsManager(context)
+            if (!settingsManager.isWifiOnlyDownloadsEnabled()) {
+                return true
+            }
+            return isWifiConnection(context)
+        }
+
+        private fun isWifiConnection(context: Context): Boolean {
+            val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                ?: return false
+
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val network = connectivityManager.activeNetwork ?: return false
+                val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+            } else {
+                val networkInfo = connectivityManager.activeNetworkInfo ?: return false
+                networkInfo.type == ConnectivityManager.TYPE_WIFI ||
+                    networkInfo.type == ConnectivityManager.TYPE_ETHERNET
+            }
+        }
+
+        private fun showWifiOnlyRestriction(context: Context) {
+            Handler(Looper.getMainLooper()).post {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.clone_wifi_only_error),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
         }
 
         private fun formatSizeForNotification(sizeBytes: Long): String {
