@@ -105,4 +105,11 @@ interface GitLabApi {
         @Query("page") page: Int = 1,
         @Query("statistics") statistics: Boolean = true
     ): Response<List<GitLabRepository>>
+
+    @GET("api/v4/projects/{id}")
+    suspend fun getProject(
+        @Header("Authorization") authorization: String?,
+        @Path("id", encoded = true) projectId: String,
+        @Query("statistics") statistics: Boolean = true
+    ): Response<GitLabRepository>
 }

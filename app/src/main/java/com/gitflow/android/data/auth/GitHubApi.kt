@@ -55,6 +55,13 @@ interface GitHubApi {
         @Query("per_page") perPage: Int = 100,
         @Query("page") page: Int = 1
     ): Response<List<GitHubRepository>>
+
+    @GET("repos/{owner}/{repo}")
+    suspend fun getRepository(
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Header("Authorization") authorization: String? = null
+    ): Response<GitHubRepository>
     
     @GET("user/orgs")
     suspend fun getUserOrganizations(

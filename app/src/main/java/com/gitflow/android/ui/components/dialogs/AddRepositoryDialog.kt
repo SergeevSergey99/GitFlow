@@ -13,9 +13,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -25,6 +25,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
+import java.util.Locale
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,7 +34,7 @@ fun AddRepositoryDialog(
     onDismiss: () -> Unit,
     isLoading: Boolean = false,
     errorMessage: String? = null,
-    onAdd: (String, String, Boolean) -> Unit,
+    onAdd: (String, String, Boolean, Long?) -> Unit,
     onAddLocal: (String) -> Unit = {},
     onNavigateToRemote: () -> Unit = {},
     authManager: AuthManager? = null
@@ -42,6 +44,9 @@ fun AddRepositoryDialog(
     var localPath by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf(0) }
     var customDestination by remember { mutableStateOf("") }
+    var approximateSize by remember { mutableStateOf<Long?>(null) }
+    var isSizeLoading by remember { mutableStateOf(false) }
+    var sizeError by remember { mutableStateOf<String?>(null) }
     // Launcher for choosing directory for cloning
     val directoryPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
@@ -57,6 +62,35 @@ fun AddRepositoryDialog(
     ) { uri: Uri? ->
         uri?.let {
             localPath = getRealPathFromUri(it)
+        }
+    }
+
+    LaunchedEffect(url, authManager, selectedTab) {
+        approximateSize = null
+        sizeError = null
+
+        if (selectedTab != 0) {
+            isSizeLoading = false
+            return@LaunchedEffect
+        }
+
+        if (url.isBlank() || authManager == null) {
+            isSizeLoading = false
+            return@LaunchedEffect
+        }
+
+        val currentUrl = url
+        isSizeLoading = true
+        try {
+            delay(500)
+            if (currentUrl != url) {
+                return@LaunchedEffect
+            }
+            approximateSize = authManager.getRepositoryApproximateSize(currentUrl)
+        } catch (e: Exception) {
+            sizeError = e.message ?: "Failed to estimate repository size"
+        } finally {
+            isSizeLoading = false
         }
     }
 
@@ -90,6 +124,9 @@ fun AddRepositoryDialog(
                         customDestination = customDestination,
                         isLoading = isLoading,
                         authManager = authManager,
+                        isSizeLoading = isSizeLoading,
+                        approximateSizeBytes = approximateSize,
+                        sizeError = sizeError,
                         onUrlChange = {
                             url = it
                             if (it.isNotEmpty()) {
@@ -153,6 +190,7 @@ fun AddRepositoryDialog(
                     name = name,
                     url = url,
                     localPath = localPath,
+                    approximateSize = approximateSize,
                     onDismiss = onDismiss,
                     onAdd = onAdd,
                     onAddLocal = onAddLocal
@@ -209,6 +247,9 @@ private fun CloneTab(
     customDestination: String,
     isLoading: Boolean,
     authManager: AuthManager?,
+    isSizeLoading: Boolean,
+    approximateSizeBytes: Long?,
+    sizeError: String?,
     onUrlChange: (String) -> Unit,
     onNameChange: (String) -> Unit,
     onDestinationChange: (String) -> Unit,
@@ -273,6 +314,35 @@ private fun CloneTab(
         },
         enabled = !isLoading
     )
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    if (isSizeLoading) {
+        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "Estimating repository size...",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    } else {
+        approximateSizeBytes?.let { size ->
+            Text(
+                text = "Approximate download: ${formatApproximateSize(size)}",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+        }
+        sizeError?.let { message ->
+            Text(
+                text = message,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.error
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+        }
+    }
 
     // Показываем статус авторизации
     authManager?.let { auth ->
@@ -468,8 +538,9 @@ private fun DialogActions(
     name: String,
     url: String,
     localPath: String,
+    approximateSize: Long?,
     onDismiss: () -> Unit,
-    onAdd: (String, String, Boolean) -> Unit,
+    onAdd: (String, String, Boolean, Long?) -> Unit,
     onAddLocal: (String) -> Unit
 ) {
     Row(
@@ -487,7 +558,7 @@ private fun DialogActions(
                 when (selectedTab) {
                     0 -> { // Clone
                         if (name.isNotEmpty() && url.isNotEmpty()) {
-                            onAdd(name, url, true)
+                            onAdd(name, url, true, approximateSize)
                         }
                     }
                     1 -> { // Local
@@ -497,7 +568,7 @@ private fun DialogActions(
                     }
                     2 -> { // Create
                         if (name.isNotEmpty()) {
-                            onAdd(name, "", false)
+                            onAdd(name, "", false, null)
                         }
                     }
                 }
@@ -525,6 +596,20 @@ private fun DialogActions(
                 )
             }
         }
+    }
+}
+
+private fun formatApproximateSize(sizeBytes: Long): String {
+    if (sizeBytes <= 0) return "Unknown"
+
+    val kilobytes = sizeBytes / 1024.0
+    val megabytes = kilobytes / 1024.0
+    val gigabytes = megabytes / 1024.0
+
+    return when {
+        gigabytes >= 1 -> String.format(Locale.getDefault(), "%.1f GB", gigabytes)
+        megabytes >= 1 -> String.format(Locale.getDefault(), "%.1f MB", megabytes)
+        else -> String.format(Locale.getDefault(), "%.0f KB", kilobytes)
     }
 }
 

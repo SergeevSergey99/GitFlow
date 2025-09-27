@@ -45,7 +45,7 @@ fun RepositoryListScreen(
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var repositoryToDelete by remember { mutableStateOf<Repository?>(null) }
     var deleteMessage by remember { mutableStateOf<String?>(null) }
-    data class PendingManualClone(val name: String, val url: String)
+    data class PendingManualClone(val name: String, val url: String, val approximateSize: Long?)
     var pendingManualClone by remember { mutableStateOf<PendingManualClone?>(null) }
 
     val scope = rememberCoroutineScope()
@@ -62,12 +62,18 @@ fun RepositoryListScreen(
         if (granted && pending != null) {
             isLoading = true
             errorMessage = null
-            startManualClone(scope, context, authManager, pending.name, pending.url,
+            startManualClone(
+                scope = scope,
+                context = context,
+                authManager = authManager,
+                name = pending.name,
+                url = pending.url,
+                approximateSize = pending.approximateSize,
                 onSuccess = {
                     showAddDialog = false
                     isLoading = false
                     errorMessage = null
-                    },
+                },
                 onError = { message ->
                     errorMessage = message
                     isLoading = false
@@ -129,16 +135,16 @@ fun RepositoryListScreen(
             isLoading = isLoading,
             errorMessage = errorMessage,
             authManager = authManager,
-            onAdd = { name, url, isClone ->
+            onAdd = { name, url, isClone, approximateSize ->
                 if (isClone && url.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                     ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
                 ) {
-                    pendingManualClone = PendingManualClone(name, url)
+                    pendingManualClone = PendingManualClone(name, url, approximateSize)
                     notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 } else if (isClone && url.isNotEmpty()) {
                     isLoading = true
                     errorMessage = null
-                    startManualClone(scope, context, authManager, name, url,
+                    startManualClone(scope, context, authManager, name, url, approximateSize,
                         onSuccess = {
                             showAddDialog = false
                             isLoading = false
@@ -292,6 +298,7 @@ private fun startManualClone(
     authManager: AuthManager,
     name: String,
     url: String,
+    approximateSize: Long?,
     onSuccess: () -> Unit,
     onError: (String) -> Unit
 ) {
@@ -320,12 +327,19 @@ private fun startManualClone(
                 url
             }
 
+            val resolvedSize = try {
+                approximateSize ?: authManager.getRepositoryApproximateSize(url)
+            } catch (e: Exception) {
+                null
+            }
+
             CloneRepositoryService.start(
                 context = context,
                 repoName = targetName,
                 repoFullName = url,
                 cloneUrl = finalUrl,
-                localPath = targetPath
+                localPath = targetPath,
+                approximateSize = resolvedSize
             )
 
             onSuccess()

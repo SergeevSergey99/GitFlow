@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import java.net.URI
 import java.net.URLEncoder
 
 class AuthManager(val context: Context) {
@@ -389,7 +390,34 @@ class AuthManager(val context: Context) {
         }
         editor.apply()
     }
-    
+
+    suspend fun getRepositoryApproximateSize(rawUrl: String): Long? = withContext(Dispatchers.IO) {
+        val normalizedUrl = normalizeRepositoryUrlForParsing(rawUrl)
+        if (normalizedUrl.isBlank()) return@withContext null
+
+        val uri = try {
+            URI(normalizedUrl)
+        } catch (e: Exception) {
+            android.util.Log.w("AuthManager", "Не удалось разобрать URL репозитория: $rawUrl", e)
+            return@withContext null
+        }
+
+        val host = uri.host ?: return@withContext null
+        val path = uri.path?.trim('/') ?: return@withContext null
+        if (path.isBlank()) return@withContext null
+
+        return@withContext try {
+            when {
+                host.contains("github.com", ignoreCase = true) -> fetchGitHubRepositorySize(path)
+                host.contains("gitlab.com", ignoreCase = true) -> fetchGitLabRepositorySize(path)
+                else -> null
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("AuthManager", "Ошибка при попытке получить размер репозитория: ${e.message}", e)
+            null
+        }
+    }
+
     // Получение токена для клонирования
     fun getCloneUrl(repository: GitRemoteRepository, useHttps: Boolean = true): String? {
         android.util.Log.d("AuthManager", "getCloneUrl вызван для репозитория: ${repository.fullName}")
@@ -449,6 +477,91 @@ class AuthManager(val context: Context) {
         }
         val tokenJson = preferences.getString(key, null)
         return tokenJson?.let { gson.fromJson(it, OAuthToken::class.java) }
+    }
+
+    private fun normalizeRepositoryUrlForParsing(url: String): String {
+        val trimmed = url.trim()
+        if (trimmed.isEmpty()) return ""
+
+        return when {
+            trimmed.startsWith("git@") -> {
+                val withoutPrefix = trimmed.removePrefix("git@")
+                val parts = withoutPrefix.split(":", limit = 2)
+                if (parts.size == 2) {
+                    "https://${parts[0]}/${parts[1]}"
+                } else {
+                    "https://$withoutPrefix"
+                }
+            }
+            trimmed.startsWith("ssh://git@") -> {
+                val withoutPrefix = trimmed.removePrefix("ssh://git@")
+                val parts = withoutPrefix.split(":", limit = 2)
+                if (parts.size == 2) {
+                    "https://${parts[0]}/${parts[1]}"
+                } else {
+                    "https://$withoutPrefix"
+                }
+            }
+            trimmed.startsWith("http://") -> trimmed.replaceFirst("http://", "https://")
+            else -> trimmed
+        }
+    }
+
+    private suspend fun fetchGitHubRepositorySize(path: String): Long? {
+        val segments = path.split('/').filter { it.isNotBlank() }
+        if (segments.size < 2) return null
+
+        val owner = segments[0]
+        val repo = segments[1].removeSuffix(".git")
+        if (owner.isBlank() || repo.isBlank()) return null
+
+        val authHeader = getAccessToken(GitProvider.GITHUB)?.let { "Bearer $it" }
+
+        val response = githubApi.getRepository(owner = owner, repo = repo, authorization = authHeader)
+        val body = when {
+            response.isSuccessful -> response.body()
+            authHeader != null -> {
+                val fallback = githubApi.getRepository(owner = owner, repo = repo, authorization = null)
+                if (fallback.isSuccessful) fallback.body() else null
+            }
+            else -> null
+        }
+
+        return body?.size?.toLong()?.let { it * 1024L }
+    }
+
+    private suspend fun fetchGitLabRepositorySize(path: String): Long? {
+        val segments = path.split('/').filter { it.isNotBlank() }.toMutableList()
+        if (segments.isEmpty()) return null
+
+        val lastIndex = segments.lastIndex
+        segments[lastIndex] = segments[lastIndex].removeSuffix(".git")
+        val projectPath = segments.joinToString("/")
+        if (projectPath.isBlank()) return null
+
+        val encodedPath = URLEncoder.encode(projectPath, "UTF-8")
+        val authHeader = getAccessToken(GitProvider.GITLAB)?.let { "Bearer $it" }
+
+        val response = gitlabApi.getProject(
+            authorization = authHeader,
+            projectId = encodedPath,
+            statistics = true
+        )
+
+        val body = when {
+            response.isSuccessful -> response.body()
+            authHeader != null -> {
+                val fallback = gitlabApi.getProject(
+                    authorization = null,
+                    projectId = encodedPath,
+                    statistics = true
+                )
+                if (fallback.isSuccessful) fallback.body() else null
+            }
+            else -> null
+        }
+
+        return body?.statistics?.repository_size ?: body?.statistics?.storage_size
     }
 }
 
