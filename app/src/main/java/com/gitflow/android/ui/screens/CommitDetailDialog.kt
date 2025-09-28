@@ -867,13 +867,17 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
     }
 
     val displayedTree = remember(fileTree, filterTokens) {
-        val root = fileTree
-        if (root == null) {
-            null
-        } else if (filterTokens.isEmpty()) {
+        val root = fileTree ?: return@remember null
+        val tree = if (filterTokens.isEmpty()) {
             root
         } else {
             filterFileTree(root, filterTokens)
+        }
+
+        if (tree != null && filterTokens.isNotEmpty()) {
+            collapseSingleChildDirectories(tree, isRoot = true)
+        } else {
+            tree
         }
     }
 
@@ -1601,6 +1605,34 @@ fun filterFileTree(node: FileTreeNode, tokens: List<String>): FileTreeNode? {
     } else {
         if (matchesCurrent) node else null
     }
+}
+
+fun collapseSingleChildDirectories(node: FileTreeNode, isRoot: Boolean = false): FileTreeNode {
+    if (node.type == FileTreeNodeType.FILE) return node
+
+    val collapsedChildren = node.children.map { child ->
+        collapseSingleChildDirectories(child, isRoot = false)
+    }
+
+    if (isRoot) {
+        return node.copy(children = collapsedChildren)
+    }
+
+    if (collapsedChildren.size == 1 && collapsedChildren.first().type == FileTreeNodeType.DIRECTORY) {
+        val child = collapsedChildren.first()
+        val mergedName = sequenceOf(node.name, child.name)
+            .filter { it.isNotEmpty() }
+            .joinToString("/")
+        val mergedPath = if (child.path.isEmpty()) node.path else child.path
+        return node.copy(
+            name = if (mergedName.isEmpty()) child.name else mergedName,
+            path = if (mergedPath.isEmpty()) node.path else mergedPath,
+            children = child.children,
+            lastModified = child.lastModified
+        )
+    }
+
+    return node.copy(children = collapsedChildren)
 }
 
 private fun matchesFilter(node: FileTreeNode, tokens: List<String>): Boolean {
