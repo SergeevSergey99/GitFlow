@@ -56,6 +56,7 @@ fun SettingsScreen(
     var wifiOnlyDownloads by remember { mutableStateOf(settingsManager.isWifiOnlyDownloadsEnabled()) }
     var previewExtensions by remember { mutableStateOf(settingsManager.getPreviewExtensions().toList()) }
     var previewFileNames by remember { mutableStateOf(settingsManager.getPreviewFileNames().toList()) }
+    var showPreviewSettings by remember { mutableStateOf(false) }
 
     val permissionRequirements = remember {
         PermissionRequirement.buildList(context.applicationContext)
@@ -98,36 +99,8 @@ fun SettingsScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(scrollState),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        AccountSection(
-            githubUser = githubUser,
-            gitlabUser = gitlabUser,
-            hasAnyAuth = hasAnyAuth,
-            onManageAccountsClick = {
-                navController.navigate("auth")
-            }
-        )
-
-        GraphSettingsSection(
-            selectedGraphPreset = selectedGraphPreset,
-            onPresetClick = { showGraphPresetDialog = true }
-        )
-
-        NetworkSettingsSection(
-            wifiOnlyDownloads = wifiOnlyDownloads,
-            onWifiOnlyChanged = { enabled ->
-                wifiOnlyDownloads = enabled
-                settingsManager.setWifiOnlyDownloadsEnabled(enabled)
-            }
-        )
-
-        FilePreviewSettingsSection(
+    if (showPreviewSettings) {
+        FilePreviewSettingsDetail(
             extensions = previewExtensions,
             fileNames = previewFileNames,
             onAddExtension = { value ->
@@ -145,25 +118,62 @@ fun SettingsScreen(
             onRemoveFileName = { value ->
                 settingsManager.removePreviewFileName(value)
                 previewFileNames = settingsManager.getPreviewFileNames().toList()
-            }
+            },
+            onBack = { showPreviewSettings = false }
         )
-
-        if (permissionRequirements.isNotEmpty()) {
-            PermissionsSection(
-                requirements = permissionRequirements,
-                refreshKey = permissionRefreshKey,
-                onRequest = { requirement ->
-                    if (requirement.permissions.isEmpty()) {
-                        openSettings(requirement)
-                    } else {
-                        permissionLauncher.launch(requirement.permissions.toTypedArray())
-                    }
-                },
-                onOpenSettings = openSettings
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+                .verticalScroll(scrollState),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            AccountSection(
+                githubUser = githubUser,
+                gitlabUser = gitlabUser,
+                hasAnyAuth = hasAnyAuth,
+                onManageAccountsClick = {
+                    navController.navigate("auth")
+                }
             )
-        }
 
-        AboutSection()
+            GraphSettingsSection(
+                selectedGraphPreset = selectedGraphPreset,
+                onPresetClick = { showGraphPresetDialog = true }
+            )
+
+            NetworkSettingsSection(
+                wifiOnlyDownloads = wifiOnlyDownloads,
+                onWifiOnlyChanged = { enabled ->
+                    wifiOnlyDownloads = enabled
+                    settingsManager.setWifiOnlyDownloadsEnabled(enabled)
+                }
+            )
+
+            FilePreviewSettingsEntry(
+                extensions = previewExtensions,
+                fileNames = previewFileNames,
+                onOpen = { showPreviewSettings = true }
+            )
+
+            if (permissionRequirements.isNotEmpty()) {
+                PermissionsSection(
+                    requirements = permissionRequirements,
+                    refreshKey = permissionRefreshKey,
+                    onRequest = { requirement ->
+                        if (requirement.permissions.isEmpty()) {
+                            openSettings(requirement)
+                        } else {
+                            permissionLauncher.launch(requirement.permissions.toTypedArray())
+                        }
+                    },
+                    onOpenSettings = openSettings
+                )
+            }
+
+            AboutSection()
+        }
     }
 
     // Диалог выбора пресета графа
@@ -180,7 +190,127 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun FilePreviewSettingsSection(
+private fun FilePreviewSettingsEntry(
+    extensions: List<String>,
+    fileNames: List<String>,
+    onOpen: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "File Preview",
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+            Text(
+                text = "Manage which file types open inside the commit viewer.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 13.sp
+            )
+
+            val extPreview = remember(extensions) {
+                extensions.sorted().take(3).joinToString(", ") { ".${it.removePrefix(".")}" }
+            }
+            val filenamesPreview = remember(fileNames) {
+                fileNames.sorted().take(3).joinToString(", ")
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "Extensions: ${extensions.size}",
+                    fontWeight = FontWeight.Medium
+                )
+                if (extPreview.isNotEmpty()) {
+                    Text(
+                        text = extPreview,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "Filenames: ${fileNames.size}",
+                    fontWeight = FontWeight.Medium
+                )
+                if (filenamesPreview.isNotEmpty()) {
+                    Text(
+                        text = filenamesPreview,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Button(
+                onClick = onOpen,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(imageVector = Icons.Default.ChevronRight, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Configure")
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilePreviewSettingsDetail(
+    extensions: List<String>,
+    fileNames: List<String>,
+    onAddExtension: (String) -> Unit,
+    onRemoveExtension: (String) -> Unit,
+    onAddFileName: (String) -> Unit,
+    onRemoveFileName: (String) -> Unit,
+    onBack: () -> Unit
+) {
+    val scrollState = rememberScrollState()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .verticalScroll(scrollState),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+            }
+            Text(
+                text = "File Preview",
+                fontWeight = FontWeight.Bold,
+                fontSize = 20.sp
+            )
+        }
+
+        Text(
+            text = "Configure which file extensions and extensionless files are previewed in the commit viewer.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 13.sp
+        )
+
+        FilePreviewSettingsEditor(
+            extensions = extensions,
+            fileNames = fileNames,
+            onAddExtension = onAddExtension,
+            onRemoveExtension = onRemoveExtension,
+            onAddFileName = onAddFileName,
+            onRemoveFileName = onRemoveFileName
+        )
+    }
+}
+
+@Composable
+private fun FilePreviewSettingsEditor(
     extensions: List<String>,
     fileNames: List<String>,
     onAddExtension: (String) -> Unit,
