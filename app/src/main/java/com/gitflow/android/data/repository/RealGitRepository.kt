@@ -1144,6 +1144,36 @@ class RealGitRepository(private val context: Context) {
         return restoreFileToParentCommit(commit, filePath, repository)
     }
 
+    suspend fun getFileHistory(
+        commit: Commit,
+        filePath: String,
+        repository: com.gitflow.android.data.models.Repository
+    ): List<Commit> = withContext(Dispatchers.IO) {
+        val git = openRepository(repository.path) ?: return@withContext emptyList()
+        try {
+            val jgitRepository = git.repository
+            val commitId = jgitRepository.resolve(commit.hash) ?: return@withContext emptyList()
+            val logCommand = git.log()
+                .add(commitId)
+                .addPath(filePath)
+
+            val commits = logCommand.call().map { revCommit ->
+                mapRevCommitToCommitModel(revCommit)
+            }
+            commits
+        } catch (e: Exception) {
+            android.util.Log.e("RealGitRepository", "Error fetching history for $filePath", e)
+            emptyList()
+        } finally {
+            git.close()
+        }
+    }
+
+    suspend fun getFileHistory(commit: Commit, filePath: String): List<Commit> {
+        val repository = findRepositoryContainingCommit(commit) ?: return emptyList()
+        return getFileHistory(commit, filePath, repository)
+    }
+
     // ---------- Helper methods ----------
 
     private suspend fun findRepositoryContainingCommit(commit: Commit): com.gitflow.android.data.models.Repository? {
@@ -1212,6 +1242,20 @@ class RealGitRepository(private val context: Context) {
         } finally {
             git.close()
         }
+    }
+
+    private fun mapRevCommitToCommitModel(revCommit: RevCommit): Commit {
+        val author = revCommit.authorIdent
+        return Commit(
+            hash = revCommit.name,
+            message = revCommit.shortMessage ?: revCommit.fullMessage,
+            author = author?.name ?: "Unknown",
+            email = author?.emailAddress ?: "",
+            timestamp = author?.`when`?.time ?: 0L,
+            parents = revCommit.parents.map { it.name },
+            description = revCommit.fullMessage,
+            isMergeCommit = revCommit.parentCount > 1
+        )
     }
 
     private fun getBranchesInternal(git: Git): List<Branch> {

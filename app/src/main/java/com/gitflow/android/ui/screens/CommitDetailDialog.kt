@@ -784,6 +784,12 @@ fun formatDate(timestamp: Long): String {
     return sdf.format(Date(timestamp))
 }
 
+fun formatHistoryDate(timestamp: Long): String {
+    if (timestamp <= 0L) return "--/--/-- --:--"
+    val sdf = SimpleDateFormat("dd/MM/yy HH:mm", Locale.getDefault())
+    return sdf.format(Date(timestamp))
+}
+
 fun getFileIcon(fileName: String): androidx.compose.ui.graphics.vector.ImageVector {
     return when {
         fileName.endsWith(".kt") -> Icons.Default.Code
@@ -836,6 +842,10 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
     var showFilterBar by remember { mutableStateOf(false) }
     var contextMenuTargetPath by remember { mutableStateOf<String?>(null) }
     var isRestoringFile by remember { mutableStateOf(false) }
+    var historyDialogFile by remember { mutableStateOf<FileTreeNode?>(null) }
+    var fileHistory by remember { mutableStateOf<List<Commit>>(emptyList()) }
+    var isHistoryLoading by remember { mutableStateOf(false) }
+    var historyError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val settingsManager = remember { AppSettingsManager(context) }
@@ -1055,6 +1065,30 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
                                         isRestoringFile = false
                                     }
                                 }
+                            },
+                            onViewHistory = { fileNode ->
+                                contextMenuTargetPath = null
+                                historyDialogFile = fileNode
+                                isHistoryLoading = true
+                                historyError = null
+                                scope.launch {
+                                    try {
+                                        val history = try {
+                                            if (repository != null) {
+                                                gitRepository.getFileHistory(commit, fileNode.path, repository)
+                                            } else {
+                                                gitRepository.getFileHistory(commit, fileNode.path)
+                                            }
+                                        } catch (e: Exception) {
+                                            android.util.Log.e("CommitDetailDialog", "Failed to load file history", e)
+                                            historyError = "Failed to load file history"
+                                            emptyList()
+                                        }
+                                        fileHistory = history
+                                    } finally {
+                                        isHistoryLoading = false
+                                    }
+                                }
                             }
                         )
                     }
@@ -1145,6 +1179,21 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
             onDismiss = { selectedFileForViewing = null }
         )
     }
+
+    historyDialogFile?.let { fileNode ->
+        FileHistoryDialog(
+            file = fileNode,
+            commit = commit,
+            history = fileHistory,
+            isLoading = isHistoryLoading,
+            error = historyError,
+            onDismiss = {
+                historyDialogFile = null
+                historyError = null
+                fileHistory = emptyList()
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -1160,7 +1209,8 @@ fun FileTreeNodeItem(
     onFileLongPress: (FileTreeNode) -> Unit,
     onDismissContextMenu: () -> Unit,
     onRestoreFromCommit: (FileTreeNode) -> Unit,
-    onRestoreFromParent: (FileTreeNode) -> Unit
+    onRestoreFromParent: (FileTreeNode) -> Unit,
+    onViewHistory: (FileTreeNode) -> Unit
 ) {
     var expanded by remember(isFiltering) { mutableStateOf(if (isFiltering) true else level < 2) } // Раскрыты первые 2 уровня по умолчанию
 
@@ -1275,6 +1325,10 @@ fun FileTreeNodeItem(
                             enabled = hasParentCommit && !restoreInProgress,
                             onClick = { onRestoreFromParent(node) }
                         )
+                        DropdownMenuItem(
+                            text = { Text("View history") },
+                            onClick = { onViewHistory(node) }
+                        )
                     }
                 }
             }
@@ -1294,7 +1348,8 @@ fun FileTreeNodeItem(
                     onFileLongPress = onFileLongPress,
                     onDismissContextMenu = onDismissContextMenu,
                     onRestoreFromCommit = onRestoreFromCommit,
-                    onRestoreFromParent = onRestoreFromParent
+                    onRestoreFromParent = onRestoreFromParent,
+                    onViewHistory = onViewHistory
                 )
             }
         }
@@ -1717,6 +1772,141 @@ fun filterFileTree(node: FileTreeNode, tokens: List<String>): FileTreeNode? {
         }
     } else {
         if (matchesCurrent) node else null
+    }
+}
+
+@Composable
+fun FileHistoryDialog(
+    file: FileTreeNode,
+    commit: Commit,
+    history: List<Commit>,
+    isLoading: Boolean,
+    error: String?,
+    onDismiss: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp, vertical = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        Icons.Default.History,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "История файла",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp
+                        )
+                        Text(
+                            text = file.path.ifEmpty { file.name },
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "До коммита ${commit.hash.take(7)}",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Закрыть")
+                    }
+                }
+
+                when {
+                    isLoading -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                CircularProgressIndicator()
+                                Text("Загрузка истории...", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+
+                    error != null -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = error,
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = "Попробуйте позже или проверьте доступ к репозиторию.",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    history.isEmpty() -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Изменения для файла не найдены.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(history) { historyCommit ->
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = historyCommit.message,
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 14.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "${formatHistoryDate(historyCommit.timestamp)} • ${historyCommit.author}",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
