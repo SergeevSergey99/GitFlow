@@ -1068,6 +1068,56 @@ class RealGitRepository(private val context: Context) {
         }
     }
 
+    suspend fun getFileContentBytes(commit: Commit, filePath: String, repository: com.gitflow.android.data.models.Repository): ByteArray? = withContext(Dispatchers.IO) {
+        try {
+            val git = openRepository(repository.path) ?: return@withContext null
+
+            val jgitRepository = git.repository
+            val revWalk = RevWalk(jgitRepository)
+            val revCommit = revWalk.parseCommit(jgitRepository.resolve(commit.hash))
+
+            val bytes = getFileBytesFromCommit(jgitRepository, revCommit, filePath)
+
+            revWalk.close()
+            git.close()
+
+            bytes
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    suspend fun getFileContentBytes(commit: Commit, filePath: String): ByteArray? = withContext(Dispatchers.IO) {
+        try {
+            val repositories = getRepositories()
+            val repo = repositories.find { repository ->
+                try {
+                    val git = openRepository(repository.path)
+                    val hasCommit = git?.repository?.resolve(commit.hash) != null
+                    git?.close()
+                    hasCommit
+                } catch (e: Exception) {
+                    false
+                }
+            } ?: return@withContext null
+
+            val git = openRepository(repo.path) ?: return@withContext null
+
+            val repository = git.repository
+            val revWalk = RevWalk(repository)
+            val revCommit = revWalk.parseCommit(repository.resolve(commit.hash))
+
+            val bytes = getFileBytesFromCommit(repository, revCommit, filePath)
+
+            revWalk.close()
+            git.close()
+
+            bytes
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     // ---------- Helper methods ----------
 
     private fun getBranchesInternal(git: Git): List<Branch> {
@@ -1326,6 +1376,12 @@ class RealGitRepository(private val context: Context) {
     }
 
     private fun getFileContentFromCommit(repository: JGitRepository, commit: RevCommit, filePath: String): String? {
+        return getFileBytesFromCommit(repository, commit, filePath)?.let { bytes ->
+            String(bytes)
+        }
+    }
+
+    private fun getFileBytesFromCommit(repository: JGitRepository, commit: RevCommit, filePath: String): ByteArray? {
         return try {
             val treeWalk = TreeWalk(repository)
             treeWalk.addTree(commit.tree)
@@ -1336,7 +1392,7 @@ class RealGitRepository(private val context: Context) {
                 val objectId = treeWalk.getObjectId(0)
                 repository.newObjectReader().use { reader ->
                     val loader = reader.open(objectId)
-                    String(loader.bytes)
+                    loader.bytes
                 }
             } else {
                 null

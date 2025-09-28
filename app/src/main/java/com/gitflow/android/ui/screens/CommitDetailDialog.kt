@@ -1,5 +1,11 @@
 package com.gitflow.android.ui.screens
 
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.webkit.MimeTypeMap
+import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -15,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -30,10 +37,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.FileProvider
 import com.gitflow.android.data.models.*
 import com.gitflow.android.data.repository.RealGitRepository
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val CodeLineHorizontalPadding = 16.dp
 private val CodeLineNumberWidth = 48.dp
@@ -817,7 +829,10 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
     var fileTree by remember { mutableStateOf<FileTreeNode?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var selectedFileForViewing by remember { mutableStateOf<FileTreeNode?>(null) }
+    var pendingFileAction by remember { mutableStateOf<FileTreeNode?>(null) }
+    var isExternalOpening by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     // Загружаем дерево файлов при открытии
     LaunchedEffect(commit, repository) {
@@ -889,7 +904,7 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
                         FileTreeNodeItem(
                             node = node,
                             level = 0,
-                            onFileClicked = { selectedFileForViewing = it }
+                            onFileClicked = { pendingFileAction = it }
                         )
                     }
                 } else {
@@ -920,6 +935,45 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
                 }
             }
         }
+    }
+
+    pendingFileAction?.let { file ->
+        val allowPreview = isPreviewSupported(file.name)
+        FileOpenOptionsDialog(
+            file = file,
+            canPreviewInApp = allowPreview,
+            isExternalLoading = isExternalOpening,
+            onOpenInApp = {
+                selectedFileForViewing = file
+                pendingFileAction = null
+            },
+            onOpenExternal = {
+                if (!isExternalOpening) {
+                    isExternalOpening = true
+                    scope.launch {
+                        val opened = try {
+                            openFileInExternalApp(
+                                context = context,
+                                gitRepository = gitRepository,
+                                commit = commit,
+                                file = file,
+                                repository = repository
+                            )
+                        } finally {
+                            isExternalOpening = false
+                        }
+                        if (opened) {
+                            pendingFileAction = null
+                        }
+                    }
+                }
+            },
+            onDismiss = {
+                if (!isExternalOpening) {
+                    pendingFileAction = null
+                }
+            }
+        )
     }
 
     // File viewer dialog
@@ -1039,6 +1093,93 @@ fun FileTreeNodeItem(
                     level = level + 1,
                     onFileClicked = onFileClicked
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun FileOpenOptionsDialog(
+    file: FileTreeNode,
+    canPreviewInApp: Boolean,
+    isExternalLoading: Boolean,
+    onOpenInApp: () -> Unit,
+    onOpenExternal: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = {
+            if (!isExternalLoading) {
+                onDismiss()
+            }
+        }
+    ) {
+        Card(
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "Open file",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = file.path,
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (!canPreviewInApp) {
+                        Text(
+                            text = "In-app preview is not available for this file type.",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                if (canPreviewInApp) {
+                    Button(
+                        onClick = onOpenInApp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Open in preview")
+                    }
+                }
+
+                Button(
+                    onClick = onOpenExternal,
+                    enabled = !isExternalLoading,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (isExternalLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Opening...")
+                    } else {
+                        Text("Open externally")
+                    }
+                }
+
+                TextButton(
+                    onClick = {
+                        if (!isExternalLoading) {
+                            onDismiss()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Cancel")
+                }
             }
         }
     }
@@ -1366,6 +1507,142 @@ fun isCodeFile(fileName: String): Boolean {
            fileName.endsWith(".properties") ||
            fileName.endsWith(".yml") ||
            fileName.endsWith(".yaml")
+}
+
+fun isPreviewSupported(fileName: String): Boolean {
+    val lowerName = fileName.lowercase(Locale.ROOT)
+    if (!lowerName.contains('.')) {
+        return true
+    }
+
+    if (lowerName.endsWith(".gradle.kts")) {
+        return true
+    }
+
+    val extension = lowerName.substringAfterLast('.', "")
+    return extension in PreviewableExtensions
+}
+
+private val PreviewableExtensions = setOf(
+    "kt",
+    "kts",
+    "java",
+    "xml",
+    "json",
+    "md",
+    "gradle",
+    "properties",
+    "yml",
+    "yaml",
+    "txt",
+    "gitignore",
+    "gitattributes",
+    "editorconfig",
+    "cfg",
+    "ini",
+    "sh",
+    "bat",
+    "csv",
+    "env"
+)
+
+suspend fun openFileInExternalApp(
+    context: Context,
+    gitRepository: RealGitRepository,
+    commit: Commit,
+    file: FileTreeNode,
+    repository: Repository?
+): Boolean {
+    val bytes = if (repository != null) {
+        gitRepository.getFileContentBytes(commit, file.path, repository)
+    } else {
+        gitRepository.getFileContentBytes(commit, file.path)
+    }
+
+    if (bytes == null) {
+        Toast.makeText(context, "Failed to load file content", Toast.LENGTH_SHORT).show()
+        return false
+    }
+
+    val exportedFile = withContext(Dispatchers.IO) {
+        val cacheDir = File(context.cacheDir, "commit_files")
+        if (!cacheDir.exists()) {
+            cacheDir.mkdirs()
+        }
+
+        val sanitizedName = sanitizeFileName("${commit.hash.take(7)}_${file.path}")
+        val outputFile = File(cacheDir, sanitizedName)
+        outputFile.parentFile?.mkdirs()
+        outputFile.outputStream().use { stream ->
+            stream.write(bytes)
+            stream.flush()
+        }
+        outputFile
+    }
+
+    val uri = FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        exportedFile
+    )
+
+    val mimeType = guessMimeType(exportedFile.name)
+
+    val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, mimeType)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+
+    val chooser = Intent.createChooser(viewIntent, "Open with")
+    if (context !is Activity) {
+        viewIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+
+    return try {
+        context.startActivity(chooser)
+        true
+    } catch (e: ActivityNotFoundException) {
+        Toast.makeText(context, "No application available to open this file", Toast.LENGTH_SHORT).show()
+        false
+    } catch (e: Exception) {
+        Toast.makeText(context, "Failed to open file", Toast.LENGTH_SHORT).show()
+        false
+    }
+}
+
+private fun sanitizeFileName(raw: String): String {
+    val replacedSeparators = raw.replace('/', '_').replace('\\', '_')
+    val cleaned = replacedSeparators.replace(Regex("[^A-Za-z0-9._-]"), "_")
+    if (cleaned.isEmpty()) {
+        return "file"
+    }
+
+    val maxLength = 200
+    if (cleaned.length <= maxLength) {
+        return cleaned
+    }
+
+    val extension = cleaned.substringAfterLast('.', "")
+    return if (extension.isNotEmpty() && extension.length < maxLength) {
+        val base = cleaned.substring(0, maxLength - extension.length - 1)
+        "$base.$extension"
+    } else {
+        cleaned.substring(0, maxLength)
+    }
+}
+
+private fun guessMimeType(fileName: String): String {
+    val extension = fileName.substringAfterLast('.', "")
+    if (extension.isNotEmpty()) {
+        val mime = MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(extension.lowercase(Locale.ROOT))
+        if (mime != null) {
+            return mime
+        }
+        return "application/octet-stream"
+    }
+    return "text/plain"
 }
 
 fun getFileLanguage(fileName: String): String {
