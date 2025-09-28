@@ -834,6 +834,8 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
     var isExternalOpening by remember { mutableStateOf(false) }
     var filterQuery by remember { mutableStateOf("") }
     var showFilterBar by remember { mutableStateOf(false) }
+    var contextMenuTargetPath by remember { mutableStateOf<String?>(null) }
+    var isRestoringFile by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val settingsManager = remember { AppSettingsManager(context) }
@@ -980,7 +982,80 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
                             node = node,
                             level = 0,
                             isFiltering = filterTokens.isNotEmpty(),
-                            onFileClicked = { pendingFileAction = it }
+                            hasParentCommit = commit.parents.isNotEmpty(),
+                            contextMenuTargetPath = contextMenuTargetPath,
+                            restoreInProgress = isRestoringFile,
+                            onFileClicked = {
+                                contextMenuTargetPath = null
+                                pendingFileAction = it
+                            },
+                            onFileLongPress = { fileNode ->
+                                if (!isRestoringFile) {
+                                    contextMenuTargetPath = fileNode.path
+                                }
+                            },
+                            onDismissContextMenu = { contextMenuTargetPath = null },
+                            onRestoreFromCommit = { fileNode ->
+                                if (isRestoringFile) return@FileTreeNodeItem
+                                contextMenuTargetPath = null
+                                isRestoringFile = true
+                                scope.launch {
+                                    try {
+                                        val success = try {
+                                            if (repository != null) {
+                                                gitRepository.restoreFileToCommit(commit, fileNode.path, repository)
+                                            } else {
+                                                gitRepository.restoreFileToCommit(commit, fileNode.path)
+                                            }
+                                        } catch (e: Exception) {
+                                            android.util.Log.e("CommitDetailDialog", "Failed to restore file to commit", e)
+                                            false
+                                        }
+                                        Toast.makeText(
+                                            context,
+                                            if (success) "File restored to this commit" else "Failed to restore file",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    } finally {
+                                        isRestoringFile = false
+                                    }
+                                }
+                            },
+                            onRestoreFromParent = { fileNode ->
+                                if (isRestoringFile) return@FileTreeNodeItem
+                                if (commit.parents.isEmpty()) {
+                                    contextMenuTargetPath = null
+                                    Toast.makeText(
+                                        context,
+                                        "No parent commit available",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    return@FileTreeNodeItem
+                                }
+                                contextMenuTargetPath = null
+                                isRestoringFile = true
+                                scope.launch {
+                                    try {
+                                        val success = try {
+                                            if (repository != null) {
+                                                gitRepository.restoreFileToParentCommit(commit, fileNode.path, repository)
+                                            } else {
+                                                gitRepository.restoreFileToParentCommit(commit, fileNode.path)
+                                            }
+                                        } catch (e: Exception) {
+                                            android.util.Log.e("CommitDetailDialog", "Failed to restore file to parent commit", e)
+                                            false
+                                        }
+                                        Toast.makeText(
+                                            context,
+                                            if (success) "File restored to previous commit" else "Failed to restore file",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    } finally {
+                                        isRestoringFile = false
+                                    }
+                                }
+                            }
                         )
                     }
                 } else {
@@ -1072,100 +1147,135 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FileTreeNodeItem(
     node: FileTreeNode,
     level: Int,
     isFiltering: Boolean,
-    onFileClicked: (FileTreeNode) -> Unit
+    hasParentCommit: Boolean,
+    contextMenuTargetPath: String?,
+    restoreInProgress: Boolean,
+    onFileClicked: (FileTreeNode) -> Unit,
+    onFileLongPress: (FileTreeNode) -> Unit,
+    onDismissContextMenu: () -> Unit,
+    onRestoreFromCommit: (FileTreeNode) -> Unit,
+    onRestoreFromParent: (FileTreeNode) -> Unit
 ) {
     var expanded by remember(isFiltering) { mutableStateOf(if (isFiltering) true else level < 2) } // Раскрыты первые 2 уровня по умолчанию
 
     Column {
         // Node item
         Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable {
-                    if (node.type == FileTreeNodeType.DIRECTORY) {
-                        expanded = !expanded
-                    } else {
-                        onFileClicked(node)
-                    }
-                },
+            modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(8.dp),
             color = Color.Transparent
         ) {
-            Row(
-                modifier = Modifier
-                    .padding(
-                        start = (level * 20).dp + 12.dp,
-                        top = 8.dp,
-                        bottom = 8.dp,
-                        end = 12.dp
-                    ),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (node.type == FileTreeNodeType.DIRECTORY) {
-                    Icon(
-                        if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Icon(
-                        if (expanded) Icons.Default.FolderOpen else Icons.Default.Folder,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = Color(0xFFFFB74D)
-                    )
-                } else {
-                    Spacer(modifier = Modifier.width(24.dp))
-                    Icon(
-                        getFileIcon(node.name),
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = getFileIconColor(node.name)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = node.name,
-                        fontSize = 15.sp,
-                        fontWeight = if (node.type == FileTreeNodeType.DIRECTORY) FontWeight.SemiBold else FontWeight.Normal,
-                        color = if (node.type == FileTreeNodeType.DIRECTORY)
-                            MaterialTheme.colorScheme.onSurface
-                        else
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
-                    )
-
-                    if (node.type == FileTreeNodeType.FILE && node.size != null) {
-                        Text(
-                            text = formatFileSize(node.size),
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+            Box {
+                Row(
+                    modifier = Modifier
+                        .combinedClickable(
+                            onClick = {
+                                onDismissContextMenu()
+                                if (node.type == FileTreeNodeType.DIRECTORY) {
+                                    expanded = !expanded
+                                } else {
+                                    onFileClicked(node)
+                                }
+                            },
+                            onLongClick = {
+                                if (node.type == FileTreeNodeType.FILE && !restoreInProgress) {
+                                    onFileLongPress(node)
+                                }
+                            }
                         )
-                    } else if (node.type == FileTreeNodeType.DIRECTORY) {
-                        val filesCount = countFiles(node)
+                        .padding(
+                            start = (level * 20).dp + 12.dp,
+                            top = 8.dp,
+                            bottom = 8.dp,
+                            end = 12.dp
+                        ),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (node.type == FileTreeNodeType.DIRECTORY) {
+                        Icon(
+                            if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            if (expanded) Icons.Default.FolderOpen else Icons.Default.Folder,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = Color(0xFFFFB74D)
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.width(24.dp))
+                        Icon(
+                            getFileIcon(node.name),
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = getFileIconColor(node.name)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "$filesCount ${if (filesCount == 1) "file" else "files"}",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = node.name,
+                            fontSize = 15.sp,
+                            fontWeight = if (node.type == FileTreeNodeType.DIRECTORY) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (node.type == FileTreeNodeType.DIRECTORY)
+                                MaterialTheme.colorScheme.onSurface
+                            else
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f)
+                        )
+
+                        if (node.type == FileTreeNodeType.FILE && node.size != null) {
+                            Text(
+                                text = formatFileSize(node.size),
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else if (node.type == FileTreeNodeType.DIRECTORY) {
+                            val filesCount = countFiles(node)
+                            Text(
+                                text = "$filesCount ${if (filesCount == 1) "file" else "files"}",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    if (node.type == FileTreeNodeType.FILE) {
+                        Icon(
+                            Icons.Default.Visibility,
+                            contentDescription = "View file",
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
                         )
                     }
                 }
 
                 if (node.type == FileTreeNodeType.FILE) {
-                    Icon(
-                        Icons.Default.Visibility,
-                        contentDescription = "View file",
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-                    )
+                    DropdownMenu(
+                        expanded = contextMenuTargetPath == node.path,
+                        onDismissRequest = onDismissContextMenu
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Restore to this commit") },
+                            enabled = !restoreInProgress,
+                            onClick = { onRestoreFromCommit(node) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Restore to previous commit") },
+                            enabled = hasParentCommit && !restoreInProgress,
+                            onClick = { onRestoreFromParent(node) }
+                        )
+                    }
                 }
             }
         }
@@ -1177,7 +1287,14 @@ fun FileTreeNodeItem(
                     node = child,
                     level = level + 1,
                     isFiltering = isFiltering,
-                    onFileClicked = onFileClicked
+                    hasParentCommit = hasParentCommit,
+                    contextMenuTargetPath = contextMenuTargetPath,
+                    restoreInProgress = restoreInProgress,
+                    onFileClicked = onFileClicked,
+                    onFileLongPress = onFileLongPress,
+                    onDismissContextMenu = onDismissContextMenu,
+                    onRestoreFromCommit = onRestoreFromCommit,
+                    onRestoreFromParent = onRestoreFromParent
                 )
             }
         }

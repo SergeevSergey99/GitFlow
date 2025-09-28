@@ -1118,7 +1118,101 @@ class RealGitRepository(private val context: Context) {
         }
     }
 
+    suspend fun restoreFileToCommit(
+        commit: Commit,
+        filePath: String,
+        repository: com.gitflow.android.data.models.Repository
+    ): Boolean = withContext(Dispatchers.IO) {
+        restoreFileFromCommit(repository.path, commit.hash, filePath)
+    }
+
+    suspend fun restoreFileToCommit(commit: Commit, filePath: String): Boolean {
+        val repository = findRepositoryContainingCommit(commit) ?: return false
+        return restoreFileToCommit(commit, filePath, repository)
+    }
+
+    suspend fun restoreFileToParentCommit(
+        commit: Commit,
+        filePath: String,
+        repository: com.gitflow.android.data.models.Repository
+    ): Boolean = withContext(Dispatchers.IO) {
+        restoreFileFromParentCommit(repository.path, commit.hash, filePath)
+    }
+
+    suspend fun restoreFileToParentCommit(commit: Commit, filePath: String): Boolean {
+        val repository = findRepositoryContainingCommit(commit) ?: return false
+        return restoreFileToParentCommit(commit, filePath, repository)
+    }
+
     // ---------- Helper methods ----------
+
+    private suspend fun findRepositoryContainingCommit(commit: Commit): com.gitflow.android.data.models.Repository? {
+        val repositories = getRepositories()
+        return repositories.find { repository ->
+            try {
+                val git = openRepository(repository.path)
+                val hasCommit = git?.repository?.resolve(commit.hash) != null
+                git?.close()
+                hasCommit
+            } catch (e: Exception) {
+                false
+            }
+        }
+    }
+
+    private fun restoreFileFromCommit(
+        repositoryPath: String,
+        sourceCommitHash: String,
+        filePath: String
+    ): Boolean {
+        val git = openRepository(repositoryPath) ?: return false
+        return try {
+            val repository = git.repository
+            val commitId = repository.resolve(sourceCommitHash) ?: return false
+            RevWalk(repository).use { revWalk ->
+                revWalk.parseCommit(commitId)
+            }
+            git.checkout()
+                .setStartPoint(sourceCommitHash)
+                .setForce(true)
+                .addPath(filePath)
+                .call()
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("RealGitRepository", "Error restoring file from commit $sourceCommitHash", e)
+            false
+        } finally {
+            git.close()
+        }
+    }
+
+    private fun restoreFileFromParentCommit(
+        repositoryPath: String,
+        commitHash: String,
+        filePath: String
+    ): Boolean {
+        val git = openRepository(repositoryPath) ?: return false
+        return try {
+            val repository = git.repository
+            val commitId = repository.resolve(commitHash) ?: return false
+            val parentHash = RevWalk(repository).use { revWalk ->
+                val revCommit = revWalk.parseCommit(commitId)
+                revCommit.parents.firstOrNull()?.name
+            } ?: return false
+
+            git.checkout()
+                .setStartPoint(parentHash)
+                .setForce(true)
+                .addPath(filePath)
+                .call()
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("RealGitRepository", "Error restoring file to parent of $commitHash", e)
+            false
+        } finally {
+            git.close()
+        }
+    }
 
     private fun getBranchesInternal(git: Git): List<Branch> {
         return try {
