@@ -832,6 +832,7 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
     var selectedFileForViewing by remember { mutableStateOf<FileTreeNode?>(null) }
     var pendingFileAction by remember { mutableStateOf<FileTreeNode?>(null) }
     var isExternalOpening by remember { mutableStateOf(false) }
+    var filterQuery by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val settingsManager = remember { AppSettingsManager(context) }
@@ -854,6 +855,25 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
 
     val normalizedPreviewFileNames = remember(previewFileNames) {
         previewFileNames.mapNotNull { normalizeFileNameToken(it) }.toSet()
+    }
+
+    val filterTokens = remember(filterQuery) {
+        filterQuery.split(' ', ',', ';')
+            .mapNotNull { token ->
+                val trimmed = token.trim()
+                if (trimmed.isEmpty()) null else trimmed.lowercase(Locale.ROOT)
+            }
+    }
+
+    val displayedTree = remember(fileTree, filterTokens) {
+        val root = fileTree
+        if (root == null) {
+            null
+        } else if (filterTokens.isEmpty()) {
+            root
+        } else {
+            filterFileTree(root, filterTokens)
+        }
     }
 
     // Загружаем дерево файлов при открытии
@@ -907,6 +927,29 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
             }
         }
 
+        // Filter input
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = filterQuery,
+                onValueChange = { filterQuery = it },
+                label = { Text("Filter by name or path") },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                trailingIcon = {
+                    if (filterQuery.isNotBlank()) {
+                        IconButton(onClick = { filterQuery = "" }) {
+                            Icon(Icons.Default.Clear, contentDescription = "Clear filter")
+                        }
+                    }
+                }
+            )
+        }
+
         // File tree content
         if (isLoading) {
             Box(
@@ -916,16 +959,18 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
                 CircularProgressIndicator()
             }
         } else {
+            val treeToRender = displayedTree
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                if (fileTree?.children?.isNotEmpty() == true) {
-                    items(fileTree!!.children) { node ->
+                if (treeToRender?.children?.isNotEmpty() == true) {
+                    items(treeToRender.children) { node ->
                         FileTreeNodeItem(
                             node = node,
                             level = 0,
+                            isFiltering = filterTokens.isNotEmpty(),
                             onFileClicked = { pendingFileAction = it }
                         )
                     }
@@ -948,7 +993,11 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "No files found in this commit",
+                                    text = if (filterTokens.isEmpty()) {
+                                        "No files found in this commit"
+                                    } else {
+                                        "No files match the filter"
+                                    },
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -1018,9 +1067,10 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
 fun FileTreeNodeItem(
     node: FileTreeNode,
     level: Int,
+    isFiltering: Boolean,
     onFileClicked: (FileTreeNode) -> Unit
 ) {
-    var expanded by remember { mutableStateOf(level < 2) } // Раскрыты первые 2 уровня по умолчанию
+    var expanded by remember(isFiltering) { mutableStateOf(if (isFiltering) true else level < 2) } // Раскрыты первые 2 уровня по умолчанию
 
     Column {
         // Node item
@@ -1117,6 +1167,7 @@ fun FileTreeNodeItem(
                 FileTreeNodeItem(
                     node = child,
                     level = level + 1,
+                    isFiltering = isFiltering,
                     onFileClicked = onFileClicked
                 )
             }
@@ -1520,6 +1571,36 @@ fun buildHighlightedAnnotatedString(
 fun countFiles(node: FileTreeNode): Int {
     if (node.type == FileTreeNodeType.FILE) return 1
     return node.children.sumOf { countFiles(it) }
+}
+
+fun filterFileTree(node: FileTreeNode, tokens: List<String>): FileTreeNode? {
+    if (tokens.isEmpty()) return node
+
+    val matchesCurrent = matchesFilter(node, tokens)
+
+    return if (node.type == FileTreeNodeType.DIRECTORY) {
+        if (matchesCurrent) {
+            node
+        } else {
+            val filteredChildren = node.children.mapNotNull { child -> filterFileTree(child, tokens) }
+            if (filteredChildren.isNotEmpty()) {
+                node.copy(children = filteredChildren)
+            } else {
+                null
+            }
+        }
+    } else {
+        if (matchesCurrent) node else null
+    }
+}
+
+private fun matchesFilter(node: FileTreeNode, tokens: List<String>): Boolean {
+    if (tokens.isEmpty()) return true
+    val nameTarget = node.name.lowercase(Locale.ROOT)
+    val pathTarget = node.path.lowercase(Locale.ROOT)
+    return tokens.all { token ->
+        pathTarget.contains(token) || nameTarget.contains(token)
+    }
 }
 
 fun isCodeFile(fileName: String): Boolean {
