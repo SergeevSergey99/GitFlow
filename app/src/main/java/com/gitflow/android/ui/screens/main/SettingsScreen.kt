@@ -54,6 +54,8 @@ fun SettingsScreen(
 
     var showGraphPresetDialog by remember { mutableStateOf(false) }
     var wifiOnlyDownloads by remember { mutableStateOf(settingsManager.isWifiOnlyDownloadsEnabled()) }
+    var previewExtensions by remember { mutableStateOf(settingsManager.getPreviewExtensions().toList()) }
+    var previewFileNames by remember { mutableStateOf(settingsManager.getPreviewFileNames().toList()) }
 
     val permissionRequirements = remember {
         PermissionRequirement.buildList(context.applicationContext)
@@ -86,6 +88,16 @@ fun SettingsScreen(
         }
     }
 
+    DisposableEffect(settingsManager) {
+        val listener = settingsManager.registerPreviewSettingsListener {
+            previewExtensions = settingsManager.getPreviewExtensions().toList()
+            previewFileNames = settingsManager.getPreviewFileNames().toList()
+        }
+        onDispose {
+            settingsManager.unregisterPreviewSettingsListener(listener)
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -112,6 +124,27 @@ fun SettingsScreen(
             onWifiOnlyChanged = { enabled ->
                 wifiOnlyDownloads = enabled
                 settingsManager.setWifiOnlyDownloadsEnabled(enabled)
+            }
+        )
+
+        FilePreviewSettingsSection(
+            extensions = previewExtensions,
+            fileNames = previewFileNames,
+            onAddExtension = { value ->
+                settingsManager.addPreviewExtension(value)
+                previewExtensions = settingsManager.getPreviewExtensions().toList()
+            },
+            onRemoveExtension = { value ->
+                settingsManager.removePreviewExtension(value)
+                previewExtensions = settingsManager.getPreviewExtensions().toList()
+            },
+            onAddFileName = { value ->
+                settingsManager.addPreviewFileName(value)
+                previewFileNames = settingsManager.getPreviewFileNames().toList()
+            },
+            onRemoveFileName = { value ->
+                settingsManager.removePreviewFileName(value)
+                previewFileNames = settingsManager.getPreviewFileNames().toList()
             }
         )
 
@@ -143,6 +176,160 @@ fun SettingsScreen(
             },
             onDismiss = { showGraphPresetDialog = false }
         )
+    }
+}
+
+@Composable
+private fun FilePreviewSettingsSection(
+    extensions: List<String>,
+    fileNames: List<String>,
+    onAddExtension: (String) -> Unit,
+    onRemoveExtension: (String) -> Unit,
+    onAddFileName: (String) -> Unit,
+    onRemoveFileName: (String) -> Unit
+) {
+    var extensionInput by remember { mutableStateOf("") }
+    var fileNameInput by remember { mutableStateOf("") }
+
+    Card(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "File Preview",
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+
+            Text(
+                text = "Configure which file extensions and extensionless files are previewed in the commit viewer.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 13.sp
+            )
+
+            Text(
+                text = "Allowed extensions",
+                fontWeight = FontWeight.Medium
+            )
+
+            if (extensions.isEmpty()) {
+                Text(
+                    text = "No extensions configured",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    extensions.sorted().forEach { extension ->
+                        Surface(
+                            tonalElevation = 2.dp,
+                            shape = MaterialTheme.shapes.small
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(text = ".${extension.removePrefix(".")}")
+                                IconButton(onClick = { onRemoveExtension(extension) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Remove extension"
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                value = extensionInput,
+                onValueChange = { extensionInput = it },
+                label = { Text("Add extension (e.g. md)") },
+                singleLine = true,
+                trailingIcon = {
+                    IconButton(
+                        onClick = {
+                            if (extensionInput.isNotBlank()) {
+                                onAddExtension(extensionInput.trim())
+                                extensionInput = ""
+                            }
+                        },
+                        enabled = extensionInput.isNotBlank()
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Add extension")
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Divider()
+
+            Text(
+                text = "Extensionless filenames",
+                fontWeight = FontWeight.Medium
+            )
+
+            if (fileNames.isEmpty()) {
+                Text(
+                    text = "No filenames configured",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    fileNames.sorted().forEach { name ->
+                        Surface(
+                            tonalElevation = 2.dp,
+                            shape = MaterialTheme.shapes.small
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(text = name)
+                                IconButton(onClick = { onRemoveFileName(name) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Remove filename"
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                value = fileNameInput,
+                onValueChange = { fileNameInput = it },
+                label = { Text("Add filename (e.g. LICENSE)") },
+                singleLine = true,
+                trailingIcon = {
+                    IconButton(
+                        onClick = {
+                            if (fileNameInput.isNotBlank()) {
+                                onAddFileName(fileNameInput.trim())
+                                fileNameInput = ""
+                            }
+                        },
+                        enabled = fileNameInput.isNotBlank()
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Add filename")
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
     }
 }
 

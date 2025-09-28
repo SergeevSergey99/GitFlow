@@ -40,6 +40,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import com.gitflow.android.data.models.*
 import com.gitflow.android.data.repository.RealGitRepository
+import com.gitflow.android.data.settings.AppSettingsManager
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -833,6 +834,27 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
     var isExternalOpening by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val settingsManager = remember { AppSettingsManager(context) }
+    var previewExtensions by remember { mutableStateOf(settingsManager.getPreviewExtensions()) }
+    var previewFileNames by remember { mutableStateOf(settingsManager.getPreviewFileNames()) }
+
+    DisposableEffect(settingsManager) {
+        val listener = settingsManager.registerPreviewSettingsListener {
+            previewExtensions = settingsManager.getPreviewExtensions()
+            previewFileNames = settingsManager.getPreviewFileNames()
+        }
+        onDispose {
+            settingsManager.unregisterPreviewSettingsListener(listener)
+        }
+    }
+
+    val normalizedPreviewExtensions = remember(previewExtensions) {
+        previewExtensions.mapNotNull { normalizeExtensionToken(it) }.toSet()
+    }
+
+    val normalizedPreviewFileNames = remember(previewFileNames) {
+        previewFileNames.mapNotNull { normalizeFileNameToken(it) }.toSet()
+    }
 
     // Загружаем дерево файлов при открытии
     LaunchedEffect(commit, repository) {
@@ -938,7 +960,11 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
     }
 
     pendingFileAction?.let { file ->
-        val allowPreview = isPreviewSupported(file.name)
+        val allowPreview = isPreviewSupported(
+            fileName = file.name,
+            allowedExtensions = normalizedPreviewExtensions,
+            allowedFileNames = normalizedPreviewFileNames
+        )
         FileOpenOptionsDialog(
             file = file,
             canPreviewInApp = allowPreview,
@@ -1137,7 +1163,7 @@ fun FileOpenOptionsDialog(
                     )
                     if (!canPreviewInApp) {
                         Text(
-                            text = "In-app preview is not available for this file type.",
+                            text = "In-app preview is not available for this file type. Update allowed types in Settings if needed.",
                             fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1509,42 +1535,27 @@ fun isCodeFile(fileName: String): Boolean {
            fileName.endsWith(".yaml")
 }
 
-fun isPreviewSupported(fileName: String): Boolean {
+fun isPreviewSupported(
+    fileName: String,
+    allowedExtensions: Set<String>,
+    allowedFileNames: Set<String>
+): Boolean {
     val lowerName = fileName.lowercase(Locale.ROOT)
-    if (!lowerName.contains('.')) {
-        return true
-    }
-
-    if (lowerName.endsWith(".gradle.kts")) {
+    if (allowedFileNames.contains(lowerName)) {
         return true
     }
 
     val extension = lowerName.substringAfterLast('.', "")
-    return extension in PreviewableExtensions
-}
+    if (extension.isNotEmpty() && allowedExtensions.contains(extension)) {
+        return true
+    }
 
-private val PreviewableExtensions = setOf(
-    "kt",
-    "kts",
-    "java",
-    "xml",
-    "json",
-    "md",
-    "gradle",
-    "properties",
-    "yml",
-    "yaml",
-    "txt",
-    "gitignore",
-    "gitattributes",
-    "editorconfig",
-    "cfg",
-    "ini",
-    "sh",
-    "bat",
-    "csv",
-    "env"
-)
+    if (allowedExtensions.any { lowerName.endsWith(".$it") }) {
+        return true
+    }
+
+    return false
+}
 
 suspend fun openFileInExternalApp(
     context: Context,
@@ -1643,6 +1654,17 @@ private fun guessMimeType(fileName: String): String {
         return "application/octet-stream"
     }
     return "text/plain"
+}
+
+private fun normalizeExtensionToken(value: String): String? {
+    val trimmed = value.trim().lowercase(Locale.ROOT)
+    if (trimmed.isEmpty()) return null
+    return trimmed.removePrefix(".")
+}
+
+private fun normalizeFileNameToken(value: String): String? {
+    val trimmed = value.trim().lowercase(Locale.ROOT)
+    return trimmed.takeIf { it.isNotEmpty() }
 }
 
 fun getFileLanguage(fileName: String): String {
