@@ -833,6 +833,7 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
     var pendingFileAction by remember { mutableStateOf<FileTreeNode?>(null) }
     var isExternalOpening by remember { mutableStateOf(false) }
     var filterQuery by remember { mutableStateOf("") }
+    var showFilterBar by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val settingsManager = remember { AppSettingsManager(context) }
@@ -894,60 +895,68 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
             color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
         ) {
             Row(
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    Icons.Default.AccountTree,
-                    contentDescription = null,
-                    modifier = Modifier.size(24.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Text(
-                        text = "Project Files",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
+                if (!showFilterBar) {
+                    Icon(
+                        Icons.Default.AccountTree,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = MaterialTheme.colorScheme.primary
                     )
-                    if (isLoading) {
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Loading...",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = "Project Files",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
                         )
-                    } else {
-                        Text(
-                            text = "Commit: ${commit.hash.take(7)} • ${fileTree?.children?.sumOf { countFiles(it) } ?: 0} files",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        if (isLoading) {
+                            Text(
+                                text = "Loading...",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            Text(
+                                text = "Commit: ${commit.hash.take(7)} • ${fileTree?.children?.sumOf { countFiles(it) } ?: 0} files",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    IconButton(onClick = { showFilterBar = true }) {
+                        Icon(Icons.Default.Search, contentDescription = "Search files")
+                    }
+                } else {
+                    OutlinedTextField(
+                        value = filterQuery,
+                        onValueChange = { filterQuery = it },
+                        label = { Text("Filter by name or path") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        trailingIcon = {
+                            if (filterQuery.isNotBlank()) {
+                                IconButton(onClick = { filterQuery = "" }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Clear filter text")
+                                }
+                            }
+                        }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    IconButton(
+                        onClick = {
+                            filterQuery = ""
+                            showFilterBar = false
+                        }
+                    ) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Close search")
                     }
                 }
             }
-        }
-
-        // Filter input
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value = filterQuery,
-                onValueChange = { filterQuery = it },
-                label = { Text("Filter by name or path") },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-                trailingIcon = {
-                    if (filterQuery.isNotBlank()) {
-                        IconButton(onClick = { filterQuery = "" }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear filter")
-                        }
-                    }
-                }
-            )
         }
 
         // File tree content
