@@ -8,6 +8,7 @@ import android.webkit.MimeTypeMap
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.CircleShape
@@ -846,6 +847,10 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
     var fileHistory by remember { mutableStateOf<List<Commit>>(emptyList()) }
     var isHistoryLoading by remember { mutableStateOf(false) }
     var historyError by remember { mutableStateOf<String?>(null) }
+    var historyDiffCommit by remember { mutableStateOf<Commit?>(null) }
+    var historyDiff by remember { mutableStateOf<FileDiff?>(null) }
+    var isHistoryDiffLoading by remember { mutableStateOf(false) }
+    var historyDiffError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val settingsManager = remember { AppSettingsManager(context) }
@@ -1187,10 +1192,64 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
             history = fileHistory,
             isLoading = isHistoryLoading,
             error = historyError,
+            isDiffLoading = isHistoryDiffLoading,
+            selectedHistoryCommit = historyDiffCommit,
             onDismiss = {
                 historyDialogFile = null
                 historyError = null
                 fileHistory = emptyList()
+                historyDiffCommit = null
+                historyDiff = null
+                historyDiffError = null
+                isHistoryDiffLoading = false
+            },
+            onSelectCommit = { historyCommit ->
+                if (isHistoryDiffLoading) return@FileHistoryDialog
+                historyDiffCommit = historyCommit
+                historyDiff = null
+                historyDiffError = null
+                isHistoryDiffLoading = true
+                scope.launch {
+                    try {
+                        val diffs = try {
+                            if (repository != null) {
+                                gitRepository.getCommitDiffs(historyCommit, repository)
+                            } else {
+                                gitRepository.getCommitDiffs(historyCommit)
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("CommitDetailDialog", "Failed to load diff for history commit", e)
+                            historyDiffError = "Не удалось загрузить изменения"
+                            emptyList()
+                        }
+                        val matchingDiff = diffs.firstOrNull { diff ->
+                            diff.path == fileNode.path || diff.oldPath == fileNode.path
+                        }
+                        if (matchingDiff != null) {
+                            historyDiff = matchingDiff
+                        } else {
+                            historyDiffError = "Файл не изменялся в этом коммите"
+                        }
+                    } finally {
+                        isHistoryDiffLoading = false
+                    }
+                }
+            }
+        )
+    }
+
+    historyDiffCommit?.let { historyCommit ->
+        HistoryFileDiffDialog(
+            commit = historyCommit,
+            filePath = historyDialogFile?.path ?: historyDialogFile?.name ?: "",
+            fileDiff = historyDiff,
+            isLoading = isHistoryDiffLoading,
+            error = historyDiffError,
+            onDismiss = {
+                historyDiffCommit = null
+                historyDiff = null
+                historyDiffError = null
+                isHistoryDiffLoading = false
             }
         )
     }
@@ -1776,13 +1835,148 @@ fun filterFileTree(node: FileTreeNode, tokens: List<String>): FileTreeNode? {
 }
 
 @Composable
+fun HistoryFileDiffDialog(
+    commit: Commit,
+    filePath: String,
+    fileDiff: FileDiff?,
+    isLoading: Boolean,
+    error: String?,
+    onDismiss: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(8.dp),
+            shape = RoundedCornerShape(16.dp),
+            tonalElevation = 4.dp
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                    shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Изменения файла",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp
+                            )
+                            Text(
+                                text = filePath,
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "Коммит: ${commit.message}",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "${formatHistoryDate(commit.timestamp)} • ${commit.author}",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.Default.Close, contentDescription = "Закрыть diff")
+                        }
+                    }
+                }
+
+                when {
+                    isLoading -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                CircularProgressIndicator()
+                                Text(
+                                    text = "Загрузка diff...",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    error != null -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.ErrorOutline,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                                Text(
+                                    text = error,
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = "Изменения отсутствуют или не удалось получить diff.",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    fileDiff != null -> {
+                        DiffView(selectedFile = fileDiff)
+                    }
+
+                    else -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Данные diff недоступны.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun FileHistoryDialog(
     file: FileTreeNode,
     commit: Commit,
     history: List<Commit>,
     isLoading: Boolean,
     error: String?,
-    onDismiss: () -> Unit
+    isDiffLoading: Boolean,
+    selectedHistoryCommit: Commit?,
+    onDismiss: () -> Unit,
+    onSelectCommit: (Commit) -> Unit
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -1886,21 +2080,72 @@ fun FileHistoryDialog(
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             items(history) { historyCommit ->
-                                Column(
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                val isSelected = selectedHistoryCommit?.hash == historyCommit.hash
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onSelectCommit(historyCommit) },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) {
+                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                                    },
+                                    tonalElevation = if (isSelected) 4.dp else 0.dp,
+                                    border = if (isSelected) {
+                                        BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f))
+                                    } else {
+                                        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                                    }
                                 ) {
-                                    Text(
-                                        text = historyCommit.message,
-                                        fontWeight = FontWeight.Medium,
-                                        fontSize = 14.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = "${formatHistoryDate(historyCommit.timestamp)} • ${historyCommit.author}",
-                                        fontSize = 12.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Column(
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = historyCommit.message,
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 14.sp,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "${formatHistoryDate(historyCommit.timestamp)} • ${historyCommit.author}",
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
+                            }
+                        }
+                    }
+                }
+
+                if (isDiffLoading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            tonalElevation = 4.dp,
+                            color = MaterialTheme.colorScheme.surface
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                Text(
+                                    text = "Загрузка diff...",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 13.sp
+                                )
                             }
                         }
                     }
