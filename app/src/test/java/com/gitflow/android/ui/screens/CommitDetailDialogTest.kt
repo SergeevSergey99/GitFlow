@@ -12,14 +12,20 @@ class CommitDetailDialogTest {
     fun collapseSingleChildDirectories_mergesDirectoryChains() {
         val fileNode = FileTreeNode(
             name = "File.kt",
-            path = "Folder1/Folder2/File.kt",
+            path = "Folder1/Folder2/Folder3/File.kt",
             type = FileTreeNodeType.FILE
+        )
+        val folder3 = FileTreeNode(
+            name = "Folder3",
+            path = "Folder1/Folder2/Folder3",
+            type = FileTreeNodeType.DIRECTORY,
+            children = listOf(fileNode)
         )
         val folder2 = FileTreeNode(
             name = "Folder2",
             path = "Folder1/Folder2",
             type = FileTreeNodeType.DIRECTORY,
-            children = listOf(fileNode)
+            children = listOf(folder3)
         )
         val folder1 = FileTreeNode(
             name = "Folder1",
@@ -37,8 +43,8 @@ class CommitDetailDialogTest {
         val collapsed = collapseSingleChildDirectories(root, isRoot = true)
 
         val collapsedChild = collapsed.children.single()
-        assertEquals("Folder1/Folder2", collapsedChild.name)
-        assertEquals("Folder1/Folder2", collapsedChild.path)
+        assertEquals("Folder1/Folder2/Folder3", collapsedChild.name)
+        assertEquals("Folder1/Folder2/Folder3", collapsedChild.path)
         assertEquals(1, collapsedChild.children.size)
         assertEquals("File.kt", collapsedChild.children.single().name)
     }
@@ -80,5 +86,34 @@ class CommitDetailDialogTest {
         assertEquals(2, collapsedChild.children.size)
         assertTrue(collapsedChild.children.any { it.name == "File2.txt" })
         assertTrue(collapsedChild.children.any { it.name == "Nested" })
+    }
+
+    @Test
+    fun collapseSingleChildDirectories_keepsDirectoriesWithFiles() {
+        val fileNode = FileTreeNode(
+            name = "File.kt",
+            path = "Folder/File.kt",
+            type = FileTreeNodeType.FILE
+        )
+        val folder = FileTreeNode(
+            name = "Folder",
+            path = "Folder",
+            type = FileTreeNodeType.DIRECTORY,
+            children = listOf(fileNode)
+        )
+        val root = FileTreeNode(
+            name = "",
+            path = "",
+            type = FileTreeNodeType.DIRECTORY,
+            children = listOf(folder)
+        )
+
+        val collapsed = collapseSingleChildDirectories(root, isRoot = true)
+
+        val collapsedChild = collapsed.children.single()
+        assertEquals("Folder", collapsedChild.name)
+        assertEquals("Folder", collapsedChild.path)
+        assertEquals(1, collapsedChild.children.size)
+        assertEquals("File.kt", collapsedChild.children.single().name)
     }
 }

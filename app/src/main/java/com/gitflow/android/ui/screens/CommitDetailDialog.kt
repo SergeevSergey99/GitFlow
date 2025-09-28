@@ -874,11 +874,7 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
             filterFileTree(root, filterTokens)
         }
 
-        if (tree != null && filterTokens.isNotEmpty()) {
-            collapseSingleChildDirectories(tree, isRoot = true)
-        } else {
-            tree
-        }
+        tree?.let { collapseSingleChildDirectories(it, isRoot = true) }
     }
 
     // Загружаем дерево файлов при открытии
