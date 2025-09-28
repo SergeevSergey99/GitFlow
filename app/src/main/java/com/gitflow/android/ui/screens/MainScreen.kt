@@ -65,9 +65,9 @@ fun MainScreen(navController: NavController) {
                 },
                 actions = {
                     if (selectedRepository != null) {
-                        IconButton(onClick = { showOperationsSheet = true }) {
+                        /*IconButton(onClick = { showOperationsSheet = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = "Operations")
-                        }
+                        }*/
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
