@@ -11,7 +11,8 @@ data class Repository(
     val lastUpdated: Long,
     val currentBranch: String,
     val totalBranches: Int = 1, // Добавляем информацию о количестве веток
-    val hasRemoteOrigin: Boolean = false // Добавляем информацию о наличии remote origin
+    val hasRemoteOrigin: Boolean = false, // Добавляем информацию о наличии remote origin
+    val pendingPushCommits: Int = 0 // Количество локальных коммитов, ожидающих отправки на удаленный репозиторий
 )
 
 @Serializable

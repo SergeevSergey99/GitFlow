@@ -16,6 +16,7 @@ import org.eclipse.jgit.api.errors.GitAPIException
 import org.eclipse.jgit.diff.DiffFormatter
 import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.lib.Ref
+import org.eclipse.jgit.lib.BranchTrackingStatus
 import org.eclipse.jgit.lib.Repository as JGitRepository
 import org.eclipse.jgit.revwalk.RevCommit
 import org.eclipse.jgit.revwalk.RevWalk
@@ -231,6 +232,8 @@ class RealGitRepository(private val context: Context) {
             // Проверяем наличие remote origin
             val hasRemoteOrigin = git.remoteList().call().any { it.name == "origin" }
 
+            val (aheadCount, _) = calculateAheadBehind(git)
+
             val repository = Repository(
                 id = UUID.randomUUID().toString(),
                 name = name,
@@ -238,7 +241,8 @@ class RealGitRepository(private val context: Context) {
                 lastUpdated = lastCommit,
                 currentBranch = currentBranch,
                 totalBranches = totalBranches,
-                hasRemoteOrigin = hasRemoteOrigin
+                hasRemoteOrigin = hasRemoteOrigin,
+                pendingPushCommits = aheadCount
             )
 
             dataStore.addRepository(repository)
@@ -281,6 +285,7 @@ class RealGitRepository(private val context: Context) {
             // Получаем информацию о ветках
             val branches = getBranchesInternal(git)
             val totalBranches = branches.size
+            val (aheadCount, _) = calculateAheadBehind(git)
 
             val repository = Repository(
                 id = UUID.randomUUID().toString(),
@@ -289,7 +294,8 @@ class RealGitRepository(private val context: Context) {
                 lastUpdated = lastCommit,
                 currentBranch = currentBranch,
                 totalBranches = totalBranches,
-                hasRemoteOrigin = false
+                hasRemoteOrigin = false,
+                pendingPushCommits = aheadCount
             )
 
             dataStore.addRepository(repository)
@@ -389,6 +395,8 @@ class RealGitRepository(private val context: Context) {
             // Проверяем наличие remote origin (обычно есть после клонирования)
             val hasRemoteOrigin = git.remoteList().call().any { it.name == "origin" }
 
+            val (aheadCount, _) = calculateAheadBehind(git)
+
             val repository = Repository(
                 id = UUID.randomUUID().toString(),
                 name = name,
@@ -396,7 +404,8 @@ class RealGitRepository(private val context: Context) {
                 lastUpdated = lastCommit,
                 currentBranch = currentBranch,
                 totalBranches = totalBranches,
-                hasRemoteOrigin = hasRemoteOrigin
+                hasRemoteOrigin = hasRemoteOrigin,
+                pendingPushCommits = aheadCount
             )
 
             dataStore.addRepository(repository)
@@ -455,11 +464,14 @@ class RealGitRepository(private val context: Context) {
             // Проверяем наличие remote origin
             val hasRemoteOrigin = git.remoteList().call().any { it.name == "origin" }
 
+            val (aheadCount, _) = calculateAheadBehind(git)
+
             val updatedRepository = repository.copy(
                 currentBranch = currentBranch,
                 lastUpdated = lastCommit,
                 totalBranches = totalBranches,
-                hasRemoteOrigin = hasRemoteOrigin
+                hasRemoteOrigin = hasRemoteOrigin,
+                pendingPushCommits = aheadCount
             )
 
             updateRepository(updatedRepository)
@@ -916,47 +928,9 @@ class RealGitRepository(private val context: Context) {
         try {
             val git = openRepository(repository.path) ?: return@withContext emptyList()
 
-            val branches = mutableListOf<Branch>()
-
-            // Локальные ветки
-            val localBranches = git.branchList().call()
-            for (ref in localBranches) {
-                val branchName = ref.name.removePrefix("refs/heads/")
-                val lastCommitHash = ref.objectId.name
-
-                branches.add(
-                    Branch(
-                        name = branchName,
-                        isLocal = true,
-                        lastCommitHash = lastCommitHash,
-                        ahead = 0, // TODO: Реализовать подсчет ahead/behind
-                        behind = 0
-                    )
-                )
-            }
-
-            // Удаленные ветки
-            val remoteBranches = git.branchList()
-                .setListMode(org.eclipse.jgit.api.ListBranchCommand.ListMode.REMOTE)
-                .call()
-
-            for (ref in remoteBranches) {
-                val branchName = ref.name.removePrefix("refs/remotes/")
-                val lastCommitHash = ref.objectId.name
-
-                branches.add(
-                    Branch(
-                        name = branchName,
-                        isLocal = false,
-                        lastCommitHash = lastCommitHash,
-                        ahead = 0,
-                        behind = 0
-                    )
-                )
-            }
-
+            val branches = getBranchesInternal(git)
             git.close()
-            branches.sortedBy { it.name }
+            branches
         } catch (e: Exception) {
             emptyList()
         }
@@ -1002,7 +976,9 @@ class RealGitRepository(private val context: Context) {
             val result = pushCommand.call()
             git.close()
 
-            if (result.any { it.messages.isEmpty() }) {
+            val pushSucceeded = result.any { it.messages.isEmpty() }
+            if (pushSucceeded) {
+                refreshRepository(repository)
                 PushResult(true, 0, "Push successful") // TODO: Подсчитать количество отправленных коммитов
             } else {
                 PushResult(false, 0, "Push failed")
@@ -1390,14 +1366,15 @@ class RealGitRepository(private val context: Context) {
             for (ref in localBranches) {
                 val branchName = ref.name.removePrefix("refs/heads/")
                 val lastCommitHash = ref.objectId.name
+                val trackingStatus = runCatching { BranchTrackingStatus.of(git.repository, ref.name) }.getOrNull()
 
                 branches.add(
                     Branch(
                         name = branchName,
                         isLocal = true,
                         lastCommitHash = lastCommitHash,
-                        ahead = 0,
-                        behind = 0
+                        ahead = trackingStatus?.aheadCount ?: 0,
+                        behind = trackingStatus?.behindCount ?: 0
                     )
                 )
             }
@@ -1465,6 +1442,17 @@ class RealGitRepository(private val context: Context) {
         return when (provider) {
             GitProvider.GITHUB -> UsernamePasswordCredentialsProvider(token, "")
             GitProvider.GITLAB -> UsernamePasswordCredentialsProvider("oauth2", token)
+        }
+    }
+
+    private fun calculateAheadBehind(git: Git): Pair<Int, Int> {
+        return try {
+            val repository = git.repository
+            val fullBranch = repository.fullBranch ?: return 0 to 0
+            val trackingStatus = BranchTrackingStatus.of(repository, fullBranch) ?: return 0 to 0
+            trackingStatus.aheadCount to trackingStatus.behindCount
+        } catch (e: Exception) {
+            0 to 0
         }
     }
 

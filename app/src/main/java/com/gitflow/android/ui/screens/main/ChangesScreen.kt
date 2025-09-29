@@ -38,6 +38,7 @@ fun ChangesScreen(
     LaunchedEffect(repository.id) {
         isLoading = true
         changes = gitRepository.getChangedFiles(repository)
+        gitRepository.refreshRepository(repository)
         isLoading = false
         commitMessage = ""
         isProcessing = false
@@ -45,6 +46,7 @@ fun ChangesScreen(
 
     val stagedFiles = changes.filter { it.stage == ChangeStage.STAGED }
     val unstagedFiles = changes.filter { it.stage == ChangeStage.UNSTAGED }
+    val pendingPushCommits = repository.pendingPushCommits
 
     fun guardLaunch(action: suspend () -> Unit) {
         if (isProcessing) return
@@ -133,7 +135,8 @@ fun ChangesScreen(
         onCommit = commitChanges,
         onPush = pushChanges,
         onFileToggle = toggleFile,
-        canPush = repository.hasRemoteOrigin
+        canPush = repository.hasRemoteOrigin,
+        pendingPushCommits = pendingPushCommits
     )
 }
 
@@ -150,7 +153,8 @@ private fun ChangesContent(
     onCommit: () -> Unit,
     onPush: () -> Unit,
     onFileToggle: (FileChange) -> Unit,
-    canPush: Boolean
+    canPush: Boolean,
+    pendingPushCommits: Int
 ) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -185,7 +189,8 @@ private fun ChangesContent(
                     onCommit = onCommit,
                     onPush = onPush,
                     isBusy = isProcessing,
-                    canPush = canPush
+                    canPush = canPush,
+                    pendingPushCommits = pendingPushCommits
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -210,7 +215,8 @@ private fun CommitSection(
     onCommit: () -> Unit,
     onPush: () -> Unit,
     isBusy: Boolean,
-    canPush: Boolean
+    canPush: Boolean,
+    pendingPushCommits: Int
 ) {
     Card(
         modifier = Modifier.fillMaxWidth()
@@ -253,19 +259,21 @@ private fun CommitSection(
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            if (canPush) {
+                if (pendingPushCommits > 0) {
+                    Spacer(modifier = Modifier.height(8.dp))
 
-            OutlinedButton(
-                onClick = onPush,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = canPush && !isBusy
-            ) {
-                Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Push")
-            }
-
-            if (!canPush) {
+                    OutlinedButton(
+                        onClick = onPush,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isBusy
+                    ) {
+                        Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Push ($pendingPushCommits)")
+                    }
+                }
+            } else {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "Remote 'origin' is not configured",
