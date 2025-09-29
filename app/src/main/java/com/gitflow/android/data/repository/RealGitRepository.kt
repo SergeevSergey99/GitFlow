@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.api.ResetCommand
 import org.eclipse.jgit.api.errors.GitAPIException
 import org.eclipse.jgit.diff.DiffFormatter
 import org.eclipse.jgit.lib.ObjectId
@@ -19,6 +20,8 @@ import org.eclipse.jgit.revwalk.RevCommit
 import org.eclipse.jgit.revwalk.RevWalk
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder
 import org.eclipse.jgit.treewalk.CanonicalTreeParser
+import org.eclipse.jgit.treewalk.EmptyTreeIterator
+import org.eclipse.jgit.treewalk.FileTreeIterator
 import org.eclipse.jgit.treewalk.TreeWalk
 import org.eclipse.jgit.treewalk.filter.PathFilter
 import java.io.ByteArrayOutputStream
@@ -28,6 +31,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
+import org.eclipse.jgit.dircache.DirCacheIterator
 import org.eclipse.jgit.lib.ProgressMonitor
 
 data class CloneProgress(
@@ -553,34 +557,132 @@ class RealGitRepository(private val context: Context) {
         try {
             val git = openRepository(repository.path) ?: return@withContext emptyList()
 
-            val status = git.status().call()
-            val changes = mutableListOf<FileChange>()
+            git.use { gitInstance ->
+                val status = gitInstance.status().call()
+                val changes = mutableListOf<FileChange>()
 
-            // Добавленные файлы
-            status.added.forEach { path ->
-                changes.add(FileChange(path, ChangeStatus.ADDED, 0, 0))
+                fun diffFor(path: String, stage: ChangeStage): Pair<Int, Int> =
+                    getFileDiffInfo(gitInstance, path, stage)
+
+                status.added.forEach { path ->
+                    val (additions, deletions) = diffFor(path, ChangeStage.STAGED)
+                    changes.add(FileChange(path, ChangeStatus.ADDED, ChangeStage.STAGED, additions, deletions))
+                }
+
+                status.changed.forEach { path ->
+                    val (additions, deletions) = diffFor(path, ChangeStage.STAGED)
+                    changes.add(FileChange(path, ChangeStatus.MODIFIED, ChangeStage.STAGED, additions, deletions))
+                }
+
+                status.removed.forEach { path ->
+                    val (additions, deletions) = diffFor(path, ChangeStage.STAGED)
+                    changes.add(FileChange(path, ChangeStatus.DELETED, ChangeStage.STAGED, additions, deletions))
+                }
+
+                status.modified.forEach { path ->
+                    val (additions, deletions) = diffFor(path, ChangeStage.UNSTAGED)
+                    changes.add(FileChange(path, ChangeStatus.MODIFIED, ChangeStage.UNSTAGED, additions, deletions))
+                }
+
+                status.missing.forEach { path ->
+                    val (additions, deletions) = diffFor(path, ChangeStage.UNSTAGED)
+                    changes.add(FileChange(path, ChangeStatus.DELETED, ChangeStage.UNSTAGED, additions, deletions))
+                }
+
+                status.untracked.forEach { path ->
+                    val (additions, deletions) = diffFor(path, ChangeStage.UNSTAGED)
+                    changes.add(FileChange(path, ChangeStatus.UNTRACKED, ChangeStage.UNSTAGED, additions, deletions))
+                }
+
+                status.conflicting.forEach { path ->
+                    val (additions, deletions) = diffFor(path, ChangeStage.UNSTAGED)
+                    changes.add(FileChange(path, ChangeStatus.MODIFIED, ChangeStage.UNSTAGED, additions, deletions))
+                }
+
+                changes.sortedWith(compareBy({ it.stage }, { it.path }))
             }
-
-            // Измененные файлы
-            status.modified.forEach { path ->
-                val diffInfo = getFileDiffInfo(git, path)
-                changes.add(FileChange(path, ChangeStatus.MODIFIED, diffInfo.first, diffInfo.second))
-            }
-
-            // Удаленные файлы
-            status.removed.forEach { path ->
-                changes.add(FileChange(path, ChangeStatus.DELETED, 0, 0))
-            }
-
-            // Неотслеживаемые файлы
-            status.untracked.forEach { path ->
-                changes.add(FileChange(path, ChangeStatus.UNTRACKED, 0, 0))
-            }
-
-            git.close()
-            changes
         } catch (e: Exception) {
             emptyList()
+        }
+    }
+
+    suspend fun stageFile(repository: com.gitflow.android.data.models.Repository, file: FileChange): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
+            git.use { gitInstance ->
+                when (file.status) {
+                    ChangeStatus.DELETED -> {
+                        gitInstance.add()
+                            .setUpdate(true)
+                            .addFilepattern(file.path)
+                            .call()
+                    }
+                    else -> {
+                        gitInstance.add()
+                            .addFilepattern(file.path)
+                            .call()
+                    }
+                }
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun unstageFile(repository: com.gitflow.android.data.models.Repository, filePath: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
+            git.use { gitInstance ->
+                gitInstance.reset()
+                    .setMode(ResetCommand.ResetType.MIXED)
+                    .addPath(filePath)
+                    .call()
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun stageAll(repository: com.gitflow.android.data.models.Repository): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
+            git.use { gitInstance ->
+                gitInstance.add()
+                    .addFilepattern(".")
+                    .call()
+
+                gitInstance.add()
+                    .setUpdate(true)
+                    .addFilepattern(".")
+                    .call()
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun commit(repository: com.gitflow.android.data.models.Repository, message: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
+            git.use { gitInstance ->
+                val status = gitInstance.status().call()
+                val hasStagedChanges = status.added.isNotEmpty() || status.changed.isNotEmpty() || status.removed.isNotEmpty()
+                if (!hasStagedChanges) {
+                    throw IllegalStateException("No staged changes")
+                }
+
+                gitInstance.commit()
+                    .setMessage(message)
+                    .call()
+            }
+
+            refreshRepository(repository)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 
@@ -1350,43 +1452,45 @@ class RealGitRepository(private val context: Context) {
         }
     }
 
-    private fun getFileDiffInfo(git: Git, filePath: String): Pair<Int, Int> {
+    private fun getFileDiffInfo(git: Git, filePath: String, stage: ChangeStage): Pair<Int, Int> {
         return try {
             val repository = git.repository
-            val head = repository.resolve("HEAD")
-            val headCommit = RevWalk(repository).parseCommit(head)
+            val diffCommand = git.diff().setPathFilter(PathFilter.create(filePath))
 
-            if (headCommit.parentCount > 0) {
-                val parentCommit = RevWalk(repository).parseCommit(headCommit.getParent(0).id)
-
-                val oldTreeParser = CanonicalTreeParser()
-                val newTreeParser = CanonicalTreeParser()
-
-                repository.newObjectReader().use { reader ->
-                    oldTreeParser.reset(reader, parentCommit.tree)
-                    newTreeParser.reset(reader, headCommit.tree)
+            when (stage) {
+                ChangeStage.STAGED -> {
+                    val oldTreeIterator = repository.newObjectReader().use { reader ->
+                        val headTreeId = repository.resolve("HEAD^{tree}")
+                        if (headTreeId != null) {
+                            CanonicalTreeParser().apply { reset(reader, headTreeId) }
+                        } else {
+                            EmptyTreeIterator()
+                        }
+                    }
+                    val dirCacheIterator = DirCacheIterator(repository.readDirCache())
+                    diffCommand.setOldTree(oldTreeIterator)
+                    diffCommand.setNewTree(dirCacheIterator)
                 }
 
-                val diffs = git.diff()
-                    .setOldTree(oldTreeParser)
-                    .setNewTree(newTreeParser)
-                    .setPathFilter(PathFilter.create(filePath))
-                    .call()
-
-                if (diffs.isNotEmpty()) {
-                    val outputStream = ByteArrayOutputStream()
-                    val formatter = DiffFormatter(outputStream)
-                    formatter.setRepository(repository)
-                    formatter.format(diffs.first())
-                    formatter.close()
-
-                    val diffText = outputStream.toString()
-                    parseDiffStats(diffText)
-                } else {
-                    Pair(0, 0)
+                ChangeStage.UNSTAGED -> {
+                    val dirCacheIterator = DirCacheIterator(repository.readDirCache())
+                    val workTreeIterator = FileTreeIterator(repository)
+                    diffCommand.setOldTree(dirCacheIterator)
+                    diffCommand.setNewTree(workTreeIterator)
                 }
-            } else {
+            }
+
+            val diffs = diffCommand.call()
+            if (diffs.isEmpty()) {
                 Pair(0, 0)
+            } else {
+                ByteArrayOutputStream().use { outputStream ->
+                    DiffFormatter(outputStream).use { formatter ->
+                        formatter.setRepository(repository)
+                        diffs.forEach { diff -> formatter.format(diff) }
+                    }
+                    parseDiffStats(outputStream.toString())
+                }
             }
         } catch (e: Exception) {
             Pair(0, 0)

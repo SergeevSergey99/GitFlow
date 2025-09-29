@@ -42,6 +42,7 @@ data class Branch(
 data class FileChange(
     val path: String,
     val status: ChangeStatus,
+    val stage: ChangeStage,
     val additions: Int = 0,
     val deletions: Int = 0
 )
@@ -49,6 +50,11 @@ data class FileChange(
 @Serializable
 enum class ChangeStatus {
     ADDED, MODIFIED, DELETED, RENAMED, COPIED, UNTRACKED
+}
+
+@Serializable
+enum class ChangeStage {
+    STAGED, UNSTAGED
 }
 
 // New models for diff viewer

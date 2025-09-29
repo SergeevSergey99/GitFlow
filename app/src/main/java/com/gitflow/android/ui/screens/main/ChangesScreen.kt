@@ -11,11 +11,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.gitflow.android.data.models.ChangeStage
 import com.gitflow.android.data.models.FileChange
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.RealGitRepository
 import com.gitflow.android.ui.components.FileChangeCard
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -28,72 +28,174 @@ fun ChangesScreen(
         return
     }
 
-    var stagedFiles by remember { mutableStateOf(listOf<FileChange>()) }
-    var unstagedFiles by remember { mutableStateOf(listOf<FileChange>()) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    var changes by remember { mutableStateOf<List<FileChange>>(emptyList()) }
     var commitMessage by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(true) }
+    var isProcessing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    // Загружаем изменения при смене репозитория
-    LaunchedEffect(repository) {
+    LaunchedEffect(repository.id) {
         isLoading = true
-        unstagedFiles = gitRepository.getChangedFiles(repository)
+        changes = gitRepository.getChangedFiles(repository)
         isLoading = false
+        commitMessage = ""
+        isProcessing = false
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        // Commit section
-        CommitSection(
-            commitMessage = commitMessage,
-            onCommitMessageChange = { commitMessage = it },
-            stagedFiles = stagedFiles,
-            unstagedFiles = unstagedFiles,
-            onStageAll = {
-                stagedFiles = unstagedFiles
-                unstagedFiles = emptyList()
-            },
-            onCommit = {
-                scope.launch {
-                    // TODO: Реализовать создание коммита через JGit
-                    delay(500)
-                    stagedFiles = emptyList()
-                    commitMessage = ""
-                    // Перезагружаем изменения
-                    unstagedFiles = gitRepository.getChangedFiles(repository)
-                }
+    val stagedFiles = changes.filter { it.stage == ChangeStage.STAGED }
+    val unstagedFiles = changes.filter { it.stage == ChangeStage.UNSTAGED }
+
+    fun guardLaunch(action: suspend () -> Unit) {
+        if (isProcessing) return
+        scope.launch {
+            isProcessing = true
+            try {
+                action()
+            } finally {
+                isProcessing = false
             }
-        )
+        }
+    }
 
-        Spacer(modifier = Modifier.height(16.dp))
+    val stageAll = {
+        guardLaunch {
+            val result = gitRepository.stageAll(repository)
+            if (result.isFailure) {
+                val fallback = "Unable to stage all changes"
+                snackbarHostState.showSnackbar(result.exceptionOrNull()?.localizedMessage ?: fallback)
+            }
+            changes = gitRepository.getChangedFiles(repository)
+        }
+    }
 
-        // File changes
+    val commitChanges = commit@{
+        val message = commitMessage.trim()
+        if (message.isEmpty()) {
+            scope.launch { snackbarHostState.showSnackbar("Commit message cannot be empty") }
+            return@commit
+        }
+        guardLaunch {
+            val result = gitRepository.commit(repository, message)
+            if (result.isSuccess) {
+                commitMessage = ""
+                changes = gitRepository.getChangedFiles(repository)
+                snackbarHostState.showSnackbar("Commit created")
+            } else {
+                val fallback = "Commit failed"
+                snackbarHostState.showSnackbar(result.exceptionOrNull()?.localizedMessage ?: fallback)
+            }
+        }
+    }
+
+    val pushChanges = {
+        guardLaunch {
+            val result = gitRepository.push(repository)
+            val message = if (result.success) {
+                if (result.message.isNotBlank()) result.message else "Push successful"
+            } else {
+                if (result.message.isNotBlank()) result.message else "Push failed"
+            }
+            snackbarHostState.showSnackbar(message)
+        }
+    }
+
+    val toggleFile: (FileChange) -> Unit = { file ->
+        guardLaunch {
+            val result = if (file.stage == ChangeStage.STAGED) {
+                gitRepository.unstageFile(repository, file.path)
+            } else {
+                gitRepository.stageFile(repository, file)
+            }
+
+            if (result.isFailure) {
+                val fallback = if (file.stage == ChangeStage.STAGED) {
+                    "Unable to unstage file"
+                } else {
+                    "Unable to stage file"
+                }
+                snackbarHostState.showSnackbar(result.exceptionOrNull()?.localizedMessage ?: fallback)
+            }
+
+            changes = gitRepository.getChangedFiles(repository)
+        }
+    }
+
+    ChangesContent(
+        isLoading = isLoading,
+        isProcessing = isProcessing,
+        snackbarHostState = snackbarHostState,
+        stagedFiles = stagedFiles,
+        unstagedFiles = unstagedFiles,
+        commitMessage = commitMessage,
+        onCommitMessageChange = { commitMessage = it },
+        onStageAll = stageAll,
+        onCommit = commitChanges,
+        onPush = pushChanges,
+        onFileToggle = toggleFile,
+        canPush = repository.hasRemoteOrigin
+    )
+}
+
+@Composable
+private fun ChangesContent(
+    isLoading: Boolean,
+    isProcessing: Boolean,
+    snackbarHostState: SnackbarHostState,
+    stagedFiles: List<FileChange>,
+    unstagedFiles: List<FileChange>,
+    commitMessage: String,
+    onCommitMessageChange: (String) -> Unit,
+    onStageAll: () -> Unit,
+    onCommit: () -> Unit,
+    onPush: () -> Unit,
+    onFileToggle: (FileChange) -> Unit,
+    canPush: Boolean
+) {
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { innerPadding ->
         if (isLoading) {
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
                 contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator()
             }
         } else {
-            FileChangesList(
-                stagedFiles = stagedFiles,
-                unstagedFiles = unstagedFiles,
-                onFileToggle = { file, isCurrentlyStaged ->
-                    if (isCurrentlyStaged) {
-                        // Unstage file
-                        unstagedFiles = unstagedFiles + file
-                        stagedFiles = stagedFiles - file
-                    } else {
-                        // Stage file
-                        stagedFiles = stagedFiles + file
-                        unstagedFiles = unstagedFiles - file
-                    }
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(16.dp)
+            ) {
+                if (isProcessing) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Spacer(modifier = Modifier.height(12.dp))
                 }
-            )
+
+                CommitSection(
+                    commitMessage = commitMessage,
+                    onCommitMessageChange = onCommitMessageChange,
+                    stagedFiles = stagedFiles,
+                    unstagedFiles = unstagedFiles,
+                    onStageAll = onStageAll,
+                    onCommit = onCommit,
+                    onPush = onPush,
+                    isBusy = isProcessing,
+                    canPush = canPush
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                FileChangesList(
+                    stagedFiles = stagedFiles,
+                    unstagedFiles = unstagedFiles,
+                    onFileToggle = onFileToggle
+                )
+            }
         }
     }
 }
@@ -105,7 +207,10 @@ private fun CommitSection(
     stagedFiles: List<FileChange>,
     unstagedFiles: List<FileChange>,
     onStageAll: () -> Unit,
-    onCommit: () -> Unit
+    onCommit: () -> Unit,
+    onPush: () -> Unit,
+    isBusy: Boolean,
+    canPush: Boolean
 ) {
     Card(
         modifier = Modifier.fillMaxWidth()
@@ -133,19 +238,40 @@ private fun CommitSection(
                 OutlinedButton(
                     onClick = onStageAll,
                     modifier = Modifier.weight(1f),
-                    enabled = unstagedFiles.isNotEmpty()
+                    enabled = unstagedFiles.isNotEmpty() && !isBusy
                 ) {
                     Text("Stage All")
                 }
                 Button(
                     onClick = onCommit,
                     modifier = Modifier.weight(1f),
-                    enabled = stagedFiles.isNotEmpty() && commitMessage.isNotEmpty()
+                    enabled = stagedFiles.isNotEmpty() && commitMessage.isNotBlank() && !isBusy
                 ) {
                     Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("Commit")
                 }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedButton(
+                onClick = onPush,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = canPush && !isBusy
+            ) {
+                Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Push")
+            }
+
+            if (!canPush) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Remote 'origin' is not configured",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -155,7 +281,7 @@ private fun CommitSection(
 private fun FileChangesList(
     stagedFiles: List<FileChange>,
     unstagedFiles: List<FileChange>,
-    onFileToggle: (FileChange, Boolean) -> Unit
+    onFileToggle: (FileChange) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxHeight(),
@@ -173,7 +299,7 @@ private fun FileChangesList(
                 FileChangeCard(
                     file = file,
                     isStaged = true,
-                    onToggle = { onFileToggle(file, true) }
+                    onToggle = { onFileToggle(file) }
                 )
             }
         }
@@ -189,7 +315,7 @@ private fun FileChangesList(
                 FileChangeCard(
                     file = file,
                     isStaged = false,
-                    onToggle = { onFileToggle(file, false) }
+                    onToggle = { onFileToggle(file) }
                 )
             }
         }
