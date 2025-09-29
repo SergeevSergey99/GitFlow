@@ -691,9 +691,15 @@ class RealGitRepository(private val context: Context) {
                     throw IllegalStateException("No staged changes")
                 }
 
-                gitInstance.commit()
+                val commitCommand = gitInstance.commit()
                     .setMessage(message)
-                    .call()
+
+                resolveCommitIdentity(gitInstance)?.let { (name, email) ->
+                    commitCommand.setAuthor(name, email)
+                    commitCommand.setCommitter(name, email)
+                }
+
+                commitCommand.call()
             }
 
             refreshRepository(repository)
@@ -1443,6 +1449,52 @@ class RealGitRepository(private val context: Context) {
             GitProvider.GITHUB -> UsernamePasswordCredentialsProvider(token, "")
             GitProvider.GITLAB -> UsernamePasswordCredentialsProvider("oauth2", token)
         }
+    }
+
+    private fun resolveCommitIdentity(git: Git): Pair<String, String>? {
+        val config = git.repository.config
+        val configuredName = config.getString("user", null, "name")
+        val configuredEmail = config.getString("user", null, "email")
+        if (!configuredName.isNullOrBlank() && !configuredEmail.isNullOrBlank()) {
+            return configuredName to configuredEmail
+        }
+
+        val remoteConfigs = runCatching { git.remoteList().call() }.getOrNull().orEmpty()
+        val originRemote = remoteConfigs.firstOrNull { it.name == "origin" } ?: remoteConfigs.firstOrNull()
+        val remoteUri = originRemote?.urIs?.firstOrNull()
+
+        val provider = remoteUri?.toString()?.lowercase(Locale.ROOT)?.let { uriString ->
+            when {
+                uriString.contains("github.com") -> GitProvider.GITHUB
+                uriString.contains("gitlab.com") -> GitProvider.GITLAB
+                else -> null
+            }
+        }
+
+        val user = provider?.let { authManager.getCurrentUser(it) }
+            ?: run {
+                for (candidate in listOf(GitProvider.GITHUB, GitProvider.GITLAB)) {
+                    val candidateUser = authManager.getCurrentUser(candidate)
+                    if (candidateUser != null) {
+                        return@run candidateUser
+                    }
+                }
+                null
+            }
+
+        if (user != null) {
+            val name = user.name?.takeIf { it.isNotBlank() } ?: user.login
+            val email = user.email?.takeIf { it.isNotBlank() } ?: when (user.provider) {
+                GitProvider.GITHUB -> "${user.login}@users.noreply.github.com"
+                GitProvider.GITLAB -> "${user.login}@gitlab.com"
+            }
+
+            if (name.isNotBlank() && email.isNotBlank()) {
+                return name to email
+            }
+        }
+
+        return null
     }
 
     private fun calculateAheadBehind(git: Git): Pair<Int, Int> {
