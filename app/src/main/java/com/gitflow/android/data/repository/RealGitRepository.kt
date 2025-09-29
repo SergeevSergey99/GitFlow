@@ -1,6 +1,7 @@
 package com.gitflow.android.data.repository
 
 import android.content.Context
+import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -33,6 +34,9 @@ import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import org.eclipse.jgit.dircache.DirCacheIterator
 import org.eclipse.jgit.lib.ProgressMonitor
+import org.eclipse.jgit.transport.CredentialsProvider
+import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
+import java.net.URI
 
 data class CloneProgress(
     val stage: String = "",
@@ -183,6 +187,7 @@ class CloneProgressCallback(private val trackingKey: String? = null) : ProgressM
 class RealGitRepository(private val context: Context) {
 
     private val dataStore = RepositoryDataStore(context)
+    private val authManager by lazy { AuthManager(context) }
 
     // ---------- Public API ----------
 
@@ -961,7 +966,15 @@ class RealGitRepository(private val context: Context) {
         try {
             val git = openRepository(repository.path) ?: return@withContext PullResult(false, 0, listOf("Repository not found"))
 
-            val result = git.pull().call()
+            val remoteConfig = git.repository.config
+            val remoteUrl = remoteConfig.getString("remote", "origin", "pushurl")
+                ?: remoteConfig.getString("remote", "origin", "url")
+            val credentialsProvider = resolveCredentialsProvider(remoteUrl)
+
+            val pullCommand = git.pull()
+            credentialsProvider?.let { pullCommand.setCredentialsProvider(it) }
+
+            val result = pullCommand.call()
             git.close()
 
             if (result.isSuccessful) {
@@ -978,7 +991,15 @@ class RealGitRepository(private val context: Context) {
         try {
             val git = openRepository(repository.path) ?: return@withContext PushResult(false, 0, "Repository not found")
 
-            val result = git.push().call()
+            val remoteConfig = git.repository.config
+            val remoteUrl = remoteConfig.getString("remote", "origin", "pushurl")
+                ?: remoteConfig.getString("remote", "origin", "url")
+            val credentialsProvider = resolveCredentialsProvider(remoteUrl)
+
+            val pushCommand = git.push()
+            credentialsProvider?.let { pushCommand.setCredentialsProvider(it) }
+
+            val result = pushCommand.call()
             git.close()
 
             if (result.any { it.messages.isEmpty() }) {
@@ -1413,6 +1434,37 @@ class RealGitRepository(private val context: Context) {
             Git.open(repoDir)
         } catch (e: Exception) {
             null
+        }
+    }
+
+    private fun resolveCredentialsProvider(remoteUrl: String?): CredentialsProvider? {
+        if (remoteUrl.isNullOrBlank()) {
+            return null
+        }
+
+        val sanitizedUrl = remoteUrl.trim()
+        val parsedUri = runCatching { URI(sanitizedUrl) }.getOrNull()
+
+        val userInfo = parsedUri?.userInfo?.takeIf { it.isNotBlank() }
+        if (userInfo != null) {
+            val parts = userInfo.split(":", limit = 2)
+            val username = parts.getOrNull(0) ?: return null
+            val password = parts.getOrNull(1) ?: ""
+            return UsernamePasswordCredentialsProvider(username, password)
+        }
+
+        val host = parsedUri?.host ?: return null
+        val provider = when {
+            host.contains("github.com", ignoreCase = true) -> GitProvider.GITHUB
+            host.contains("gitlab.com", ignoreCase = true) -> GitProvider.GITLAB
+            else -> null
+        } ?: return null
+
+        val token = authManager.getAccessToken(provider)?.takeIf { it.isNotBlank() } ?: return null
+
+        return when (provider) {
+            GitProvider.GITHUB -> UsernamePasswordCredentialsProvider(token, "")
+            GitProvider.GITLAB -> UsernamePasswordCredentialsProvider("oauth2", token)
         }
     }
 
