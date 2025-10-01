@@ -1,0 +1,83 @@
+<resources>
+    <string name="app_name">GitFlow</string>
+    <string name="notification_channel_clone_name">Клонирование репозитория</string>
+    <string name="notification_channel_clone_description">Прогресс фонового клонирования репозиториев</string>
+    <string name="notification_clone_in_progress">Клонирование %1$s</string>
+    <string name="notification_clone_preparing">Подготовка клонирования...</string>
+    <string name="notification_clone_cancel">Отмена</string>
+    <string name="notification_clone_in_progress_default">Получение данных...</string>
+    <string name="notification_clone_eta">Осталось: %1$s</string>
+    <string name="notification_clone_completed">Клонирование завершено</string>
+    <string name="notification_clone_completed_detail">Репозиторий %1$s клонирован</string>
+    <string name="notification_clone_completed_with_size">Репозиторий %1$s клонирован (%2$s)</string>
+    <string name="notification_clone_failed">Ошибка клонирования</string>
+    <string name="notification_clone_failed_generic">Неизвестная ошибка</string>
+    <string name="notification_clone_failed_detail">Не удалось клонировать %1$s: %2$s</string>
+    <string name="notification_clone_cancelled">Клонирование отменено</string>
+    <string name="notification_clone_cancelled_detail">Клонирование %1$s отменено пользователем</string>
+    <string name="notification_permission_required">Для фонового клонирования разрешите уведомления в настройках приложения</string>
+    <string name="clone_wifi_only_error">Загрузка репозитория разрешена только по Wi‑Fi. Подключитесь к Wi‑Fi или отключите ограничение в настройках.</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_file_preview">Просмотр файлов</string>
+    <string name="settings_file_preview_description">Управление типами файлов, открываемых в просмотрщике коммитов.</string>
+    <string name="settings_extensions_label">Расширений: %1$d</string>
+    <string name="settings_filenames_label">Имён файлов: %1$d</string>
+    <string name="settings_configure">Настроить</string>
+    <string name="settings_back">Назад</string>
+    <string name="settings_file_preview_detail_description">Настройте, какие расширения файлов и файлы без расширений будут отображаться в просмотрщике коммитов.</string>
+    <string name="settings_allowed_extensions">Разрешённые расширения</string>
+    <string name="settings_no_extensions">Расширения не настроены</string>
+    <string name="settings_remove_extension">Удалить расширение</string>
+    <string name="settings_add_extension_hint">Добавить расширение (например md)</string>
+    <string name="settings_add_extension">Добавить расширение</string>
+    <string name="settings_extensionless_filenames">Файлы без расширения</string>
+    <string name="settings_no_filenames">Имена файлов не настроены</string>
+    <string name="settings_remove_filename">Удалить имя файла</string>
+    <string name="settings_add_filename_hint">Добавить имя файла (например LICENSE)</string>
+    <string name="settings_add_filename">Добавить имя файла</string>
+
+    <!-- Account Section -->
+    <string name="settings_account">Аккаунт</string>
+    <string name="settings_guest_user">Гостевой пользователь</string>
+    <string name="settings_not_signed_in">Не авторизован</string>
+    <string name="settings_manage_accounts">Управление аккаунтами</string>
+    <string name="settings_sign_in">Войти</string>
+    <string name="settings_connected">Подключен</string>
+
+    <!-- Graph Settings -->
+    <string name="settings_graph_settings">Настройки графа</string>
+    <string name="settings_graph_preset">Пресет графа</string>
+    <string name="settings_graph_preset_description">Выберите, как должен отображаться граф коммитов</string>
+
+    <!-- Network Settings -->
+    <string name="settings_network">Сеть</string>
+    <string name="settings_wifi_only">Загрузка только по Wi-Fi</string>
+    <string name="settings_wifi_only_description">Блокировать клонирование через мобильные данные для экономии трафика</string>
+
+    <!-- Language Settings -->
+    <string name="settings_language">Язык</string>
+    <string name="settings_language_description">Выберите язык приложения</string>
+    <string name="settings_language_system">Системный</string>
+    <string name="settings_language_english">English</string>
+    <string name="settings_language_russian">Русский</string>
+
+    <!-- Permissions -->
+    <string name="settings_permissions">Разрешения</string>
+    <string name="settings_permissions_description">Убедитесь, что приложению доступны уведомления и файлы для корректного клонирования.</string>
+    <string name="settings_permission_notifications">Уведомления</string>
+    <string name="settings_permission_notifications_description">Нужны для отображения прогресса клонирования и статуса фоновых задач.</string>
+    <string name="settings_permission_storage">Доступ к файлам</string>
+    <string name="settings_permission_storage_description">Позволяет выбирать папку для клонирования и работать с репозиториями на устройстве.</string>
+    <string name="settings_permission_grant">Разрешить</string>
+    <string name="settings_permission_open_settings">Открыть настройки</string>
+    <string name="settings_permission_manage">Управлять разрешением</string>
+    <string name="settings_permission_granted">Выдано</string>
+    <string name="settings_permission_not_granted">Не выдано</string>
+
+    <!-- About -->
+    <string name="settings_about">О приложении</string>
+    <string name="settings_about_app_name">GitFlow для Android</string>
+    <string name="settings_about_version">Версия 1.0.0</string>
+    <string name="settings_about_description">Современный Git-клиент для устройств Android</string>
+</resources>

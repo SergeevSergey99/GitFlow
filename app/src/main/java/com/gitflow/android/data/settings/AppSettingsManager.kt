@@ -98,6 +98,14 @@ class AppSettingsManager(context: Context) {
         preferences.unregisterOnSharedPreferenceChangeListener(listener)
     }
 
+    fun getLanguage(): String {
+        return preferences.getString(KEY_LANGUAGE, LANGUAGE_RUSSIAN) ?: LANGUAGE_RUSSIAN
+    }
+
+    fun setLanguage(language: String) {
+        preferences.edit().putString(KEY_LANGUAGE, language).apply()
+    }
+
     private fun sanitizeToken(value: String?, allowDots: Boolean = false): String? {
         if (value.isNullOrBlank()) return null
         var token = value.trim()
@@ -113,6 +121,11 @@ class AppSettingsManager(context: Context) {
         private const val KEY_WIFI_ONLY_DOWNLOADS = "wifi_only_downloads_enabled"
         internal const val KEY_PREVIEW_EXTENSIONS = "preview_extensions"
         internal const val KEY_PREVIEW_FILE_NAMES = "preview_file_names"
+        private const val KEY_LANGUAGE = "app_language"
+
+        const val LANGUAGE_SYSTEM = "system"
+        const val LANGUAGE_ENGLISH = "en"
+        const val LANGUAGE_RUSSIAN = "ru"
 
         val DEFAULT_PREVIEW_EXTENSIONS: LinkedHashSet<String> = linkedSetOf(
             "c",

@@ -24,9 +24,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gitflow.android.R
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.core.app.NotificationManagerCompat
@@ -37,6 +39,7 @@ import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitUser
 import com.gitflow.android.data.settings.AppSettingsManager
 import com.gitflow.android.ui.components.dialogs.GraphPresetDialog
+import java.util.Locale
 
 @Composable
 fun SettingsScreen(
@@ -58,6 +61,8 @@ fun SettingsScreen(
     var previewExtensions by remember { mutableStateOf(settingsManager.getPreviewExtensions().toList()) }
     var previewFileNames by remember { mutableStateOf(settingsManager.getPreviewFileNames().toList()) }
     var showPreviewSettings by remember { mutableStateOf(false) }
+    var showLanguageDialog by remember { mutableStateOf(false) }
+    var currentLanguage by remember { mutableStateOf(settingsManager.getLanguage()) }
 
     val permissionRequirements = remember {
         PermissionRequirement.buildList(context.applicationContext)
@@ -153,6 +158,11 @@ fun SettingsScreen(
                 }
             )
 
+            LanguageSettingsSection(
+                currentLanguage = currentLanguage,
+                onLanguageClick = { showLanguageDialog = true }
+            )
+
             FilePreviewSettingsEntry(
                 extensions = previewExtensions,
                 fileNames = previewFileNames,
@@ -189,6 +199,25 @@ fun SettingsScreen(
             onDismiss = { showGraphPresetDialog = false }
         )
     }
+
+    // Диалог выбора языка
+    if (showLanguageDialog) {
+        LanguageDialog(
+            currentLanguage = currentLanguage,
+            onLanguageSelected = { language ->
+                val previousLanguage = currentLanguage
+                currentLanguage = language
+                settingsManager.setLanguage(language)
+                showLanguageDialog = false
+
+                // Если язык действительно изменился, перезапускаем Activity
+                if (previousLanguage != language) {
+                    (context as? android.app.Activity)?.recreate()
+                }
+            },
+            onDismiss = { showLanguageDialog = false }
+        )
+    }
 }
 
 @Composable
@@ -205,12 +234,12 @@ private fun FilePreviewSettingsEntry(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "File Preview",
+                text = stringResource(R.string.settings_file_preview),
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp
             )
             Text(
-                text = "Manage which file types open inside the commit viewer.",
+                text = stringResource(R.string.settings_file_preview_description),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 13.sp
             )
@@ -224,7 +253,7 @@ private fun FilePreviewSettingsEntry(
 
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    text = "Extensions: ${extensions.size}",
+                    text = stringResource(R.string.settings_extensions_label, extensions.size),
                     fontWeight = FontWeight.Medium
                 )
                 if (extPreview.isNotEmpty()) {
@@ -238,7 +267,7 @@ private fun FilePreviewSettingsEntry(
 
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    text = "Filenames: ${fileNames.size}",
+                    text = stringResource(R.string.settings_filenames_label, fileNames.size),
                     fontWeight = FontWeight.Medium
                 )
                 if (filenamesPreview.isNotEmpty()) {
@@ -256,7 +285,7 @@ private fun FilePreviewSettingsEntry(
             ) {
                 Icon(imageVector = Icons.Default.ChevronRight, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Configure")
+                Text(stringResource(R.string.settings_configure))
             }
         }
     }
@@ -285,17 +314,17 @@ private fun FilePreviewSettingsDetail(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.settings_back))
             }
             Text(
-                text = "File Preview",
+                text = stringResource(R.string.settings_file_preview),
                 fontWeight = FontWeight.Bold,
                 fontSize = 20.sp
             )
         }
 
         Text(
-            text = "Configure which file extensions and extensionless files are previewed in the commit viewer.",
+            text = stringResource(R.string.settings_file_preview_detail_description),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 13.sp
         )
@@ -331,25 +360,25 @@ private fun FilePreviewSettingsEditor(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "File Preview",
+                text = stringResource(R.string.settings_file_preview),
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp
             )
 
             Text(
-                text = "Configure which file extensions and extensionless files are previewed in the commit viewer.",
+                text = stringResource(R.string.settings_file_preview_detail_description),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 13.sp
             )
 
             Text(
-                text = "Allowed extensions",
+                text = stringResource(R.string.settings_allowed_extensions),
                 fontWeight = FontWeight.Medium
             )
 
             if (extensions.isEmpty()) {
                 Text(
-                    text = "No extensions configured",
+                    text = stringResource(R.string.settings_no_extensions),
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -371,7 +400,7 @@ private fun FilePreviewSettingsEditor(
                                 IconButton(onClick = { onRemoveExtension(extension) }) {
                                     Icon(
                                         imageVector = Icons.Default.Delete,
-                                        contentDescription = "Remove extension"
+                                        contentDescription = stringResource(R.string.settings_remove_extension)
                                     )
                                 }
                             }
@@ -383,7 +412,7 @@ private fun FilePreviewSettingsEditor(
             OutlinedTextField(
                 value = extensionInput,
                 onValueChange = { extensionInput = it },
-                label = { Text("Add extension (e.g. md)") },
+                label = { Text(stringResource(R.string.settings_add_extension_hint)) },
                 singleLine = true,
                 trailingIcon = {
                     IconButton(
@@ -395,7 +424,7 @@ private fun FilePreviewSettingsEditor(
                         },
                         enabled = extensionInput.isNotBlank()
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "Add extension")
+                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.settings_add_extension))
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
@@ -404,13 +433,13 @@ private fun FilePreviewSettingsEditor(
             Divider()
 
             Text(
-                text = "Extensionless filenames",
+                text = stringResource(R.string.settings_extensionless_filenames),
                 fontWeight = FontWeight.Medium
             )
 
             if (fileNames.isEmpty()) {
                 Text(
-                    text = "No filenames configured",
+                    text = stringResource(R.string.settings_no_filenames),
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -432,7 +461,7 @@ private fun FilePreviewSettingsEditor(
                                 IconButton(onClick = { onRemoveFileName(name) }) {
                                     Icon(
                                         imageVector = Icons.Default.Delete,
-                                        contentDescription = "Remove filename"
+                                        contentDescription = stringResource(R.string.settings_remove_filename)
                                     )
                                 }
                             }
@@ -444,7 +473,7 @@ private fun FilePreviewSettingsEditor(
             OutlinedTextField(
                 value = fileNameInput,
                 onValueChange = { fileNameInput = it },
-                label = { Text("Add filename (e.g. LICENSE)") },
+                label = { Text(stringResource(R.string.settings_add_filename_hint)) },
                 singleLine = true,
                 trailingIcon = {
                     IconButton(
@@ -456,7 +485,7 @@ private fun FilePreviewSettingsEditor(
                         },
                         enabled = fileNameInput.isNotBlank()
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "Add filename")
+                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.settings_add_filename))
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
@@ -479,7 +508,7 @@ private fun AccountSection(
             modifier = Modifier.padding(16.dp)
         ) {
             Text(
-                text = "Account",
+                text = stringResource(R.string.settings_account),
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp
             )
@@ -520,9 +549,9 @@ private fun AccountSection(
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
-                        Text("Guest User", fontWeight = FontWeight.Medium)
+                        Text(stringResource(R.string.settings_guest_user), fontWeight = FontWeight.Medium)
                         Text(
-                            "Not signed in",
+                            stringResource(R.string.settings_not_signed_in),
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -542,7 +571,12 @@ private fun AccountSection(
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(if (hasAnyAuth) "Manage Accounts" else "Sign In")
+                Text(
+                    if (hasAnyAuth)
+                        stringResource(R.string.settings_manage_accounts)
+                    else
+                        stringResource(R.string.settings_sign_in)
+                )
             }
         }
     }
@@ -560,7 +594,7 @@ private fun GraphSettingsSection(
             modifier = Modifier.padding(16.dp)
         ) {
             Text(
-                text = "Graph Settings",
+                text = stringResource(R.string.settings_graph_settings),
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp
             )
@@ -574,7 +608,7 @@ private fun GraphSettingsSection(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Graph Preset", fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.settings_graph_preset), fontWeight = FontWeight.Medium)
                     Text(
                         text = selectedGraphPreset,
                         fontSize = 12.sp,
@@ -591,7 +625,7 @@ private fun GraphSettingsSection(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Choose how the commit graph should be displayed",
+                text = stringResource(R.string.settings_graph_preset_description),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -608,20 +642,20 @@ private fun AboutSection() {
             modifier = Modifier.padding(16.dp)
         ) {
             Text(
-                text = "About",
+                text = stringResource(R.string.settings_about),
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp
             )
             Spacer(modifier = Modifier.height(12.dp))
-            Text("GitFlow for Android")
+            Text(stringResource(R.string.settings_about_app_name))
             Text(
-                text = "Version 1.0.0",
+                text = stringResource(R.string.settings_about_version),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "A modern Git client for Android devices",
+                text = stringResource(R.string.settings_about_description),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -676,11 +710,123 @@ fun UserAccountRow(
             color = MaterialTheme.colorScheme.primaryContainer
         ) {
             Text(
-                text = "Connected",
+                text = stringResource(R.string.settings_connected),
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+        }
+    }
+}
+
+@Composable
+private fun LanguageSettingsSection(
+    currentLanguage: String,
+    onLanguageClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.settings_language),
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onLanguageClick() },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.settings_language), fontWeight = FontWeight.Medium)
+                    Text(
+                        text = when (currentLanguage) {
+                            AppSettingsManager.LANGUAGE_ENGLISH -> stringResource(R.string.settings_language_english)
+                            AppSettingsManager.LANGUAGE_RUSSIAN -> stringResource(R.string.settings_language_russian)
+                            else -> stringResource(R.string.settings_language_system)
+                        },
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = stringResource(R.string.settings_language_description),
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun LanguageDialog(
+    currentLanguage: String,
+    onLanguageSelected: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_language)) },
+        text = {
+            Column {
+                LanguageOption(
+                    text = stringResource(R.string.settings_language_system),
+                    isSelected = currentLanguage == AppSettingsManager.LANGUAGE_SYSTEM,
+                    onClick = { onLanguageSelected(AppSettingsManager.LANGUAGE_SYSTEM) }
+                )
+                LanguageOption(
+                    text = stringResource(R.string.settings_language_english),
+                    isSelected = currentLanguage == AppSettingsManager.LANGUAGE_ENGLISH,
+                    onClick = { onLanguageSelected(AppSettingsManager.LANGUAGE_ENGLISH) }
+                )
+                LanguageOption(
+                    text = stringResource(R.string.settings_language_russian),
+                    isSelected = currentLanguage == AppSettingsManager.LANGUAGE_RUSSIAN,
+                    onClick = { onLanguageSelected(AppSettingsManager.LANGUAGE_RUSSIAN) }
+                )
+            }
+        },
+        confirmButton = {}
+    )
+}
+
+@Composable
+private fun LanguageOption(
+    text: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = text)
+        if (isSelected) {
+            Icon(
+                imageVector = Icons.Default.Check,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
             )
         }
     }
@@ -698,7 +844,7 @@ private fun NetworkSettingsSection(
             modifier = Modifier.padding(16.dp)
         ) {
             Text(
-                text = "Network",
+                text = stringResource(R.string.settings_network),
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp
             )
@@ -711,11 +857,11 @@ private fun NetworkSettingsSection(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Wi-Fi only downloads",
+                        text = stringResource(R.string.settings_wifi_only),
                         fontWeight = FontWeight.Medium
                     )
                     Text(
-                        text = "Block cloning on mobile data to save traffic",
+                        text = stringResource(R.string.settings_wifi_only_description),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -749,12 +895,12 @@ private fun PermissionsSection(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "Permissions",
+                text = stringResource(R.string.settings_permissions),
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp
             )
             Text(
-                text = "Убедитесь, что приложению доступны уведомления и файлы для корректного клонирования.",
+                text = stringResource(R.string.settings_permissions_description),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -817,20 +963,20 @@ private fun PermissionCard(
                 ) {
                     if (canRequestDirectly) {
                         Button(onClick = { onRequest(requirement) }) {
-                            Text("Разрешить")
+                            Text(stringResource(R.string.settings_permission_grant))
                         }
                         TextButton(onClick = { onOpenSettings(requirement) }) {
-                            Text("Открыть настройки")
+                            Text(stringResource(R.string.settings_permission_open_settings))
                         }
                     } else {
                         Button(onClick = { onOpenSettings(requirement) }) {
-                            Text("Открыть настройки")
+                            Text(stringResource(R.string.settings_permission_open_settings))
                         }
                     }
                 }
             } else {
                 TextButton(onClick = { onOpenSettings(requirement) }) {
-                    Text("Управлять разрешением")
+                    Text(stringResource(R.string.settings_permission_manage))
                 }
             }
         }
@@ -855,7 +1001,10 @@ private fun PermissionStatusBadge(isGranted: Boolean) {
         shape = MaterialTheme.shapes.small
     ) {
         Text(
-            text = if (isGranted) "Выдано" else "Не выдано",
+            text = stringResource(
+                if (isGranted) R.string.settings_permission_granted
+                else R.string.settings_permission_not_granted
+            ),
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
             fontSize = 12.sp,
             color = textColor,
@@ -891,8 +1040,8 @@ private data class PermissionRequirement(
             requirements.add(
                 PermissionRequirement(
                     id = "notifications",
-                    title = "Уведомления",
-                    description = "Нужны для отображения прогресса клонирования и статуса фоновых задач.",
+                    title = appContext.getString(R.string.settings_permission_notifications),
+                    description = appContext.getString(R.string.settings_permission_notifications_description),
                     permissions = notificationPermissions,
                     settingsIntentBuilder = { ctx ->
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -932,8 +1081,8 @@ private data class PermissionRequirement(
                 requirements.add(
                     PermissionRequirement(
                         id = "storage",
-                        title = "Доступ к файлам",
-                        description = "Позволяет выбирать папку для клонирования и работать с репозиториями на устройстве.",
+                        title = appContext.getString(R.string.settings_permission_storage),
+                        description = appContext.getString(R.string.settings_permission_storage_description),
                         permissions = storagePermissions,
                         settingsIntentBuilder = { ctx ->
                             Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {

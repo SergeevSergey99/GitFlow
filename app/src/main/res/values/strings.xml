@@ -1,20 +1,83 @@
 <resources>
     <string name="app_name">GitFlow</string>
-    <string name="notification_channel_clone_name">Клонирование репозитория</string>
-    <string name="notification_channel_clone_description">Прогресс фонового клонирования репозиториев</string>
-    <string name="notification_clone_in_progress">Клонирование %1$s</string>
-    <string name="notification_clone_preparing">Подготовка клонирования...</string>
-    <string name="notification_clone_cancel">Отмена</string>
-    <string name="notification_clone_in_progress_default">Получение данных...</string>
-    <string name="notification_clone_eta">Осталось: %1$s</string>
-    <string name="notification_clone_completed">Клонирование завершено</string>
-    <string name="notification_clone_completed_detail">Репозиторий %1$s клонирован</string>
-    <string name="notification_clone_completed_with_size">Репозиторий %1$s клонирован (%2$s)</string>
-    <string name="notification_clone_failed">Ошибка клонирования</string>
-    <string name="notification_clone_failed_generic">Неизвестная ошибка</string>
-    <string name="notification_clone_failed_detail">Не удалось клонировать %1$s: %2$s</string>
-    <string name="notification_clone_cancelled">Клонирование отменено</string>
-    <string name="notification_clone_cancelled_detail">Клонирование %1$s отменено пользователем</string>
-    <string name="notification_permission_required">Для фонового клонирования разрешите уведомления в настройках приложения</string>
-    <string name="clone_wifi_only_error">Загрузка репозитория разрешена только по Wi‑Fi. Подключитесь к Wi‑Fi или отключите ограничение в настройках.</string>
+    <string name="notification_channel_clone_name">Repository Cloning</string>
+    <string name="notification_channel_clone_description">Background repository cloning progress</string>
+    <string name="notification_clone_in_progress">Cloning %1$s</string>
+    <string name="notification_clone_preparing">Preparing to clone...</string>
+    <string name="notification_clone_cancel">Cancel</string>
+    <string name="notification_clone_in_progress_default">Fetching data...</string>
+    <string name="notification_clone_eta">Remaining: %1$s</string>
+    <string name="notification_clone_completed">Cloning completed</string>
+    <string name="notification_clone_completed_detail">Repository %1$s cloned</string>
+    <string name="notification_clone_completed_with_size">Repository %1$s cloned (%2$s)</string>
+    <string name="notification_clone_failed">Cloning failed</string>
+    <string name="notification_clone_failed_generic">Unknown error</string>
+    <string name="notification_clone_failed_detail">Failed to clone %1$s: %2$s</string>
+    <string name="notification_clone_cancelled">Cloning cancelled</string>
+    <string name="notification_clone_cancelled_detail">Cloning %1$s cancelled by user</string>
+    <string name="notification_permission_required">Allow notifications in app settings for background cloning</string>
+    <string name="clone_wifi_only_error">Repository download is only allowed over Wi-Fi. Connect to Wi-Fi or disable this restriction in settings.</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_file_preview">File Preview</string>
+    <string name="settings_file_preview_description">Manage which file types open inside the commit viewer.</string>
+    <string name="settings_extensions_label">Extensions: %1$d</string>
+    <string name="settings_filenames_label">Filenames: %1$d</string>
+    <string name="settings_configure">Configure</string>
+    <string name="settings_back">Back</string>
+    <string name="settings_file_preview_detail_description">Configure which file extensions and extensionless files are previewed in the commit viewer.</string>
+    <string name="settings_allowed_extensions">Allowed extensions</string>
+    <string name="settings_no_extensions">No extensions configured</string>
+    <string name="settings_remove_extension">Remove extension</string>
+    <string name="settings_add_extension_hint">Add extension (e.g. md)</string>
+    <string name="settings_add_extension">Add extension</string>
+    <string name="settings_extensionless_filenames">Extensionless filenames</string>
+    <string name="settings_no_filenames">No filenames configured</string>
+    <string name="settings_remove_filename">Remove filename</string>
+    <string name="settings_add_filename_hint">Add filename (e.g. LICENSE)</string>
+    <string name="settings_add_filename">Add filename</string>
+
+    <!-- Account Section -->
+    <string name="settings_account">Account</string>
+    <string name="settings_guest_user">Guest User</string>
+    <string name="settings_not_signed_in">Not signed in</string>
+    <string name="settings_manage_accounts">Manage Accounts</string>
+    <string name="settings_sign_in">Sign In</string>
+    <string name="settings_connected">Connected</string>
+
+    <!-- Graph Settings -->
+    <string name="settings_graph_settings">Graph Settings</string>
+    <string name="settings_graph_preset">Graph Preset</string>
+    <string name="settings_graph_preset_description">Choose how the commit graph should be displayed</string>
+
+    <!-- Network Settings -->
+    <string name="settings_network">Network</string>
+    <string name="settings_wifi_only">Wi-Fi only downloads</string>
+    <string name="settings_wifi_only_description">Block cloning on mobile data to save traffic</string>
+
+    <!-- Language Settings -->
+    <string name="settings_language">Language</string>
+    <string name="settings_language_description">Choose app language</string>
+    <string name="settings_language_system">System default</string>
+    <string name="settings_language_english">English</string>
+    <string name="settings_language_russian">Русский</string>
+
+    <!-- Permissions -->
+    <string name="settings_permissions">Permissions</string>
+    <string name="settings_permissions_description">Make sure the app has access to notifications and files for correct cloning.</string>
+    <string name="settings_permission_notifications">Notifications</string>
+    <string name="settings_permission_notifications_description">Required to display cloning progress and background task status.</string>
+    <string name="settings_permission_storage">File access</string>
+    <string name="settings_permission_storage_description">Allows selecting a folder for cloning and working with repositories on the device.</string>
+    <string name="settings_permission_grant">Grant</string>
+    <string name="settings_permission_open_settings">Open settings</string>
+    <string name="settings_permission_manage">Manage permission</string>
+    <string name="settings_permission_granted">Granted</string>
+    <string name="settings_permission_not_granted">Not granted</string>
+
+    <!-- About -->
+    <string name="settings_about">About</string>
+    <string name="settings_about_app_name">GitFlow for Android</string>
+    <string name="settings_about_version">Version 1.0.0</string>
+    <string name="settings_about_description">A modern Git client for Android devices</string>
 </resources>
