@@ -39,6 +39,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
+import androidx.compose.ui.res.stringResource
+import com.gitflow.android.R
 import com.gitflow.android.data.models.*
 import com.gitflow.android.data.repository.RealGitRepository
 import com.gitflow.android.data.settings.AppSettingsManager
@@ -135,7 +137,7 @@ fun CommitDetailDialog(
                                     )
                                     StatChip(
                                         icon = Icons.Default.Description,
-                                        value = "${fileDiffs.size} files",
+                                        value = stringResource(R.string.commit_detail_files_count, fileDiffs.size),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
@@ -143,7 +145,7 @@ fun CommitDetailDialog(
                         }
 
                         IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, contentDescription = "Close")
+                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.commit_detail_close))
                         }
                     }
                 }
@@ -156,22 +158,22 @@ fun CommitDetailDialog(
                     Tab(
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
-                        text = { Text("Changes") }
+                        text = { Text(stringResource(R.string.commit_detail_tab_changes)) }
                     )
                     Tab(
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
-                        text = { Text("Files") }
+                        text = { Text(stringResource(R.string.commit_detail_tab_files)) }
                     )
                     Tab(
                         selected = selectedTab == 2,
                         onClick = { selectedTab = 2 },
-                        text = { Text("Info") }
+                        text = { Text(stringResource(R.string.commit_detail_tab_info)) }
                     )
                     Tab(
                         selected = selectedTab == 3,
                         onClick = { selectedTab = 3 },
-                        text = { Text("File Tree") }
+                        text = { Text(stringResource(R.string.commit_detail_tab_file_tree)) }
                     )
                 }
 
@@ -230,7 +232,7 @@ fun DiffView(selectedFile: FileDiff?) {
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "Select a file in the Files tab to view changes",
+                    text = stringResource(R.string.commit_detail_select_file),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 16.sp
                 )
@@ -265,7 +267,7 @@ fun DiffView(selectedFile: FileDiff?) {
                 ) {
                     Icon(
                         Icons.Default.ViewAgenda,
-                        contentDescription = "Unified view",
+                        contentDescription = stringResource(R.string.commit_detail_unified_view),
                         tint = if (!showSideBySide) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -276,7 +278,7 @@ fun DiffView(selectedFile: FileDiff?) {
                 ) {
                     Icon(
                         Icons.Default.ViewColumn,
-                        contentDescription = "Side by side",
+                        contentDescription = stringResource(R.string.commit_detail_side_by_side),
                         tint = if (showSideBySide) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -338,7 +340,7 @@ fun SideBySideDiffView(diff: FileDiff) {
                 color = Color(0xFFF44336).copy(alpha = 0.1f)
             ) {
                 Text(
-                    text = "Old",
+                    text = stringResource(R.string.commit_detail_old),
                     modifier = Modifier.padding(8.dp),
                     fontWeight = FontWeight.Medium,
                     fontSize = 12.sp
@@ -369,7 +371,7 @@ fun SideBySideDiffView(diff: FileDiff) {
                 color = Color(0xFF4CAF50).copy(alpha = 0.1f)
             ) {
                 Text(
-                    text = "New",
+                    text = stringResource(R.string.commit_detail_new),
                     modifier = Modifier.padding(8.dp),
                     fontWeight = FontWeight.Medium,
                     fontSize = 12.sp
@@ -522,14 +524,14 @@ fun FileItem(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        text = diff.status.name,
+                        text = diff.status.toLocalizedString(),
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     if (diff.oldPath != null && diff.oldPath != diff.path) {
                         Text(
-                            text = "from ${diff.oldPath}",
+                            text = stringResource(R.string.commit_detail_from, diff.oldPath),
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -581,7 +583,7 @@ fun CommitInfoView(commit: Commit) {
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = "Message",
+                            text = stringResource(R.string.commit_detail_message),
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -598,7 +600,7 @@ fun CommitInfoView(commit: Commit) {
                     if (commit.description.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "Description",
+                            text = stringResource(R.string.commit_detail_description),
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -617,7 +619,7 @@ fun CommitInfoView(commit: Commit) {
 
         item {
             InfoCard(
-                title = "Commit Hash",
+                title = stringResource(R.string.commit_detail_commit_hash),
                 content = commit.hash,
                 icon = Icons.Default.Tag
             )
@@ -625,7 +627,7 @@ fun CommitInfoView(commit: Commit) {
 
         item {
             InfoCard(
-                title = "Author",
+                title = stringResource(R.string.commit_detail_author),
                 content = "${commit.author} <${commit.email}>",
                 icon = Icons.Default.Person
             )
@@ -633,7 +635,7 @@ fun CommitInfoView(commit: Commit) {
 
         item {
             InfoCard(
-                title = "Date",
+                title = stringResource(R.string.commit_detail_date),
                 content = formatDate(commit.timestamp),
                 icon = Icons.Default.DateRange
             )
@@ -652,7 +654,7 @@ fun CommitInfoView(commit: Commit) {
         if (commit.tags.isNotEmpty()) {
             item {
                 InfoCard(
-                    title = "Tags",
+                    title = stringResource(R.string.commit_detail_tags),
                     content = commit.tags.joinToString(", "),
                     icon = Icons.Default.LocalOffer
                 )
@@ -678,7 +680,7 @@ fun CommitInfoView(commit: Commit) {
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Parents (${commit.parents.size})",
+                                text = stringResource(R.string.commit_detail_parents, commit.parents.size),
                                 fontWeight = FontWeight.Medium
                             )
                         }
@@ -927,38 +929,38 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Project Files",
+                            text = stringResource(R.string.commit_detail_file_tree_project_files),
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp
                         )
                         if (isLoading) {
                             Text(
-                                text = "Loading...",
+                                text = stringResource(R.string.commit_detail_file_tree_loading),
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         } else {
                             Text(
-                                text = "Commit: ${commit.hash.take(7)} • ${fileTree?.children?.sumOf { countFiles(it) } ?: 0} files",
+                                text = stringResource(R.string.commit_detail_file_tree_commit_info, commit.hash.take(7), fileTree?.children?.sumOf { countFiles(it) } ?: 0),
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
                     IconButton(onClick = { showFilterBar = true }) {
-                        Icon(Icons.Default.Search, contentDescription = "Search files")
+                        Icon(Icons.Default.Search, contentDescription = stringResource(R.string.commit_detail_file_tree_search_files))
                     }
                 } else {
                     OutlinedTextField(
                         value = filterQuery,
                         onValueChange = { filterQuery = it },
-                        label = { Text("Filter by name or path") },
+                        label = { Text(stringResource(R.string.commit_detail_file_tree_filter)) },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
                         trailingIcon = {
                             if (filterQuery.isNotBlank()) {
                                 IconButton(onClick = { filterQuery = "" }) {
-                                    Icon(Icons.Default.Clear, contentDescription = "Clear filter text")
+                                    Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.commit_detail_file_tree_clear_filter))
                                 }
                             }
                         }
@@ -970,7 +972,7 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
                             showFilterBar = false
                         }
                     ) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Close search")
+                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.commit_detail_file_tree_close_search))
                     }
                 }
             }
@@ -1028,7 +1030,7 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
                                         }
                                         Toast.makeText(
                                             context,
-                                            if (success) "File restored to this commit" else "Failed to restore file",
+                                            if (success) context.getString(R.string.commit_detail_toast_restored_commit) else context.getString(R.string.commit_detail_toast_restore_failed),
                                             Toast.LENGTH_SHORT
                                         ).show()
                                     } finally {
@@ -1042,7 +1044,7 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
                                     contextMenuTargetPath = null
                                     Toast.makeText(
                                         context,
-                                        "No parent commit available",
+                                        context.getString(R.string.commit_detail_toast_no_parent),
                                         Toast.LENGTH_SHORT
                                     ).show()
                                     return@FileTreeNodeItem
@@ -1063,7 +1065,7 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
                                         }
                                         Toast.makeText(
                                             context,
-                                            if (success) "File restored to previous commit" else "Failed to restore file",
+                                            if (success) context.getString(R.string.commit_detail_toast_restored_parent) else context.getString(R.string.commit_detail_toast_restore_failed),
                                             Toast.LENGTH_SHORT
                                         ).show()
                                     } finally {
@@ -1086,7 +1088,7 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
                                             }
                                         } catch (e: Exception) {
                                             android.util.Log.e("CommitDetailDialog", "Failed to load file history", e)
-                                            historyError = "Failed to load file history"
+                                            historyError = context.getString(R.string.commit_detail_history_error)
                                             emptyList()
                                         }
                                         fileHistory = history
@@ -1117,9 +1119,9 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
                                     text = if (filterTokens.isEmpty()) {
-                                        "No files found in this commit"
+                                        stringResource(R.string.commit_detail_file_tree_no_files)
                                     } else {
-                                        "No files match the filter"
+                                        stringResource(R.string.commit_detail_file_tree_no_match)
                                     },
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -1219,7 +1221,7 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
                             }
                         } catch (e: Exception) {
                             android.util.Log.e("CommitDetailDialog", "Failed to load diff for history commit", e)
-                            historyDiffError = "Не удалось загрузить изменения"
+                            historyDiffError = context.getString(R.string.commit_detail_diff_load_failed)
                             emptyList()
                         }
                         val matchingDiff = diffs.firstOrNull { diff ->
@@ -1228,7 +1230,7 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
                         if (matchingDiff != null) {
                             historyDiff = matchingDiff
                         } else {
-                            historyDiffError = "Файл не изменялся в этом коммите"
+                            historyDiffError = context.getString(R.string.commit_detail_diff_error)
                         }
                     } finally {
                         isHistoryDiffLoading = false
@@ -1352,7 +1354,10 @@ fun FileTreeNodeItem(
                         } else if (node.type == FileTreeNodeType.DIRECTORY) {
                             val filesCount = countFiles(node)
                             Text(
-                                text = "$filesCount ${if (filesCount == 1) "file" else "files"}",
+                                text = if (filesCount == 1)
+                                    stringResource(R.string.commit_detail_file_tree_file_count, filesCount)
+                                else
+                                    stringResource(R.string.commit_detail_file_tree_files_count, filesCount),
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -1362,7 +1367,7 @@ fun FileTreeNodeItem(
                     if (node.type == FileTreeNodeType.FILE) {
                         Icon(
                             Icons.Default.Visibility,
-                            contentDescription = "View file",
+                            contentDescription = stringResource(R.string.commit_detail_file_tree_view_file),
                             modifier = Modifier.size(16.dp),
                             tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
                         )
@@ -1375,17 +1380,17 @@ fun FileTreeNodeItem(
                         onDismissRequest = onDismissContextMenu
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Restore to this commit") },
+                            text = { Text(stringResource(R.string.commit_detail_menu_restore_commit)) },
                             enabled = !restoreInProgress,
                             onClick = { onRestoreFromCommit(node) }
                         )
                         DropdownMenuItem(
-                            text = { Text("Restore to previous commit") },
+                            text = { Text(stringResource(R.string.commit_detail_menu_restore_parent)) },
                             enabled = hasParentCommit && !restoreInProgress,
                             onClick = { onRestoreFromParent(node) }
                         )
                         DropdownMenuItem(
-                            text = { Text("View history") },
+                            text = { Text(stringResource(R.string.commit_detail_menu_view_history)) },
                             onClick = { onViewHistory(node) }
                         )
                     }
@@ -1442,7 +1447,7 @@ fun FileOpenOptionsDialog(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        text = "Open file",
+                        text = stringResource(R.string.commit_detail_dialog_open_title),
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -1454,7 +1459,7 @@ fun FileOpenOptionsDialog(
                     )
                     if (!canPreviewInApp) {
                         Text(
-                            text = "In-app preview is not available for this file type. Update allowed types in Settings if needed.",
+                            text = stringResource(R.string.commit_detail_dialog_preview_unavailable),
                             fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1466,7 +1471,7 @@ fun FileOpenOptionsDialog(
                         onClick = onOpenInApp,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Open in preview")
+                        Text(stringResource(R.string.commit_detail_dialog_open_preview))
                     }
                 }
 
@@ -1481,9 +1486,9 @@ fun FileOpenOptionsDialog(
                             strokeWidth = 2.dp
                         )
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text("Opening...")
+                        Text(stringResource(R.string.commit_detail_dialog_opening))
                     } else {
-                        Text("Open externally")
+                        Text(stringResource(R.string.commit_detail_dialog_open_external))
                     }
                 }
 
@@ -1495,7 +1500,7 @@ fun FileOpenOptionsDialog(
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.commit_detail_dialog_cancel))
                 }
             }
         }
@@ -1589,14 +1594,14 @@ fun FileViewerDialog(
                             ) {
                                 Icon(
                                     Icons.Default.ContentCopy,
-                                    contentDescription = "Copy content",
+                                    contentDescription = stringResource(R.string.commit_detail_viewer_copy_content),
                                     tint = MaterialTheme.colorScheme.onPrimaryContainer
                                 )
                             }
                             IconButton(onClick = onDismiss) {
                                 Icon(
                                     Icons.Default.Close,
-                                    contentDescription = "Close",
+                                    contentDescription = stringResource(R.string.commit_detail_viewer_close),
                                     tint = MaterialTheme.colorScheme.onPrimaryContainer
                                 )
                             }
@@ -1616,7 +1621,7 @@ fun FileViewerDialog(
                             CircularProgressIndicator()
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                text = "Loading file content...",
+                                text = stringResource(R.string.commit_detail_viewer_loading),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -1643,7 +1648,7 @@ fun FileViewerDialog(
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
-                                text = "Failed to load file content",
+                                text = stringResource(R.string.commit_detail_viewer_load_failed),
                                 color = MaterialTheme.colorScheme.error
                             )
                         }
@@ -1707,7 +1712,7 @@ fun SyntaxHighlightedFileContent(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Syntax highlighting enabled for ${getFileLanguage(fileName)}",
+                        text = stringResource(R.string.commit_detail_viewer_syntax_enabled, getFileLanguage(fileName)),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -1869,7 +1874,7 @@ fun HistoryFileDiffDialog(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Изменения файла",
+                                text = stringResource(R.string.commit_detail_diff_title),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp
                             )
@@ -1880,7 +1885,7 @@ fun HistoryFileDiffDialog(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "Коммит: ${commit.message}",
+                                text = stringResource(R.string.commit_detail_diff_commit, commit.message),
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
@@ -1893,7 +1898,7 @@ fun HistoryFileDiffDialog(
                             )
                         }
                         IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, contentDescription = "Закрыть diff")
+                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.commit_detail_diff_close))
                         }
                     }
                 }
@@ -1910,7 +1915,7 @@ fun HistoryFileDiffDialog(
                             ) {
                                 CircularProgressIndicator()
                                 Text(
-                                    text = "Загрузка diff...",
+                                    text = stringResource(R.string.commit_detail_diff_loading),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -1937,7 +1942,7 @@ fun HistoryFileDiffDialog(
                                     fontWeight = FontWeight.SemiBold
                                 )
                                 Text(
-                                    text = "Изменения отсутствуют или не удалось получить diff.",
+                                    text = stringResource(R.string.commit_detail_diff_error_hint),
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -1955,7 +1960,7 @@ fun HistoryFileDiffDialog(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "Данные diff недоступны.",
+                                text = stringResource(R.string.commit_detail_diff_unavailable),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -2003,7 +2008,7 @@ fun FileHistoryDialog(
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "История файла",
+                            text = stringResource(R.string.commit_detail_history_title),
                             fontWeight = FontWeight.Bold,
                             fontSize = 20.sp
                         )
@@ -2013,13 +2018,13 @@ fun FileHistoryDialog(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = "До коммита ${commit.hash.take(7)}",
+                            text = stringResource(R.string.commit_detail_history_up_to, commit.hash.take(7)),
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Закрыть")
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.commit_detail_history_close))
                     }
                 }
 
@@ -2034,7 +2039,7 @@ fun FileHistoryDialog(
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 CircularProgressIndicator()
-                                Text("Загрузка истории...", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(stringResource(R.string.commit_detail_history_loading), color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
@@ -2054,7 +2059,7 @@ fun FileHistoryDialog(
                                     fontWeight = FontWeight.SemiBold
                                 )
                                 Text(
-                                    text = "Попробуйте позже или проверьте доступ к репозиторию.",
+                                    text = stringResource(R.string.commit_detail_history_error_hint),
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -2068,7 +2073,7 @@ fun FileHistoryDialog(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "Изменения для файла не найдены.",
+                                text = stringResource(R.string.commit_detail_history_no_changes),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -2142,7 +2147,7 @@ fun FileHistoryDialog(
                             ) {
                                 CircularProgressIndicator(modifier = Modifier.size(20.dp))
                                 Text(
-                                    text = "Загрузка diff...",
+                                    text = stringResource(R.string.commit_detail_history_loading_diff),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontSize = 13.sp
                                 )
@@ -2241,7 +2246,7 @@ suspend fun openFileInExternalApp(
     }
 
     if (bytes == null) {
-        Toast.makeText(context, "Failed to load file content", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.commit_detail_toast_load_failed), Toast.LENGTH_SHORT).show()
         return false
     }
 
@@ -2284,10 +2289,10 @@ suspend fun openFileInExternalApp(
         context.startActivity(chooser)
         true
     } catch (e: ActivityNotFoundException) {
-        Toast.makeText(context, "No application available to open this file", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.commit_detail_toast_open_failed), Toast.LENGTH_SHORT).show()
         false
     } catch (e: Exception) {
-        Toast.makeText(context, "Failed to open file", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.commit_detail_toast_open_error), Toast.LENGTH_SHORT).show()
         false
     }
 }
@@ -2555,5 +2560,15 @@ fun androidx.compose.ui.text.AnnotatedString.Builder.highlightCode(
                 i++
             }
         }
+    }
+}
+
+@Composable
+fun FileStatus.toLocalizedString(): String {
+    return when (this) {
+        FileStatus.ADDED -> stringResource(R.string.file_status_added)
+        FileStatus.MODIFIED -> stringResource(R.string.file_status_modified)
+        FileStatus.DELETED -> stringResource(R.string.file_status_deleted)
+        FileStatus.RENAMED -> stringResource(R.string.file_status_renamed)
     }
 }
