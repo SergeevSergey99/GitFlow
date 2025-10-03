@@ -67,20 +67,50 @@ fun CommitDetailDialog(
     var selectedTab by remember { mutableStateOf(0) }
     var fileDiffs by remember { mutableStateOf<List<FileDiff>>(emptyList()) }
     var isLoadingDiffs by remember { mutableStateOf(true) }
+    var diffsLoadError by remember { mutableStateOf<String?>(null) }
     var selectedFile by remember { mutableStateOf<FileDiff?>(null) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val settingsManager = remember { AppSettingsManager(context) }
+    var previewExtensions by remember { mutableStateOf(settingsManager.getPreviewExtensions()) }
+    var previewFileNames by remember { mutableStateOf(settingsManager.getPreviewFileNames()) }
+
+    DisposableEffect(settingsManager) {
+        val listener = settingsManager.registerPreviewSettingsListener {
+            previewExtensions = settingsManager.getPreviewExtensions()
+            previewFileNames = settingsManager.getPreviewFileNames()
+        }
+        onDispose {
+            settingsManager.unregisterPreviewSettingsListener(listener)
+        }
+    }
+
+    val normalizedPreviewExtensions = remember(previewExtensions) {
+        previewExtensions.mapNotNull { normalizeExtensionToken(it) }.toSet()
+    }
+
+    val normalizedPreviewFileNames = remember(previewFileNames) {
+        previewFileNames.mapNotNull { normalizeFileNameToken(it) }.toSet()
+    }
 
     // Загружаем диффы при открытии диалога
     LaunchedEffect(commit, repository) {
         isLoadingDiffs = true
+        diffsLoadError = null
         android.util.Log.d("CommitDetailDialog", "Loading diffs for commit: ${commit.hash}")
-        fileDiffs = if (repository != null) {
-            gitRepository.getCommitDiffs(commit, repository)
-        } else {
-            gitRepository.getCommitDiffs(commit)
+        try {
+            fileDiffs = if (repository != null) {
+                gitRepository.getCommitDiffs(commit, repository)
+            } else {
+                gitRepository.getCommitDiffs(commit)
+            }
+            android.util.Log.d("CommitDetailDialog", "Loaded ${fileDiffs.size} file diffs")
+        } catch (e: Exception) {
+            android.util.Log.e("CommitDetailDialog", "Failed to load diffs", e)
+            diffsLoadError = context.getString(R.string.commit_detail_diffs_load_error)
+        } finally {
+            isLoadingDiffs = false
         }
-        android.util.Log.d("CommitDetailDialog", "Loaded ${fileDiffs.size} file diffs")
-        isLoadingDiffs = false
     }
 
     Dialog(
@@ -205,28 +235,89 @@ fun CommitDetailDialog(
 
                 // Tab content
                 when (selectedTab) {
-                    0 -> if (isLoadingDiffs) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator()
+                    0 -> when {
+                        isLoadingDiffs -> {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator()
+                            }
                         }
-                    } else {
-                        FileListView(fileDiffs, selectedFile) { file ->
-                            selectedFile = file
-                            selectedTab = 1 // Переключаемся на вкладку Changes
+                        diffsLoadError != null -> {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.ErrorOutline,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(48.dp),
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                    Text(
+                                        text = diffsLoadError!!,
+                                        color = MaterialTheme.colorScheme.error,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        }
+                        else -> {
+                            FileListView(
+                                fileDiffs = fileDiffs,
+                                selectedFile = selectedFile,
+                                allowedExtensions = normalizedPreviewExtensions,
+                                allowedFileNames = normalizedPreviewFileNames
+                            ) { file ->
+                                selectedFile = file
+                                selectedTab = 1 // Переключаемся на вкладку Changes
+                            }
                         }
                     }
-                    1 -> if (isLoadingDiffs) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator()
+                    1 -> when {
+                        isLoadingDiffs -> {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator()
+                            }
                         }
-                    } else {
-                        DiffView(selectedFile)
+                        diffsLoadError != null -> {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.ErrorOutline,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(48.dp),
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                    Text(
+                                        text = diffsLoadError!!,
+                                        color = MaterialTheme.colorScheme.error,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        }
+                        else -> {
+                            DiffView(
+                                selectedFile = selectedFile,
+                                allowedExtensions = normalizedPreviewExtensions,
+                                allowedFileNames = normalizedPreviewFileNames
+                            )
+                        }
                     }
                     2 -> CommitInfoView(commit)
                     3 -> FileTreeView(commit, repository, gitRepository)
@@ -238,8 +329,13 @@ fun CommitDetailDialog(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DiffView(selectedFile: FileDiff?) {
+fun DiffView(
+    selectedFile: FileDiff?,
+    allowedExtensions: Set<String>,
+    allowedFileNames: Set<String>
+) {
     var showSideBySide by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     if (selectedFile == null) {
         // Пустое состояние когда файл не выбран
@@ -261,6 +357,47 @@ fun DiffView(selectedFile: FileDiff?) {
                     text = stringResource(R.string.commit_detail_select_file),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 16.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+        return
+    }
+
+    // Проверяем, поддерживается ли формат файла
+    val isPreviewSupported = isPreviewSupported(
+        fileName = selectedFile.path.substringAfterLast('/'),
+        allowedExtensions = allowedExtensions,
+        allowedFileNames = allowedFileNames
+    )
+
+    if (!isPreviewSupported) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(32.dp)
+            ) {
+                Icon(
+                    Icons.Default.ErrorOutline,
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = stringResource(R.string.commit_detail_preview_not_supported),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 16.sp,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.commit_detail_preview_settings_hint),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    fontSize = 14.sp,
                     textAlign = TextAlign.Center
                 )
             }
@@ -502,6 +639,8 @@ fun DiffLineView(line: DiffLine, compact: Boolean = false) {
 fun FileListView(
     fileDiffs: List<FileDiff>,
     selectedFile: FileDiff?,
+    allowedExtensions: Set<String>,
+    allowedFileNames: Set<String>,
     onFileSelected: (FileDiff) -> Unit
 ) {
     LazyColumn(
@@ -510,9 +649,17 @@ fun FileListView(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         items(fileDiffs) { diff ->
+            val fileName = diff.path.substringAfterLast('/')
+            val isPreviewSupported = isPreviewSupported(
+                fileName = fileName,
+                allowedExtensions = allowedExtensions,
+                allowedFileNames = allowedFileNames
+            )
+
             FileItem(
                 diff = diff,
                 isSelected = selectedFile == diff,
+                isPreviewSupported = isPreviewSupported,
                 onClick = { onFileSelected(diff) }
             )
         }
@@ -523,6 +670,7 @@ fun FileListView(
 fun FileItem(
     diff: FileDiff,
     isSelected: Boolean,
+    isPreviewSupported: Boolean,
     onClick: () -> Unit
 ) {
     Card(
@@ -562,11 +710,26 @@ fun FileItem(
             Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = diff.path,
-                    fontSize = 14.sp,
-                    fontFamily = FontFamily.Monospace
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = diff.path,
+                        fontSize = 14.sp,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+
+                    if (!isPreviewSupported) {
+                        Icon(
+                            Icons.Default.VisibilityOff,
+                            contentDescription = stringResource(R.string.commit_detail_preview_not_available),
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                    }
+                }
 
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -1295,6 +1458,8 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGit
             fileDiff = historyDiff,
             isLoading = isHistoryDiffLoading,
             error = historyDiffError,
+            allowedExtensions = normalizedPreviewExtensions,
+            allowedFileNames = normalizedPreviewFileNames,
             onDismiss = {
                 historyDiffCommit = null
                 historyDiff = null
@@ -1565,15 +1730,24 @@ fun FileViewerDialog(
 ) {
     var fileContent by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
 
     LaunchedEffect(file, repository) {
         isLoading = true
-        fileContent = if (repository != null) {
-            gitRepository.getFileContent(commit, file.path, repository)
-        } else {
-            gitRepository.getFileContent(commit, file.path)
+        loadError = null
+        try {
+            fileContent = if (repository != null) {
+                gitRepository.getFileContent(commit, file.path, repository)
+            } else {
+                gitRepository.getFileContent(commit, file.path)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FileViewerDialog", "Failed to load file content", e)
+            loadError = context.getString(R.string.commit_detail_viewer_load_error, e.message ?: "Unknown error")
+        } finally {
+            isLoading = false
         }
-        isLoading = false
     }
 
     Dialog(
@@ -1658,47 +1832,83 @@ fun FileViewerDialog(
                 }
 
                 // Content
-                if (isLoading) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
+                when {
+                    isLoading -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator()
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = stringResource(R.string.commit_detail_viewer_loading),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                CircularProgressIndicator()
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = stringResource(R.string.commit_detail_viewer_loading),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
-                } else if (fileContent != null) {
-                    SyntaxHighlightedFileContent(
-                        content = fileContent!!,
-                        fileName = file.name,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
+                    loadError != null -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                Icons.Default.ErrorOutline,
-                                contentDescription = null,
-                                modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.error
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = stringResource(R.string.commit_detail_viewer_load_failed),
-                                color = MaterialTheme.colorScheme.error
-                            )
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.ErrorOutline,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(48.dp),
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = stringResource(R.string.commit_detail_viewer_load_failed),
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = loadError!!,
+                                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
+                                    fontSize = 12.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                    fileContent != null -> {
+                        SyntaxHighlightedFileContent(
+                            content = fileContent!!,
+                            fileName = file.name,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                    else -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    Icons.Default.ErrorOutline,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(48.dp),
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = stringResource(R.string.commit_detail_viewer_load_failed),
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
                         }
                     }
                 }
@@ -1713,8 +1923,53 @@ fun SyntaxHighlightedFileContent(
     fileName: String,
     modifier: Modifier = Modifier
 ) {
+    var renderError by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+
+    if (renderError != null) {
+        Box(
+            modifier = modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(32.dp)
+            ) {
+                Icon(
+                    Icons.Default.ErrorOutline,
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp),
+                    tint = MaterialTheme.colorScheme.error
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = stringResource(R.string.commit_detail_viewer_render_failed),
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = renderError!!,
+                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+        return
+    }
+
     val isCodeFile = isCodeFile(fileName)
-    val lines = remember(content) { content.split('\n') }
+    val lines = remember(content) {
+        try {
+            content.split('\n')
+        } catch (e: Exception) {
+            android.util.Log.e("SyntaxHighlightedFileContent", "Failed to split content", e)
+            renderError = e.message ?: "Unknown error"
+            emptyList()
+        }
+    }
     val density = LocalDensity.current
     val textStyle = remember {
         TextStyle(
@@ -1725,14 +1980,26 @@ fun SyntaxHighlightedFileContent(
     }
     val textMeasurer = rememberTextMeasurer()
     val annotatedLines = remember(lines, fileName, isCodeFile) {
-        lines.map { line ->
-            if (isCodeFile) buildHighlightedAnnotatedString(line, fileName) else AnnotatedString(line)
+        try {
+            lines.map { line ->
+                if (isCodeFile) buildHighlightedAnnotatedString(line, fileName) else AnnotatedString(line)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SyntaxHighlightedFileContent", "Failed to highlight syntax", e)
+            renderError = e.message ?: "Unknown error"
+            emptyList()
         }
     }
     val maxContentWidthPx = remember(annotatedLines) {
-        annotatedLines.maxOfOrNull { annotatedLine ->
-            textMeasurer.measure(annotatedLine, style = textStyle).size.width.toFloat()
-        } ?: 0f
+        try {
+            annotatedLines.maxOfOrNull { annotatedLine ->
+                textMeasurer.measure(annotatedLine, style = textStyle).size.width.toFloat()
+            } ?: 0f
+        } catch (e: Exception) {
+            android.util.Log.e("SyntaxHighlightedFileContent", "Failed to measure text", e)
+            renderError = e.message ?: "Unknown error"
+            0f
+        }
     }
     val structuralWidthPx = with(density) {
         (CodeLineHorizontalPadding * 2 + CodeLineNumberWidth + CodeLineContentSpacing).toPx()
@@ -1894,6 +2161,8 @@ fun HistoryFileDiffDialog(
     fileDiff: FileDiff?,
     isLoading: Boolean,
     error: String?,
+    allowedExtensions: Set<String>,
+    allowedFileNames: Set<String>,
     onDismiss: () -> Unit
 ) {
     Dialog(
@@ -1999,7 +2268,11 @@ fun HistoryFileDiffDialog(
                     }
 
                     fileDiff != null -> {
-                        DiffView(selectedFile = fileDiff)
+                        DiffView(
+                            selectedFile = fileDiff,
+                            allowedExtensions = allowedExtensions,
+                            allowedFileNames = allowedFileNames
+                        )
                     }
 
                     else -> {

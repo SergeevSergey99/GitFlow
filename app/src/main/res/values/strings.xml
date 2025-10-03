@@ -139,7 +139,13 @@
     <string name="commit_detail_viewer_close">Close</string>
     <string name="commit_detail_viewer_loading">Loading file content...</string>
     <string name="commit_detail_viewer_load_failed">Failed to load file content</string>
+    <string name="commit_detail_viewer_load_error">Error loading file: %1$s</string>
+    <string name="commit_detail_viewer_render_failed">Failed to render file</string>
     <string name="commit_detail_viewer_syntax_enabled">Syntax highlighting enabled for %1$s</string>
+    <string name="commit_detail_diffs_load_error">Failed to load changes</string>
+    <string name="commit_detail_preview_not_supported">Preview not available for this file type</string>
+    <string name="commit_detail_preview_settings_hint">You can add this file type in Settings</string>
+    <string name="commit_detail_preview_not_available">No preview</string>
     <string name="commit_detail_history_title">File history</string>
     <string name="commit_detail_history_up_to">Up to commit %1$s</string>
     <string name="commit_detail_history_close">Close</string>

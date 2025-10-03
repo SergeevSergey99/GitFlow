@@ -139,7 +139,13 @@
     <string name="commit_detail_viewer_close">Закрыть</string>
     <string name="commit_detail_viewer_loading">Загрузка содержимого файла...</string>
     <string name="commit_detail_viewer_load_failed">Не удалось загрузить содержимое файла</string>
+    <string name="commit_detail_viewer_load_error">Ошибка загрузки файла: %1$s</string>
+    <string name="commit_detail_viewer_render_failed">Не удалось отобразить файл</string>
     <string name="commit_detail_viewer_syntax_enabled">Подсветка синтаксиса включена для %1$s</string>
+    <string name="commit_detail_diffs_load_error">Не удалось загрузить изменения</string>
+    <string name="commit_detail_preview_not_supported">Предпросмотр недоступен для этого типа файла</string>
+    <string name="commit_detail_preview_settings_hint">Вы можете добавить этот тип файла в настройках</string>
+    <string name="commit_detail_preview_not_available">Нет предпросмотра</string>
     <string name="commit_detail_history_title">История файла</string>
     <string name="commit_detail_history_up_to">До коммита %1$s</string>
     <string name="commit_detail_history_close">Закрыть</string>
