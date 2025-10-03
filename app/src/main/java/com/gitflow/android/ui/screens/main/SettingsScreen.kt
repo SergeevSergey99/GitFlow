@@ -927,6 +927,7 @@ private fun PermissionCard(
     onRequest: (PermissionRequirement) -> Unit,
     onOpenSettings: (PermissionRequirement) -> Unit
 ) {
+    val context = LocalContext.current
     val canRequestDirectly = requirement.permissions.isNotEmpty()
 
     Surface(
@@ -943,7 +944,7 @@ private fun PermissionCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = requirement.title,
+                    text = requirement.getTitle(context),
                     fontWeight = FontWeight.Medium,
                     fontSize = 16.sp
                 )
@@ -951,7 +952,7 @@ private fun PermissionCard(
             }
 
             Text(
-                text = requirement.description,
+                text = requirement.getDescription(context),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1015,8 +1016,8 @@ private fun PermissionStatusBadge(isGranted: Boolean) {
 
 private data class PermissionRequirement(
     val id: String,
-    val title: String,
-    val description: String,
+    val titleResId: Int,
+    val descriptionResId: Int,
     val permissions: List<String>,
     val settingsIntentBuilder: (Context) -> Intent,
     val statusChecker: (Context) -> Boolean
@@ -1024,6 +1025,10 @@ private data class PermissionRequirement(
     fun isGranted(context: Context): Boolean = statusChecker(context)
 
     fun buildSettingsIntent(context: Context): Intent = settingsIntentBuilder(context)
+
+    fun getTitle(context: Context): String = context.getString(titleResId)
+
+    fun getDescription(context: Context): String = context.getString(descriptionResId)
 
     companion object {
         fun buildList(context: Context): List<PermissionRequirement> {
@@ -1040,8 +1045,8 @@ private data class PermissionRequirement(
             requirements.add(
                 PermissionRequirement(
                     id = "notifications",
-                    title = appContext.getString(R.string.settings_permission_notifications),
-                    description = appContext.getString(R.string.settings_permission_notifications_description),
+                    titleResId = R.string.settings_permission_notifications,
+                    descriptionResId = R.string.settings_permission_notifications_description,
                     permissions = notificationPermissions,
                     settingsIntentBuilder = { ctx ->
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -1081,8 +1086,8 @@ private data class PermissionRequirement(
                 requirements.add(
                     PermissionRequirement(
                         id = "storage",
-                        title = appContext.getString(R.string.settings_permission_storage),
-                        description = appContext.getString(R.string.settings_permission_storage_description),
+                        titleResId = R.string.settings_permission_storage,
+                        descriptionResId = R.string.settings_permission_storage_description,
                         permissions = storagePermissions,
                         settingsIntentBuilder = { ctx ->
                             Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
