@@ -9,8 +9,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.gitflow.android.R
 import com.gitflow.android.data.models.ChangeStage
 import com.gitflow.android.data.models.FileChange
 import com.gitflow.android.data.models.Repository
@@ -23,8 +26,9 @@ fun ChangesScreen(
     repository: Repository?,
     gitRepository: RealGitRepository
 ) {
+    val context = LocalContext.current
     if (repository == null) {
-        EmptyStateMessage("Select a repository to view changes")
+        EmptyStateMessage(stringResource(R.string.changes_select_repo))
         return
     }
 
@@ -64,7 +68,7 @@ fun ChangesScreen(
         guardLaunch {
             val result = gitRepository.stageAll(repository)
             if (result.isFailure) {
-                val fallback = "Unable to stage all changes"
+                val fallback = context.getString(R.string.changes_unable_to_stage)
                 snackbarHostState.showSnackbar(result.exceptionOrNull()?.localizedMessage ?: fallback)
             }
             changes = gitRepository.getChangedFiles(repository)
@@ -74,7 +78,7 @@ fun ChangesScreen(
     val commitChanges = commit@{
         val message = commitMessage.trim()
         if (message.isEmpty()) {
-            scope.launch { snackbarHostState.showSnackbar("Commit message cannot be empty") }
+            scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.changes_commit_message_empty)) }
             return@commit
         }
         guardLaunch {
@@ -82,9 +86,9 @@ fun ChangesScreen(
             if (result.isSuccess) {
                 commitMessage = ""
                 changes = gitRepository.getChangedFiles(repository)
-                snackbarHostState.showSnackbar("Commit created")
+                snackbarHostState.showSnackbar(context.getString(R.string.changes_commit_created))
             } else {
-                val fallback = "Commit failed"
+                val fallback = context.getString(R.string.changes_commit_failed)
                 snackbarHostState.showSnackbar(result.exceptionOrNull()?.localizedMessage ?: fallback)
             }
         }
@@ -94,9 +98,9 @@ fun ChangesScreen(
         guardLaunch {
             val result = gitRepository.push(repository)
             val message = if (result.success) {
-                if (result.message.isNotBlank()) result.message else "Push successful"
+                if (result.message.isNotBlank()) result.message else context.getString(R.string.changes_push_successful)
             } else {
-                if (result.message.isNotBlank()) result.message else "Push failed"
+                if (result.message.isNotBlank()) result.message else context.getString(R.string.changes_push_failed)
             }
             snackbarHostState.showSnackbar(message)
         }
@@ -112,9 +116,9 @@ fun ChangesScreen(
 
             if (result.isFailure) {
                 val fallback = if (file.stage == ChangeStage.STAGED) {
-                    "Unable to unstage file"
+                    context.getString(R.string.changes_unable_to_unstage_file)
                 } else {
-                    "Unable to stage file"
+                    context.getString(R.string.changes_unable_to_stage_file)
                 }
                 snackbarHostState.showSnackbar(result.exceptionOrNull()?.localizedMessage ?: fallback)
             }
@@ -225,14 +229,14 @@ private fun CommitSection(
             modifier = Modifier.padding(16.dp)
         ) {
             Text(
-                "Commit Changes",
+                stringResource(R.string.changes_commit_title),
                 fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedTextField(
                 value = commitMessage,
                 onValueChange = onCommitMessageChange,
-                label = { Text("Commit message") },
+                label = { Text(stringResource(R.string.changes_commit_message_hint)) },
                 modifier = Modifier.fillMaxWidth(),
                 maxLines = 3
             )
@@ -246,7 +250,7 @@ private fun CommitSection(
                     modifier = Modifier.weight(1f),
                     enabled = unstagedFiles.isNotEmpty() && !isBusy
                 ) {
-                    Text("Stage All")
+                    Text(stringResource(R.string.changes_stage_all))
                 }
                 Button(
                     onClick = onCommit,
@@ -255,7 +259,7 @@ private fun CommitSection(
                 ) {
                     Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Commit")
+                    Text(stringResource(R.string.changes_commit_button))
                 }
             }
 
@@ -270,13 +274,13 @@ private fun CommitSection(
                     ) {
                         Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Push ($pendingPushCommits)")
+                        Text(stringResource(R.string.changes_push_button, pendingPushCommits))
                     }
                 }
             } else {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Remote 'origin' is not configured",
+                    text = stringResource(R.string.changes_remote_not_configured),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -298,7 +302,7 @@ private fun FileChangesList(
         if (stagedFiles.isNotEmpty()) {
             item {
                 Text(
-                    "Staged Changes (${stagedFiles.size})",
+                    stringResource(R.string.changes_staged_title, stagedFiles.size),
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -315,7 +319,7 @@ private fun FileChangesList(
         if (unstagedFiles.isNotEmpty()) {
             item {
                 Text(
-                    "Unstaged Changes (${unstagedFiles.size})",
+                    stringResource(R.string.changes_unstaged_title, unstagedFiles.size),
                     fontWeight = FontWeight.Medium
                 )
             }
@@ -347,7 +351,7 @@ private fun FileChangesList(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            "No changes",
+                            stringResource(R.string.changes_no_changes),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }

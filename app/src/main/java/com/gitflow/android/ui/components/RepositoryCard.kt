@@ -10,9 +10,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gitflow.android.R
 import com.gitflow.android.data.models.Repository
 import java.text.SimpleDateFormat
 import java.util.*
@@ -89,7 +92,7 @@ fun RepositoryCard(
                 IconButton(
                     onClick = { showDeleteMenu = true }
                 ) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "Options")
+                    Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.repo_card_options))
                 }
 
                 DropdownMenu(
@@ -97,7 +100,7 @@ fun RepositoryCard(
                     onDismissRequest = { showDeleteMenu = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text("Remove from list") },
+                        text = { Text(stringResource(R.string.repo_card_remove)) },
                         onClick = {
                             showDeleteMenu = false
                             onDelete(repository, false)
@@ -109,7 +112,7 @@ fun RepositoryCard(
                     DropdownMenuItem(
                         text = {
                             Text(
-                                "Delete repository",
+                                stringResource(R.string.repo_card_delete),
                                 color = MaterialTheme.colorScheme.error
                             )
                         },
@@ -131,14 +134,16 @@ fun RepositoryCard(
     }
 }
 
+@Composable
 fun timeAgo(timestamp: Long): String {
+    val context = LocalContext.current
     val now = System.currentTimeMillis()
     val diff = now - timestamp
     return when {
-        diff < 60_000L -> "just now"
-        diff < 3_600_000L -> "${diff / 60_000L}m ago"
-        diff < 86_400_000L -> "${diff / 3_600_000L}h ago"
-        diff < 604_800_000L -> "${diff / 86_400_000L}d ago"
+        diff < 60_000L -> context.getString(R.string.repo_card_time_just_now)
+        diff < 3_600_000L -> context.getString(R.string.repo_card_time_minutes, diff / 60_000L)
+        diff < 86_400_000L -> context.getString(R.string.repo_card_time_hours, diff / 3_600_000L)
+        diff < 604_800_000L -> context.getString(R.string.repo_card_time_days, diff / 86_400_000L)
         else -> SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date(timestamp))
     }
 }

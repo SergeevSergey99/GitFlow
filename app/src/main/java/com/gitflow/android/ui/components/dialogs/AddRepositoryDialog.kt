@@ -15,7 +15,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -23,6 +25,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
 import java.util.Locale
@@ -39,6 +42,7 @@ fun AddRepositoryDialog(
     onNavigateToRemote: () -> Unit = {},
     authManager: AuthManager? = null
 ) {
+    val context = LocalContext.current
     var name by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
     var localPath by remember { mutableStateOf("") }
@@ -103,7 +107,7 @@ fun AddRepositoryDialog(
                 modifier = Modifier.padding(10.dp)
             ) {
                 Text(
-                    text = "Add Repository",
+                    text = stringResource(R.string.add_repo_title),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -205,7 +209,12 @@ private fun RepositoryTabs(
     selectedTab: Int,
     onTabSelected: (Int) -> Unit
 ) {
-    val tabTitles = listOf("Clone", "Local", "Create", "Remote")
+    val tabTitles = listOf(
+        stringResource(R.string.add_repo_tab_clone),
+        stringResource(R.string.add_repo_tab_local),
+        stringResource(R.string.add_repo_tab_create),
+        stringResource(R.string.add_repo_tab_remote)
+    )
     var containerWidth by remember { mutableStateOf(0) }
     val tabCount = tabTitles.size
     val maxChars = tabTitles.maxOf { it.length }
@@ -260,8 +269,8 @@ private fun CloneTab(
     OutlinedTextField(
         value = url,
         onValueChange = onUrlChange,
-        label = { Text("Repository URL") },
-        placeholder = { Text("https://github.com/user/repo.git") },
+        label = { Text(stringResource(R.string.add_repo_url_label)) },
+        placeholder = { Text(stringResource(R.string.add_repo_url_placeholder)) },
         modifier = Modifier.fillMaxWidth(),
         leadingIcon = {
             IconButton(
@@ -284,8 +293,8 @@ private fun CloneTab(
     OutlinedTextField(
         value = name,
         onValueChange = onNameChange,
-        label = { Text("Local name") },
-        placeholder = { Text("my-project") },
+        label = { Text(stringResource(R.string.add_repo_name_label)) },
+        placeholder = { Text(stringResource(R.string.add_repo_name_placeholder)) },
         modifier = Modifier.fillMaxWidth(),
         leadingIcon = {
             Icon(Icons.Default.Folder, contentDescription = null)
@@ -298,8 +307,8 @@ private fun CloneTab(
     OutlinedTextField(
         value = customDestination,
         onValueChange = onDestinationChange,
-        label = { Text("Destination (optional)") },
-        placeholder = { Text("Leave empty for default location") },
+        label = { Text(stringResource(R.string.add_repo_destination_label)) },
+        placeholder = { Text(stringResource(R.string.add_repo_destination_placeholder)) },
         modifier = Modifier.fillMaxWidth(),
         leadingIcon = {
             Icon(Icons.Default.FolderOpen, contentDescription = null)
@@ -309,7 +318,7 @@ private fun CloneTab(
                 onClick = onBrowseDestination,
                 enabled = !isLoading
             ) {
-                Icon(Icons.Default.Search, contentDescription = "Browse")
+                Icon(Icons.Default.Search, contentDescription = stringResource(R.string.add_repo_browse))
             }
         },
         enabled = !isLoading
@@ -321,14 +330,14 @@ private fun CloneTab(
         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = "Estimating repository size...",
+            text = stringResource(R.string.add_repo_estimating_size),
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     } else {
         approximateSizeBytes?.let { size ->
             Text(
-                text = "Approximate download: ${formatApproximateSize(size)}",
+                text = stringResource(R.string.add_repo_approximate_download, formatApproximateSize(size)),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -369,13 +378,13 @@ private fun CloneTab(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = when {
-                            !githubToken.isNullOrEmpty() && url.contains("github.com") -> "Authenticated with GitHub"
-                            !gitlabToken.isNullOrEmpty() && url.contains("gitlab.com") -> "Authenticated with GitLab"
-                            !githubToken.isNullOrEmpty() -> "GitHub token available"
-                            !gitlabToken.isNullOrEmpty() -> "GitLab token available"
-                            else -> "Authentication available"
-                        },
+                        text = stringResource(when {
+                            !githubToken.isNullOrEmpty() && url.contains("github.com") -> R.string.add_repo_authenticated_github
+                            !gitlabToken.isNullOrEmpty() && url.contains("gitlab.com") -> R.string.add_repo_authenticated_gitlab
+                            !githubToken.isNullOrEmpty() -> R.string.add_repo_github_token_available
+                            !gitlabToken.isNullOrEmpty() -> R.string.add_repo_gitlab_token_available
+                            else -> R.string.add_repo_auth_available
+                        }),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
@@ -399,7 +408,7 @@ private fun CloneTab(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Not authenticated - private repos may not be accessible",
+                        text = stringResource(R.string.add_repo_not_authenticated),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onErrorContainer
                     )
@@ -419,8 +428,8 @@ private fun LocalTab(
     OutlinedTextField(
         value = localPath,
         onValueChange = onPathChange,
-        label = { Text("Repository Path") },
-        placeholder = { Text("/storage/emulated/0/MyRepos/project") },
+        label = { Text(stringResource(R.string.add_repo_path_label)) },
+        placeholder = { Text(stringResource(R.string.add_repo_path_placeholder)) },
         modifier = Modifier.fillMaxWidth(),
         leadingIcon = {
             Icon(Icons.Default.FolderOpen, contentDescription = null)
@@ -430,7 +439,7 @@ private fun LocalTab(
                 onClick = onBrowsePath,
                 enabled = !isLoading
             ) {
-                Icon(Icons.Default.Search, contentDescription = "Browse")
+                Icon(Icons.Default.Search, contentDescription = stringResource(R.string.add_repo_browse))
             }
         },
         enabled = !isLoading
@@ -439,7 +448,7 @@ private fun LocalTab(
     Spacer(modifier = Modifier.height(8.dp))
 
     Text(
-        text = "Select an existing Git repository from your device storage",
+        text = stringResource(R.string.add_repo_local_description),
         fontSize = 12.sp,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
@@ -454,8 +463,8 @@ private fun CreateTab(
     OutlinedTextField(
         value = name,
         onValueChange = onNameChange,
-        label = { Text("Repository name") },
-        placeholder = { Text("my-new-project") },
+        label = { Text(stringResource(R.string.add_repo_repo_name_label)) },
+        placeholder = { Text(stringResource(R.string.add_repo_create_placeholder)) },
         modifier = Modifier.fillMaxWidth(),
         leadingIcon = {
             Icon(Icons.Default.Create, contentDescription = null)
@@ -466,7 +475,7 @@ private fun CreateTab(
     Spacer(modifier = Modifier.height(8.dp))
 
     Text(
-        text = "This will create a new Git repository locally",
+        text = stringResource(R.string.add_repo_create_description),
         fontSize = 12.sp,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
@@ -488,12 +497,12 @@ private fun RemoteTab(
             tint = MaterialTheme.colorScheme.primary
         )
         Text(
-            text = "Browse Remote Repositories",
+            text = stringResource(R.string.add_repo_remote_title),
             fontSize = 18.sp,
             fontWeight = FontWeight.Medium
         )
         Text(
-            text = "Connect to GitHub or GitLab to browse and clone your remote repositories",
+            text = stringResource(R.string.add_repo_remote_description),
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
@@ -504,7 +513,7 @@ private fun RemoteTab(
         ) {
             Icon(Icons.Default.CloudDownload, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Browse Repositories")
+            Text(stringResource(R.string.add_repo_remote_browse))
         }
     }
 }
@@ -519,12 +528,12 @@ private fun DefaultLoadingView(selectedTab: Int) {
         CircularProgressIndicator(modifier = Modifier.size(16.dp))
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = when (selectedTab) {
-                0 -> "Cloning repository..."
-                1 -> "Adding local repository..."
-                2 -> "Creating repository..."
-                else -> "Processing..."
-            },
+            text = stringResource(when (selectedTab) {
+                0 -> R.string.add_repo_cloning
+                1 -> R.string.add_repo_adding_local
+                2 -> R.string.add_repo_creating
+                else -> R.string.add_repo_processing
+            }),
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -550,7 +559,7 @@ private fun DialogActions(
         TextButton(
             onClick = onDismiss
         ) {
-            Text("Cancel")
+            Text(stringResource(R.string.add_repo_cancel))
         }
         Spacer(modifier = Modifier.width(8.dp))
         Button(
@@ -587,12 +596,12 @@ private fun DialogActions(
                 )
             } else {
                 Text(
-                    when (selectedTab) {
-                        0 -> "Clone"
-                        1 -> "Add Local"
-                        2 -> "Create"
-                        else -> "Add"
-                    }
+                    stringResource(when (selectedTab) {
+                        0 -> R.string.add_repo_clone_button
+                        1 -> R.string.add_repo_add_local_button
+                        2 -> R.string.add_repo_create_button
+                        else -> R.string.add_repo_add_button
+                    })
                 )
             }
         }

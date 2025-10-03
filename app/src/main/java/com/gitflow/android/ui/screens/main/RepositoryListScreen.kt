@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -120,7 +121,7 @@ fun RepositoryListScreen(
                 .align(Alignment.BottomEnd)
                 .padding(16.dp)
         ) {
-            Icon(Icons.Default.Add, contentDescription = "Add Repository")
+            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.repo_list_add_repository))
         }
     }
 
@@ -271,12 +272,12 @@ private fun EmptyRepositoryState(
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            "No repositories yet",
+            stringResource(R.string.repo_list_empty_title),
             fontSize = 20.sp,
             fontWeight = FontWeight.Medium
         )
         Text(
-            "Add your first repository to get started",
+            stringResource(R.string.repo_list_empty_subtitle),
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -287,7 +288,7 @@ private fun EmptyRepositoryState(
         ) {
             Icon(Icons.Default.Add, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Add Repository")
+            Text(stringResource(R.string.repo_list_add_button))
         }
     }
 }

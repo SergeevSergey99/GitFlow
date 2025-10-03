@@ -156,4 +156,133 @@
     <string name="commit_detail_diff_load_failed">Не удалось загрузить изменения</string>
     <string name="commit_detail_diff_error_hint">Изменения отсутствуют или не удалось получить diff.</string>
     <string name="commit_detail_diff_unavailable">Данные diff недоступны.</string>
+
+    <!-- MainScreen -->
+    <string name="main_screen_title">GitFlow</string>
+    <string name="main_screen_repo_info">%1$s • %2$s</string>
+    <string name="main_screen_tab_repos">Репозитории</string>
+    <string name="main_screen_tab_graph">Граф</string>
+    <string name="main_screen_tab_changes">Изменения</string>
+    <string name="main_screen_tab_settings">Настройки</string>
+    <string name="main_screen_operations">Операции</string>
+    <string name="main_screen_git_operations">Git-операции для %1$s</string>
+    <string name="main_screen_operations_placeholder">Pull, Push, Fetch и т.д.</string>
+
+    <!-- RepositoryListScreen -->
+    <string name="repo_list_add_repository">Добавить репозиторий</string>
+    <string name="repo_list_empty_title">Пока нет репозиториев</string>
+    <string name="repo_list_empty_subtitle">Добавьте свой первый репозиторий для начала работы</string>
+    <string name="repo_list_add_button">Добавить репозиторий</string>
+
+    <!-- ChangesScreen -->
+    <string name="changes_select_repo">Выберите репозиторий для просмотра изменений</string>
+    <string name="changes_commit_title">Закоммитить изменения</string>
+    <string name="changes_commit_message_hint">Сообщение коммита</string>
+    <string name="changes_stage_all">Добавить всё</string>
+    <string name="changes_commit_button">Коммит</string>
+    <string name="changes_push_button">Push (%1$d)</string>
+    <string name="changes_remote_not_configured">Remote \'origin\' не настроен</string>
+    <string name="changes_staged_title">Добавленные изменения (%1$d)</string>
+    <string name="changes_unstaged_title">Неиндексированные изменения (%1$d)</string>
+    <string name="changes_no_changes">Нет изменений</string>
+    <string name="changes_commit_message_empty">Сообщение коммита не может быть пустым</string>
+    <string name="changes_commit_created">Коммит создан</string>
+    <string name="changes_commit_failed">Не удалось создать коммит</string>
+    <string name="changes_push_successful">Push выполнен успешно</string>
+    <string name="changes_push_failed">Ошибка push</string>
+    <string name="changes_unable_to_stage">Не удалось добавить все изменения</string>
+    <string name="changes_unable_to_stage_file">Не удалось добавить файл</string>
+    <string name="changes_unable_to_unstage_file">Не удалось убрать файл из индекса</string>
+
+    <!-- GraphPresetDialog -->
+    <string name="graph_preset_title">Пресет графа</string>
+    <string name="graph_preset_description">Выберите, как должен отображаться граф коммитов:</string>
+    <string name="graph_preset_default">По умолчанию</string>
+    <string name="graph_preset_default_desc">Стандартный размер для большинства экранов</string>
+    <string name="graph_preset_compact">Компактный</string>
+    <string name="graph_preset_compact_desc">Компактный вид для небольших экранов</string>
+    <string name="graph_preset_large">Крупный</string>
+    <string name="graph_preset_large_desc">Крупный вид для больших экранов</string>
+    <string name="graph_preset_wide">Широкий</string>
+    <string name="graph_preset_wide_desc">Широкий вид для графов с множеством веток</string>
+    <string name="graph_preset_cancel">Отмена</string>
+
+    <!-- DeleteRepositoryDialog -->
+    <string name="delete_repo_title">Удаление репозитория</string>
+    <string name="delete_repo_checkbox">Также удалить файлы репозитория</string>
+    <string name="delete_repo_warning">Это навсегда удалит все файлы репозитория с вашего устройства</string>
+    <string name="delete_repo_warning_cannot_undo">⚠️ Это действие нельзя отменить!</string>
+    <string name="delete_repo_cancel">Отмена</string>
+    <string name="delete_repo_remove_from_list">Убрать из списка</string>
+    <string name="delete_repo_delete">Удалить репозиторий</string>
+
+    <!-- AddRepositoryDialog -->
+    <string name="add_repo_title">Добавить репозиторий</string>
+    <string name="add_repo_tab_clone">Клонировать</string>
+    <string name="add_repo_tab_local">Локальный</string>
+    <string name="add_repo_tab_create">Создать</string>
+    <string name="add_repo_tab_remote">Удалённые</string>
+    <string name="add_repo_url_label">URL репозитория</string>
+    <string name="add_repo_url_placeholder">https://github.com/user/repo.git</string>
+    <string name="add_repo_name_label">Локальное имя</string>
+    <string name="add_repo_name_placeholder">my-project</string>
+    <string name="add_repo_destination_label">Назначение (опционально)</string>
+    <string name="add_repo_destination_placeholder">Оставьте пустым для места по умолчанию</string>
+    <string name="add_repo_browse">Обзор</string>
+    <string name="add_repo_estimating_size">Оценка размера репозитория...</string>
+    <string name="add_repo_approximate_download">Примерная загрузка: %1$s</string>
+    <string name="add_repo_authenticated_github">Аутентифицирован с GitHub</string>
+    <string name="add_repo_authenticated_gitlab">Аутентифицирован с GitLab</string>
+    <string name="add_repo_github_token_available">Токен GitHub доступен</string>
+    <string name="add_repo_gitlab_token_available">Токен GitLab доступен</string>
+    <string name="add_repo_auth_available">Аутентификация доступна</string>
+    <string name="add_repo_not_authenticated">Не аутентифицирован - приватные репозитории могут быть недоступны</string>
+    <string name="add_repo_path_label">Путь к репозиторию</string>
+    <string name="add_repo_path_placeholder">/storage/emulated/0/MyRepos/project</string>
+    <string name="add_repo_local_description">Выберите существующий Git-репозиторий из хранилища устройства</string>
+    <string name="add_repo_repo_name_label">Имя репозитория</string>
+    <string name="add_repo_create_placeholder">my-new-project</string>
+    <string name="add_repo_create_description">Это создаст новый Git-репозиторий локально</string>
+    <string name="add_repo_remote_title">Просмотр удалённых репозиториев</string>
+    <string name="add_repo_remote_description">Подключитесь к GitHub или GitLab для просмотра и клонирования удалённых репозиториев</string>
+    <string name="add_repo_remote_browse">Просмотреть репозитории</string>
+    <string name="add_repo_cloning">Клонирование репозитория...</string>
+    <string name="add_repo_adding_local">Добавление локального репозитория...</string>
+    <string name="add_repo_creating">Создание репозитория...</string>
+    <string name="add_repo_processing">Обработка...</string>
+    <string name="add_repo_cancel">Отмена</string>
+    <string name="add_repo_clone_button">Клонировать</string>
+    <string name="add_repo_add_local_button">Добавить локальный</string>
+    <string name="add_repo_create_button">Создать</string>
+    <string name="add_repo_add_button">Добавить</string>
+
+    <!-- RepositoryCard -->
+    <string name="repo_card_options">Опции</string>
+    <string name="repo_card_remove">Убрать из списка</string>
+    <string name="repo_card_delete">Удалить репозиторий</string>
+    <string name="repo_card_time_just_now">только что</string>
+    <string name="repo_card_time_minutes">%1$dм назад</string>
+    <string name="repo_card_time_hours">%1$dч назад</string>
+    <string name="repo_card_time_days">%1$dд назад</string>
+
+    <!-- EnhancedGraphScreen -->
+    <string name="graph_select_repo">Выберите репозиторий для просмотра коммитов</string>
+    <string name="graph_no_commits">Коммиты не найдены в этом репозитории</string>
+    <string name="graph_merge_commit">Merge-коммит</string>
+    <string name="graph_from_badge">из %1$s</string>
+    <string name="graph_from_badge_branch">из %1$s • %2$s</string>
+
+    <!-- CloneProgressOverlay -->
+    <string name="clone_progress_dismiss">Закрыть результат клонирования</string>
+    <string name="clone_progress_preparing">Подготовка клонирования...</string>
+    <string name="clone_progress_calculating">Расчёт прогресса...</string>
+    <string name="clone_progress_eta">Осталось %1$s</string>
+    <string name="clone_progress_download">~%1$s загрузка</string>
+    <string name="clone_progress_cancel">Отменить загрузку</string>
+    <string name="clone_progress_completed">Клонирование завершено успешно</string>
+    <string name="clone_progress_downloaded">Загружено %1$s</string>
+    <string name="clone_progress_dismiss_button">Закрыть</string>
+    <string name="clone_progress_failed">Ошибка клонирования: %1$s</string>
+    <string name="clone_progress_failed_generic">Ошибка клонирования</string>
+    <string name="clone_progress_cancelled">Клонирование отменено</string>
 </resources>

@@ -9,11 +9,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.gitflow.android.R
 import com.gitflow.android.data.models.Repository
 
 @Composable
@@ -46,7 +48,7 @@ fun DeleteRepositoryDialog(
                         modifier = Modifier.size(32.dp)
                     )
                     Text(
-                        text = "Delete Repository",
+                        text = stringResource(R.string.delete_repo_title),
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -98,11 +100,11 @@ fun DeleteRepositoryDialog(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Also delete repository files",
+                                text = stringResource(R.string.delete_repo_checkbox),
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                text = "This will permanently delete all repository files from your device",
+                                text = stringResource(R.string.delete_repo_warning),
                                 fontSize = 12.sp,
                                 color = if (deleteFiles)
                                     MaterialTheme.colorScheme.error
@@ -132,7 +134,7 @@ fun DeleteRepositoryDialog(
                 // Текст предупреждения
                 if (deleteFiles) {
                     Text(
-                        text = "⚠️ This action cannot be undone!",
+                        text = stringResource(R.string.delete_repo_warning_cannot_undo),
                         color = MaterialTheme.colorScheme.error,
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp
@@ -146,7 +148,7 @@ fun DeleteRepositoryDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TextButton(onClick = onDismiss) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.delete_repo_cancel))
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
@@ -165,7 +167,7 @@ fun DeleteRepositoryDialog(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            if (deleteFiles) "Delete Repository" else "Remove from List"
+                            if (deleteFiles) stringResource(R.string.delete_repo_delete) else stringResource(R.string.delete_repo_remove_from_list)
                         )
                     }
                 }

@@ -156,4 +156,133 @@
     <string name="commit_detail_diff_load_failed">Failed to load changes</string>
     <string name="commit_detail_diff_error_hint">Changes are missing or could not get diff.</string>
     <string name="commit_detail_diff_unavailable">Diff data unavailable.</string>
+
+    <!-- MainScreen -->
+    <string name="main_screen_title">GitFlow</string>
+    <string name="main_screen_repo_info">%1$s • %2$s</string>
+    <string name="main_screen_tab_repos">Repos</string>
+    <string name="main_screen_tab_graph">Graph</string>
+    <string name="main_screen_tab_changes">Changes</string>
+    <string name="main_screen_tab_settings">Settings</string>
+    <string name="main_screen_operations">Operations</string>
+    <string name="main_screen_git_operations">Git Operations for %1$s</string>
+    <string name="main_screen_operations_placeholder">Pull, Push, Fetch, etc.</string>
+
+    <!-- RepositoryListScreen -->
+    <string name="repo_list_add_repository">Add Repository</string>
+    <string name="repo_list_empty_title">No repositories yet</string>
+    <string name="repo_list_empty_subtitle">Add your first repository to get started</string>
+    <string name="repo_list_add_button">Add Repository</string>
+
+    <!-- ChangesScreen -->
+    <string name="changes_select_repo">Select a repository to view changes</string>
+    <string name="changes_commit_title">Commit Changes</string>
+    <string name="changes_commit_message_hint">Commit message</string>
+    <string name="changes_stage_all">Stage All</string>
+    <string name="changes_commit_button">Commit</string>
+    <string name="changes_push_button">Push (%1$d)</string>
+    <string name="changes_remote_not_configured">Remote \'origin\' is not configured</string>
+    <string name="changes_staged_title">Staged Changes (%1$d)</string>
+    <string name="changes_unstaged_title">Unstaged Changes (%1$d)</string>
+    <string name="changes_no_changes">No changes</string>
+    <string name="changes_commit_message_empty">Commit message cannot be empty</string>
+    <string name="changes_commit_created">Commit created</string>
+    <string name="changes_commit_failed">Commit failed</string>
+    <string name="changes_push_successful">Push successful</string>
+    <string name="changes_push_failed">Push failed</string>
+    <string name="changes_unable_to_stage">Unable to stage all changes</string>
+    <string name="changes_unable_to_stage_file">Unable to stage file</string>
+    <string name="changes_unable_to_unstage_file">Unable to unstage file</string>
+
+    <!-- GraphPresetDialog -->
+    <string name="graph_preset_title">Graph Preset</string>
+    <string name="graph_preset_description">Choose how the commit graph should be displayed:</string>
+    <string name="graph_preset_default">Default</string>
+    <string name="graph_preset_default_desc">Standard size for most screens</string>
+    <string name="graph_preset_compact">Compact</string>
+    <string name="graph_preset_compact_desc">Compact view for small screens</string>
+    <string name="graph_preset_large">Large</string>
+    <string name="graph_preset_large_desc">Large view for big screens</string>
+    <string name="graph_preset_wide">Wide</string>
+    <string name="graph_preset_wide_desc">Wide view for graphs with many branches</string>
+    <string name="graph_preset_cancel">Cancel</string>
+
+    <!-- DeleteRepositoryDialog -->
+    <string name="delete_repo_title">Delete Repository</string>
+    <string name="delete_repo_checkbox">Also delete repository files</string>
+    <string name="delete_repo_warning">This will permanently delete all repository files from your device</string>
+    <string name="delete_repo_warning_cannot_undo">⚠️ This action cannot be undone!</string>
+    <string name="delete_repo_cancel">Cancel</string>
+    <string name="delete_repo_remove_from_list">Remove from List</string>
+    <string name="delete_repo_delete">Delete Repository</string>
+
+    <!-- AddRepositoryDialog -->
+    <string name="add_repo_title">Add Repository</string>
+    <string name="add_repo_tab_clone">Clone</string>
+    <string name="add_repo_tab_local">Local</string>
+    <string name="add_repo_tab_create">Create</string>
+    <string name="add_repo_tab_remote">Remote</string>
+    <string name="add_repo_url_label">Repository URL</string>
+    <string name="add_repo_url_placeholder">https://github.com/user/repo.git</string>
+    <string name="add_repo_name_label">Local name</string>
+    <string name="add_repo_name_placeholder">my-project</string>
+    <string name="add_repo_destination_label">Destination (optional)</string>
+    <string name="add_repo_destination_placeholder">Leave empty for default location</string>
+    <string name="add_repo_browse">Browse</string>
+    <string name="add_repo_estimating_size">Estimating repository size...</string>
+    <string name="add_repo_approximate_download">Approximate download: %1$s</string>
+    <string name="add_repo_authenticated_github">Authenticated with GitHub</string>
+    <string name="add_repo_authenticated_gitlab">Authenticated with GitLab</string>
+    <string name="add_repo_github_token_available">GitHub token available</string>
+    <string name="add_repo_gitlab_token_available">GitLab token available</string>
+    <string name="add_repo_auth_available">Authentication available</string>
+    <string name="add_repo_not_authenticated">Not authenticated - private repos may not be accessible</string>
+    <string name="add_repo_path_label">Repository Path</string>
+    <string name="add_repo_path_placeholder">/storage/emulated/0/MyRepos/project</string>
+    <string name="add_repo_local_description">Select an existing Git repository from your device storage</string>
+    <string name="add_repo_repo_name_label">Repository name</string>
+    <string name="add_repo_create_placeholder">my-new-project</string>
+    <string name="add_repo_create_description">This will create a new Git repository locally</string>
+    <string name="add_repo_remote_title">Browse Remote Repositories</string>
+    <string name="add_repo_remote_description">Connect to GitHub or GitLab to browse and clone your remote repositories</string>
+    <string name="add_repo_remote_browse">Browse Repositories</string>
+    <string name="add_repo_cloning">Cloning repository...</string>
+    <string name="add_repo_adding_local">Adding local repository...</string>
+    <string name="add_repo_creating">Creating repository...</string>
+    <string name="add_repo_processing">Processing...</string>
+    <string name="add_repo_cancel">Cancel</string>
+    <string name="add_repo_clone_button">Clone</string>
+    <string name="add_repo_add_local_button">Add Local</string>
+    <string name="add_repo_create_button">Create</string>
+    <string name="add_repo_add_button">Add</string>
+
+    <!-- RepositoryCard -->
+    <string name="repo_card_options">Options</string>
+    <string name="repo_card_remove">Remove from list</string>
+    <string name="repo_card_delete">Delete repository</string>
+    <string name="repo_card_time_just_now">just now</string>
+    <string name="repo_card_time_minutes">%1$dm ago</string>
+    <string name="repo_card_time_hours">%1$dh ago</string>
+    <string name="repo_card_time_days">%1$dd ago</string>
+
+    <!-- EnhancedGraphScreen -->
+    <string name="graph_select_repo">Select a repository to view commits</string>
+    <string name="graph_no_commits">No commits found in this repository</string>
+    <string name="graph_merge_commit">Merge commit</string>
+    <string name="graph_from_badge">from %1$s</string>
+    <string name="graph_from_badge_branch">from %1$s • %2$s</string>
+
+    <!-- CloneProgressOverlay -->
+    <string name="clone_progress_dismiss">Dismiss clone result</string>
+    <string name="clone_progress_preparing">Preparing clone...</string>
+    <string name="clone_progress_calculating">Progress calculating...</string>
+    <string name="clone_progress_eta">ETA %1$s</string>
+    <string name="clone_progress_download">~%1$s download</string>
+    <string name="clone_progress_cancel">Cancel download</string>
+    <string name="clone_progress_completed">Clone completed successfully</string>
+    <string name="clone_progress_downloaded">Downloaded %1$s</string>
+    <string name="clone_progress_dismiss_button">Dismiss</string>
+    <string name="clone_progress_failed">Clone failed: %1$s</string>
+    <string name="clone_progress_failed_generic">Clone failed</string>
+    <string name="clone_progress_cancelled">Clone cancelled</string>
 </resources>

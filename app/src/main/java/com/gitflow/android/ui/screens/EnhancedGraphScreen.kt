@@ -26,6 +26,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -40,6 +41,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.times
+import com.gitflow.android.R
 import com.gitflow.android.data.models.Commit
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.RealGitRepository
@@ -64,7 +66,7 @@ fun EnhancedGraphView(
     config: GraphConfig = GraphConfig.Default
 ) {
     if (repository == null) {
-        EmptyStateMessage("Select a repository to view commits")
+        EmptyStateMessage(stringResource(R.string.graph_select_repo))
         return
     }
 
@@ -92,7 +94,7 @@ fun EnhancedGraphView(
                 CircularProgressIndicator()
             }
         } else if (commits.isEmpty()) {
-            EmptyStateMessage("No commits found in this repository")
+            EmptyStateMessage(stringResource(R.string.graph_no_commits))
         } else {
             GraphCanvas(
                 graphData = graphData,
@@ -234,7 +236,7 @@ private fun GraphCommitRow(
                 if (commit.isMergeCommit) {
                     androidx.compose.material3.Icon(
                         Icons.Default.MergeType,
-                        contentDescription = "Merge commit",
+                        contentDescription = stringResource(R.string.graph_merge_commit),
                         modifier = Modifier.size(14.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )
@@ -350,8 +352,11 @@ private fun GraphCommitRow(
                 // «из какой ветки/коммита» если это старт новой ветки
                 if (forkInfo != null) {
                     Badge(
-                        text = "from ${forkInfo.parentHash.take(7)}" +
-                                (forkInfo.parentBranch?.let { " • $it" } ?: ""),
+                        text = if (forkInfo.parentBranch != null) {
+                            stringResource(R.string.graph_from_badge_branch, forkInfo.parentHash.take(7), forkInfo.parentBranch)
+                        } else {
+                            stringResource(R.string.graph_from_badge, forkInfo.parentHash.take(7))
+                        },
                         icon = Icons.Default.AccountTree,
                         background = MaterialTheme.colorScheme.surfaceVariant,
                         foreground = MaterialTheme.colorScheme.onSurfaceVariant,

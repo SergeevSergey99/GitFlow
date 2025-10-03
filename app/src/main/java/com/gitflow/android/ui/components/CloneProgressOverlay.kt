@@ -24,8 +24,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.gitflow.android.R
 import com.gitflow.android.data.repository.CloneProgressTracker
 import com.gitflow.android.data.repository.CloneStatus
 import com.gitflow.android.data.repository.CloneTaskState
@@ -102,7 +104,7 @@ private fun CloneProgressCard(
                     IconButton(onClick = { onDismiss(state.key) }) {
                         Icon(
                             imageVector = Icons.Filled.Close,
-                            contentDescription = "Dismiss clone result"
+                            contentDescription = stringResource(R.string.clone_progress_dismiss)
                         )
                     }
                 }
@@ -110,7 +112,7 @@ private fun CloneProgressCard(
 
             when (state.status) {
                 CloneStatus.RUNNING -> {
-                    val stage = state.progress.stage.ifBlank { "Preparing clone..." }
+                    val stage = state.progress.stage.ifBlank { stringResource(R.string.clone_progress_preparing) }
                     Text(
                         text = stage,
                         style = MaterialTheme.typography.bodySmall,
@@ -142,7 +144,7 @@ private fun CloneProgressCard(
                             )
                         } else {
                             Text(
-                                text = "Progress calculating...",
+                                text = stringResource(R.string.clone_progress_calculating),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -150,7 +152,7 @@ private fun CloneProgressCard(
 
                         if (state.progress.estimatedTimeRemaining.isNotEmpty()) {
                             Text(
-                                text = "ETA ${state.progress.estimatedTimeRemaining}",
+                                text = stringResource(R.string.clone_progress_eta, state.progress.estimatedTimeRemaining),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                             )
@@ -159,7 +161,7 @@ private fun CloneProgressCard(
 
                     state.approximateSize?.let { size ->
                         Text(
-                            text = "~${formatSize(size)} download",
+                            text = stringResource(R.string.clone_progress_download, formatSize(size)),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                         )
@@ -170,20 +172,20 @@ private fun CloneProgressCard(
                         horizontalArrangement = Arrangement.End
                     ) {
                         TextButton(onClick = onCancel) {
-                            Text(text = "Cancel download")
+                            Text(text = stringResource(R.string.clone_progress_cancel))
                         }
                     }
                 }
 
                 CloneStatus.SUCCESS -> {
                     Text(
-                        text = "Clone completed successfully",
+                        text = stringResource(R.string.clone_progress_completed),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary
                     )
                     state.approximateSize?.let { size ->
                         Text(
-                            text = "Downloaded ${formatSize(size)}",
+                            text = stringResource(R.string.clone_progress_downloaded, formatSize(size)),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -193,14 +195,15 @@ private fun CloneProgressCard(
                         horizontalArrangement = Arrangement.End
                     ) {
                         TextButton(onClick = { onDismiss(state.key) }) {
-                            Text(text = "Dismiss")
+                            Text(text = stringResource(R.string.clone_progress_dismiss_button))
                         }
                     }
                 }
 
                 CloneStatus.FAILED -> {
                     Text(
-                        text = state.errorMessage?.let { "Clone failed: $it" } ?: "Clone failed",
+                        text = state.errorMessage?.let { stringResource(R.string.clone_progress_failed, it) }
+                            ?: stringResource(R.string.clone_progress_failed_generic),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -209,14 +212,14 @@ private fun CloneProgressCard(
                         horizontalArrangement = Arrangement.End
                     ) {
                         TextButton(onClick = { onDismiss(state.key) }) {
-                            Text(text = "Dismiss")
+                            Text(text = stringResource(R.string.clone_progress_dismiss_button))
                         }
                     }
                 }
 
                 CloneStatus.CANCELLED -> {
                     Text(
-                        text = state.errorMessage ?: "Clone cancelled",
+                        text = state.errorMessage ?: stringResource(R.string.clone_progress_cancelled),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -225,7 +228,7 @@ private fun CloneProgressCard(
                         horizontalArrangement = Arrangement.End
                     ) {
                         TextButton(onClick = { onDismiss(state.key) }) {
-                            Text(text = "Dismiss")
+                            Text(text = stringResource(R.string.clone_progress_dismiss_button))
                         }
                     }
                 }

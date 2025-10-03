@@ -8,10 +8,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.gitflow.android.R
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.RealGitRepository
 import com.gitflow.android.ui.config.GraphConfig
@@ -51,12 +53,12 @@ fun MainScreen(navController: NavController) {
                 title = {
                     Column {
                         Text(
-                            "GitFlow",
+                            stringResource(R.string.main_screen_title),
                             fontWeight = FontWeight.Bold
                         )
                         selectedRepository?.let { repo ->
                             Text(
-                                text = "${repo.name} • ${repo.currentBranch}",
+                                text = stringResource(R.string.main_screen_repo_info, repo.name, repo.currentBranch),
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -66,7 +68,7 @@ fun MainScreen(navController: NavController) {
                 actions = {
                     if (selectedRepository != null) {
                         /*IconButton(onClick = { showOperationsSheet = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "Operations")
+                            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.main_screen_operations))
                         }*/
                     }
                 },
@@ -79,26 +81,26 @@ fun MainScreen(navController: NavController) {
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.Folder, contentDescription = "Repos") },
-                    label = { Text("Repos") },
+                    icon = { Icon(Icons.Default.Folder, contentDescription = stringResource(R.string.main_screen_tab_repos)) },
+                    label = { Text(stringResource(R.string.main_screen_tab_repos)) },
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.AccountTree, contentDescription = "Graph") },
-                    label = { Text("Graph") },
+                    icon = { Icon(Icons.Default.AccountTree, contentDescription = stringResource(R.string.main_screen_tab_graph)) },
+                    label = { Text(stringResource(R.string.main_screen_tab_graph)) },
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.Edit, contentDescription = "Changes") },
-                    label = { Text("Changes") },
+                    icon = { Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.main_screen_tab_changes)) },
+                    label = { Text(stringResource(R.string.main_screen_tab_changes)) },
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 }
                 )
                 NavigationBarItem(
-                    icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
-                    label = { Text("Settings") },
+                    icon = { Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.main_screen_tab_settings)) },
+                    label = { Text(stringResource(R.string.main_screen_tab_settings)) },
                     selected = selectedTab == 3,
                     onClick = { selectedTab = 3 }
                 )
@@ -182,11 +184,11 @@ fun GitOperationsSheet(
             modifier = Modifier.padding(16.dp)
         ) {
             Text(
-                "Git Operations for ${repository.name}",
+                stringResource(R.string.main_screen_git_operations, repository.name),
                 fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.height(16.dp))
-            Text("Pull, Push, Fetch, etc.")
+            Text(stringResource(R.string.main_screen_operations_placeholder))
             Spacer(modifier = Modifier.height(32.dp))
         }
     }

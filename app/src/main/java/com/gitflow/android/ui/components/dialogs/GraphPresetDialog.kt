@@ -7,10 +7,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.gitflow.android.R
 
 @Composable
 fun GraphPresetDialog(
@@ -19,10 +21,10 @@ fun GraphPresetDialog(
     onDismiss: () -> Unit
 ) {
     val presets = listOf(
-        "Default" to "Стандартный размер для большинства экранов",
-        "Compact" to "Компактный вид для небольших экранов",
-        "Large" to "Крупный вид для больших экранов",
-        "Wide" to "Широкий вид для графов с множеством веток"
+        "Default" to stringResource(R.string.graph_preset_default_desc),
+        "Compact" to stringResource(R.string.graph_preset_compact_desc),
+        "Large" to stringResource(R.string.graph_preset_large_desc),
+        "Wide" to stringResource(R.string.graph_preset_wide_desc)
     )
 
     Dialog(onDismissRequest = onDismiss) {
@@ -34,7 +36,7 @@ fun GraphPresetDialog(
                 modifier = Modifier.padding(20.dp)
             ) {
                 Text(
-                    text = "Graph Preset",
+                    text = stringResource(R.string.graph_preset_title),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -42,7 +44,7 @@ fun GraphPresetDialog(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
-                    text = "Choose how the commit graph should be displayed:",
+                    text = stringResource(R.string.graph_preset_description),
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -77,7 +79,13 @@ fun GraphPresetDialog(
 
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = preset,
+                                    text = stringResource(when (preset) {
+                                        "Default" -> R.string.graph_preset_default
+                                        "Compact" -> R.string.graph_preset_compact
+                                        "Large" -> R.string.graph_preset_large
+                                        "Wide" -> R.string.graph_preset_wide
+                                        else -> R.string.graph_preset_default
+                                    }),
                                     fontWeight = FontWeight.Medium,
                                     fontSize = 16.sp
                                 )
@@ -100,7 +108,7 @@ fun GraphPresetDialog(
                     horizontalArrangement = Arrangement.End
                 ) {
                     TextButton(onClick = onDismiss) {
-                        Text("Отмена")
+                        Text(stringResource(R.string.graph_preset_cancel))
                     }
                 }
             }
