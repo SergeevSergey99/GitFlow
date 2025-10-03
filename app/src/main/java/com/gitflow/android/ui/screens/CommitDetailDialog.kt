@@ -30,6 +30,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -151,29 +152,54 @@ fun CommitDetailDialog(
                 }
 
                 // Tabs
-                TabRow(
+                ScrollableTabRow(
                     selectedTabIndex = selectedTab,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    edgePadding = 16.dp
                 ) {
                     Tab(
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
-                        text = { Text(stringResource(R.string.commit_detail_tab_changes)) }
+                        text = {
+                            Text(
+                                text = stringResource(R.string.commit_detail_tab_files),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     )
                     Tab(
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
-                        text = { Text(stringResource(R.string.commit_detail_tab_files)) }
+                        text = {
+                            Text(
+                                text = stringResource(R.string.commit_detail_tab_changes),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     )
                     Tab(
                         selected = selectedTab == 2,
                         onClick = { selectedTab = 2 },
-                        text = { Text(stringResource(R.string.commit_detail_tab_info)) }
+                        text = {
+                            Text(
+                                text = stringResource(R.string.commit_detail_tab_info),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     )
                     Tab(
                         selected = selectedTab == 3,
                         onClick = { selectedTab = 3 },
-                        text = { Text(stringResource(R.string.commit_detail_tab_file_tree)) }
+                        text = {
+                            Text(
+                                text = stringResource(R.string.commit_detail_tab_file_tree),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     )
                 }
 
@@ -187,7 +213,10 @@ fun CommitDetailDialog(
                             CircularProgressIndicator()
                         }
                     } else {
-                        DiffView(selectedFile)
+                        FileListView(fileDiffs, selectedFile) { file ->
+                            selectedFile = file
+                            selectedTab = 1 // Переключаемся на вкладку Changes
+                        }
                     }
                     1 -> if (isLoadingDiffs) {
                         Box(
@@ -197,10 +226,7 @@ fun CommitDetailDialog(
                             CircularProgressIndicator()
                         }
                     } else {
-                        FileListView(fileDiffs, selectedFile) { file ->
-                            selectedFile = file
-                            selectedTab = 0 // Переключаемся на вкладку Changes
-                        }
+                        DiffView(selectedFile)
                     }
                     2 -> CommitInfoView(commit)
                     3 -> FileTreeView(commit, repository, gitRepository)
@@ -234,7 +260,8 @@ fun DiffView(selectedFile: FileDiff?) {
                 Text(
                     text = stringResource(R.string.commit_detail_select_file),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 16.sp
+                    fontSize = 16.sp,
+                    textAlign = TextAlign.Center
                 )
             }
         }
