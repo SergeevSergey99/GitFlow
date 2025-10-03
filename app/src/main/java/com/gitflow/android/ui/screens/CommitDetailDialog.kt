@@ -326,28 +326,37 @@ fun DiffView(selectedFile: FileDiff?) {
 
 @Composable
 fun UnifiedDiffView(diff: FileDiff) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize()
-    ) {
-        diff.hunks.forEach { hunk ->
-            item {
-                // Hunk header
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                ) {
-                    Text(
-                        text = hunk.header,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
+    val horizontalScrollState = rememberScrollState()
 
-            items(hunk.lines) { line ->
-                DiffLineView(line)
+    Column(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .horizontalScroll(horizontalScrollState)
+        ) {
+            LazyColumn {
+                diff.hunks.forEach { hunk ->
+                    item {
+                        // Hunk header
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                        ) {
+                            Text(
+                                text = hunk.header,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1
+                            )
+                        }
+                    }
+
+                    items(hunk.lines) { line ->
+                        DiffLineView(line)
+                    }
+                }
             }
         }
     }
@@ -355,6 +364,8 @@ fun UnifiedDiffView(diff: FileDiff) {
 
 @Composable
 fun SideBySideDiffView(diff: FileDiff) {
+    val horizontalScrollState = rememberScrollState()
+
     Row(modifier = Modifier.fillMaxSize()) {
         // Old version
         Column(
@@ -374,12 +385,16 @@ fun SideBySideDiffView(diff: FileDiff) {
                 )
             }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize()
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .horizontalScroll(horizontalScrollState)
             ) {
-                diff.hunks.forEach { hunk ->
-                    items(hunk.lines.filter { it.type != LineType.ADDED }) { line ->
-                        DiffLineView(line, compact = true)
+                LazyColumn {
+                    diff.hunks.forEach { hunk ->
+                        items(hunk.lines.filter { it.type != LineType.ADDED }) { line ->
+                            DiffLineView(line, compact = true)
+                        }
                     }
                 }
             }
@@ -405,12 +420,16 @@ fun SideBySideDiffView(diff: FileDiff) {
                 )
             }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize()
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .horizontalScroll(horizontalScrollState)
             ) {
-                diff.hunks.forEach { hunk ->
-                    items(hunk.lines.filter { it.type != LineType.DELETED }) { line ->
-                        DiffLineView(line, compact = true)
+                LazyColumn {
+                    diff.hunks.forEach { hunk ->
+                        items(hunk.lines.filter { it.type != LineType.DELETED }) { line ->
+                            DiffLineView(line, compact = true)
+                        }
                     }
                 }
             }
@@ -471,7 +490,9 @@ fun DiffLineView(line: DiffLine, compact: Boolean = false) {
                     append(line.content)
                 },
                 fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                softWrap = false
             )
         }
     }
