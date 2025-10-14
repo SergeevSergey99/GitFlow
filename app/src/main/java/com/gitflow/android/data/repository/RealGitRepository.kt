@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.eclipse.jgit.api.CheckoutCommand
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.api.ResetCommand
 import org.eclipse.jgit.api.errors.GitAPIException
@@ -576,44 +577,118 @@ class RealGitRepository(private val context: Context) {
 
             git.use { gitInstance ->
                 val status = gitInstance.status().call()
+                val conflictPaths = status.conflicting.toSet()
                 val changes = mutableListOf<FileChange>()
 
                 fun diffFor(path: String, stage: ChangeStage): Pair<Int, Int> =
                     getFileDiffInfo(gitInstance, path, stage)
 
+                fun conflictMeta(path: String): Pair<Boolean, Int> {
+                    if (!conflictPaths.contains(path)) {
+                        return false to 0
+                    }
+                    val sections = countConflictSections(repository.path, path)
+                    return true to sections
+                }
+
                 status.added.forEach { path ->
+                    if (conflictPaths.contains(path)) return@forEach
                     val (additions, deletions) = diffFor(path, ChangeStage.STAGED)
-                    changes.add(FileChange(path, ChangeStatus.ADDED, ChangeStage.STAGED, additions, deletions))
+                    changes.add(
+                        FileChange(
+                            path = path,
+                            status = ChangeStatus.ADDED,
+                            stage = ChangeStage.STAGED,
+                            additions = additions,
+                            deletions = deletions
+                        )
+                    )
                 }
 
                 status.changed.forEach { path ->
+                    if (conflictPaths.contains(path)) return@forEach
                     val (additions, deletions) = diffFor(path, ChangeStage.STAGED)
-                    changes.add(FileChange(path, ChangeStatus.MODIFIED, ChangeStage.STAGED, additions, deletions))
+                    changes.add(
+                        FileChange(
+                            path = path,
+                            status = ChangeStatus.MODIFIED,
+                            stage = ChangeStage.STAGED,
+                            additions = additions,
+                            deletions = deletions
+                        )
+                    )
                 }
 
                 status.removed.forEach { path ->
+                    if (conflictPaths.contains(path)) return@forEach
                     val (additions, deletions) = diffFor(path, ChangeStage.STAGED)
-                    changes.add(FileChange(path, ChangeStatus.DELETED, ChangeStage.STAGED, additions, deletions))
+                    changes.add(
+                        FileChange(
+                            path = path,
+                            status = ChangeStatus.DELETED,
+                            stage = ChangeStage.STAGED,
+                            additions = additions,
+                            deletions = deletions
+                        )
+                    )
                 }
 
                 status.modified.forEach { path ->
+                    if (conflictPaths.contains(path)) return@forEach
                     val (additions, deletions) = diffFor(path, ChangeStage.UNSTAGED)
-                    changes.add(FileChange(path, ChangeStatus.MODIFIED, ChangeStage.UNSTAGED, additions, deletions))
+                    changes.add(
+                        FileChange(
+                            path = path,
+                            status = ChangeStatus.MODIFIED,
+                            stage = ChangeStage.UNSTAGED,
+                            additions = additions,
+                            deletions = deletions
+                        )
+                    )
                 }
 
                 status.missing.forEach { path ->
+                    if (conflictPaths.contains(path)) return@forEach
                     val (additions, deletions) = diffFor(path, ChangeStage.UNSTAGED)
-                    changes.add(FileChange(path, ChangeStatus.DELETED, ChangeStage.UNSTAGED, additions, deletions))
+                    changes.add(
+                        FileChange(
+                            path = path,
+                            status = ChangeStatus.DELETED,
+                            stage = ChangeStage.UNSTAGED,
+                            additions = additions,
+                            deletions = deletions
+                        )
+                    )
                 }
 
                 status.untracked.forEach { path ->
+                    if (conflictPaths.contains(path)) return@forEach
                     val (additions, deletions) = diffFor(path, ChangeStage.UNSTAGED)
-                    changes.add(FileChange(path, ChangeStatus.UNTRACKED, ChangeStage.UNSTAGED, additions, deletions))
+                    changes.add(
+                        FileChange(
+                            path = path,
+                            status = ChangeStatus.UNTRACKED,
+                            stage = ChangeStage.UNSTAGED,
+                            additions = additions,
+                            deletions = deletions
+                        )
+                    )
                 }
 
                 status.conflicting.forEach { path ->
                     val (additions, deletions) = diffFor(path, ChangeStage.UNSTAGED)
-                    changes.add(FileChange(path, ChangeStatus.MODIFIED, ChangeStage.UNSTAGED, additions, deletions))
+                    val (hasConflicts, conflictCount) = conflictMeta(path)
+                    changes.add(
+                        FileChange(
+                            path = path,
+                            status = ChangeStatus.MODIFIED,
+                            stage = ChangeStage.UNSTAGED,
+                            additions = additions,
+                            deletions = deletions,
+                            hasConflicts = hasConflicts,
+                            conflictSections = conflictCount
+                        )
+                    )
                 }
 
                 changes.sortedWith(compareBy({ it.stage }, { it.path }))
@@ -673,6 +748,76 @@ class RealGitRepository(private val context: Context) {
                 gitInstance.add()
                     .setUpdate(true)
                     .addFilepattern(".")
+                    .call()
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getMergeConflicts(repository: com.gitflow.android.data.models.Repository): List<MergeConflict> = withContext(Dispatchers.IO) {
+        try {
+            val git = openRepository(repository.path) ?: return@withContext emptyList()
+            git.use { gitInstance ->
+                val status = gitInstance.status().call()
+                status.conflicting.mapNotNull { path ->
+                    parseConflictFile(repository.path, path)
+                }
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun getMergeConflict(repository: com.gitflow.android.data.models.Repository, path: String): MergeConflict? =
+        withContext(Dispatchers.IO) {
+            parseConflictFile(repository.path, path)
+        }
+
+    suspend fun resolveConflict(
+        repository: com.gitflow.android.data.models.Repository,
+        path: String,
+        strategy: ConflictResolutionStrategy
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
+            git.use { gitInstance ->
+                val stage = when (strategy) {
+                    ConflictResolutionStrategy.OURS -> CheckoutCommand.Stage.OURS
+                    ConflictResolutionStrategy.THEIRS -> CheckoutCommand.Stage.THEIRS
+                }
+                gitInstance.checkout()
+                    .setStage(stage)
+                    .addPath(path)
+                    .call()
+
+                gitInstance.add()
+                    .addFilepattern(path)
+                    .call()
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun resolveConflictWithContent(
+        repository: com.gitflow.android.data.models.Repository,
+        path: String,
+        resolvedContent: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val file = File(repository.path, path)
+            if (!file.parentFile.exists()) {
+                file.parentFile?.mkdirs()
+            }
+            file.writeText(resolvedContent)
+
+            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
+            git.use { gitInstance ->
+                gitInstance.add()
+                    .addFilepattern(path)
                     .call()
             }
             Result.success(Unit)
@@ -1293,6 +1438,106 @@ class RealGitRepository(private val context: Context) {
                 false
             }
         }
+    }
+
+    private fun countConflictSections(repositoryPath: String, path: String): Int {
+        return parseConflictFile(repositoryPath, path)?.sections?.size ?: 0
+    }
+
+    private fun parseConflictFile(repositoryPath: String, path: String): MergeConflict? {
+        val file = File(repositoryPath, path)
+        if (!file.exists() || !file.isFile) {
+            return null
+        }
+
+        val lines = runCatching { file.readLines() }.getOrElse { return null }
+        if (lines.none { it.startsWith("<<<<<<<") }) {
+            return null
+        }
+
+        val sections = mutableListOf<MergeConflictSection>()
+        var index = 0
+
+        while (index < lines.size) {
+            val line = lines[index]
+            if (!line.startsWith("<<<<<<<")) {
+                index++
+                continue
+            }
+
+            val oursLabel = line.removePrefix("<<<<<<<").trim().ifBlank { "HEAD" }
+            val startLineIndex = index
+            index++
+
+            val oursContent = mutableListOf<String>()
+            val baseContent = mutableListOf<String>()
+            var theirsContent = mutableListOf<String>()
+            var baseLabel: String? = null
+
+            // Collect ours section until divider or base marker
+            while (index < lines.size && !lines[index].startsWith("=======") && !lines[index].startsWith("|||||||")) {
+                oursContent.add(lines[index])
+                index++
+            }
+
+            // Optional base section
+            if (index < lines.size && lines[index].startsWith("|||||||")) {
+                baseLabel = lines[index].removePrefix("|||||||").trim().ifBlank { "BASE" }
+                index++
+                while (index < lines.size && !lines[index].startsWith("=======")) {
+                    baseContent.add(lines[index])
+                    index++
+                }
+            }
+
+            if (index < lines.size && lines[index].startsWith("=======")) {
+                index++
+            }
+
+            val theirs = mutableListOf<String>()
+            while (index < lines.size && !lines[index].startsWith(">>>>>>>")) {
+                theirs.add(lines[index])
+                index++
+            }
+            theirsContent = theirs
+
+            val theirsLabel = if (index < lines.size && lines[index].startsWith(">>>>>>>")) {
+                lines[index].removePrefix(">>>>>>>").trim().ifBlank { "incoming" }
+            } else {
+                "incoming"
+            }
+
+            if (index < lines.size && lines[index].startsWith(">>>>>>>")) {
+                index++
+            }
+
+            sections.add(
+                MergeConflictSection(
+                    oursLabel = oursLabel,
+                    theirsLabel = theirsLabel,
+                    baseLabel = baseLabel,
+                    oursContent = oursContent.joinToString("\n"),
+                    theirsContent = theirsContent.joinToString("\n"),
+                    baseContent = if (baseContent.isEmpty()) null else baseContent.joinToString("\n"),
+                    startLineIndex = startLineIndex,
+                    endLineIndex = index
+                )
+            )
+        }
+
+        if (sections.isEmpty()) {
+            return null
+        }
+
+        val topOursLabel = sections.first().oursLabel
+        val topTheirsLabel = sections.first().theirsLabel
+        return MergeConflict(
+            path = path,
+            oursLabel = topOursLabel,
+            theirsLabel = topTheirsLabel,
+            sections = sections,
+            originalLines = lines
+        )
     }
 
     private fun restoreFileFromCommit(

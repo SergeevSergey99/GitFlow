@@ -45,7 +45,9 @@ data class FileChange(
     val status: ChangeStatus,
     val stage: ChangeStage,
     val additions: Int = 0,
-    val deletions: Int = 0
+    val deletions: Int = 0,
+    val hasConflicts: Boolean = false,
+    val conflictSections: Int = 0
 )
 
 @Serializable
@@ -56,6 +58,30 @@ enum class ChangeStatus {
 @Serializable
 enum class ChangeStage {
     STAGED, UNSTAGED
+}
+
+data class MergeConflict(
+    val path: String,
+    val oursLabel: String,
+    val theirsLabel: String,
+    val sections: List<MergeConflictSection>,
+    val originalLines: List<String>
+)
+
+data class MergeConflictSection(
+    val oursLabel: String,
+    val theirsLabel: String,
+    val baseLabel: String?,
+    val oursContent: String,
+    val theirsContent: String,
+    val baseContent: String?,
+    val startLineIndex: Int,
+    val endLineIndex: Int
+)
+
+enum class ConflictResolutionStrategy {
+    OURS,
+    THEIRS
 }
 
 // New models for diff viewer

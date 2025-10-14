@@ -199,6 +199,11 @@
     <string name="changes_unable_to_stage">Unable to stage all changes</string>
     <string name="changes_unable_to_stage_file">Unable to stage file</string>
     <string name="changes_unable_to_unstage_file">Unable to unstage file</string>
+    <string name="changes_conflict_resolved_current">Conflicts resolved using current branch version</string>
+    <string name="changes_conflict_resolved_incoming">Conflicts resolved using incoming changes</string>
+    <string name="changes_conflict_resolve_failed">Failed to resolve conflict</string>
+    <string name="changes_conflict_details_failed">Cannot load conflict details</string>
+    <string name="changes_conflict_manual_success">Conflicts resolved</string>
 
     <!-- GraphPresetDialog -->
     <string name="graph_preset_title">Graph Preset</string>

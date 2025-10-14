@@ -1,6 +1,9 @@
 package com.gitflow.android.ui.screens.main
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -11,11 +14,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.gitflow.android.R
 import com.gitflow.android.data.models.ChangeStage
+import com.gitflow.android.data.models.ConflictResolutionStrategy
 import com.gitflow.android.data.models.FileChange
+import com.gitflow.android.data.models.MergeConflict
+import com.gitflow.android.data.models.MergeConflictSection
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.RealGitRepository
 import com.gitflow.android.ui.components.FileChangeCard
@@ -37,20 +45,31 @@ fun ChangesScreen(
     var commitMessage by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(true) }
     var isProcessing by remember { mutableStateOf(false) }
+    var conflictDetails by remember { mutableStateOf<MergeConflict?>(null) }
+    var showConflictDialog by remember { mutableStateOf(false) }
+    var isConflictLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(repository.id) {
         isLoading = true
+        showConflictDialog = false
+        conflictDetails = null
         changes = gitRepository.getChangedFiles(repository)
         gitRepository.refreshRepository(repository)
         isLoading = false
         commitMessage = ""
         isProcessing = false
+        isConflictLoading = false
     }
 
     val stagedFiles = changes.filter { it.stage == ChangeStage.STAGED }
     val unstagedFiles = changes.filter { it.stage == ChangeStage.UNSTAGED }
     val pendingPushCommits = repository.pendingPushCommits
+
+    suspend fun reloadChanges() {
+        changes = gitRepository.getChangedFiles(repository)
+        gitRepository.refreshRepository(repository)
+    }
 
     fun guardLaunch(action: suspend () -> Unit) {
         if (isProcessing) return
@@ -71,7 +90,7 @@ fun ChangesScreen(
                 val fallback = context.getString(R.string.changes_unable_to_stage)
                 snackbarHostState.showSnackbar(result.exceptionOrNull()?.localizedMessage ?: fallback)
             }
-            changes = gitRepository.getChangedFiles(repository)
+            reloadChanges()
         }
     }
 
@@ -85,7 +104,7 @@ fun ChangesScreen(
             val result = gitRepository.commit(repository, message)
             if (result.isSuccess) {
                 commitMessage = ""
-                changes = gitRepository.getChangedFiles(repository)
+                reloadChanges()
                 snackbarHostState.showSnackbar(context.getString(R.string.changes_commit_created))
             } else {
                 val fallback = context.getString(R.string.changes_commit_failed)
@@ -123,13 +142,59 @@ fun ChangesScreen(
                 snackbarHostState.showSnackbar(result.exceptionOrNull()?.localizedMessage ?: fallback)
             }
 
-            changes = gitRepository.getChangedFiles(repository)
+            reloadChanges()
+        }
+    }
+
+    val acceptOurs: (FileChange) -> Unit = { file ->
+        guardLaunch {
+            val result = gitRepository.resolveConflict(repository, file.path, ConflictResolutionStrategy.OURS)
+            if (result.isSuccess) {
+                reloadChanges()
+                snackbarHostState.showSnackbar(context.getString(R.string.changes_conflict_resolved_current))
+            } else {
+                val fallback = context.getString(R.string.changes_conflict_resolve_failed)
+                snackbarHostState.showSnackbar(result.exceptionOrNull()?.localizedMessage ?: fallback)
+            }
+        }
+    }
+
+    val acceptTheirs: (FileChange) -> Unit = { file ->
+        guardLaunch {
+            val result = gitRepository.resolveConflict(repository, file.path, ConflictResolutionStrategy.THEIRS)
+            if (result.isSuccess) {
+                reloadChanges()
+                snackbarHostState.showSnackbar(context.getString(R.string.changes_conflict_resolved_incoming))
+            } else {
+                val fallback = context.getString(R.string.changes_conflict_resolve_failed)
+                snackbarHostState.showSnackbar(result.exceptionOrNull()?.localizedMessage ?: fallback)
+            }
+        }
+    }
+
+    val openConflict: (FileChange) -> Unit = { file ->
+        scope.launch {
+            try {
+                isConflictLoading = true
+                val conflict = gitRepository.getMergeConflict(repository, file.path)
+                if (conflict != null) {
+                    conflictDetails = conflict
+                    showConflictDialog = true
+                } else {
+                    snackbarHostState.showSnackbar(context.getString(R.string.changes_conflict_details_failed))
+                }
+            } catch (e: Exception) {
+                snackbarHostState.showSnackbar(e.localizedMessage ?: context.getString(R.string.changes_conflict_details_failed))
+            } finally {
+                isConflictLoading = false
+            }
         }
     }
 
     ChangesContent(
         isLoading = isLoading,
         isProcessing = isProcessing,
+        isConflictLoading = isConflictLoading,
         snackbarHostState = snackbarHostState,
         stagedFiles = stagedFiles,
         unstagedFiles = unstagedFiles,
@@ -139,15 +204,46 @@ fun ChangesScreen(
         onCommit = commitChanges,
         onPush = pushChanges,
         onFileToggle = toggleFile,
+        onResolveConflict = openConflict,
+        onAcceptOurs = acceptOurs,
+        onAcceptTheirs = acceptTheirs,
         canPush = repository.hasRemoteOrigin,
         pendingPushCommits = pendingPushCommits
     )
+
+    conflictDetails?.let { details ->
+        if (showConflictDialog) {
+            MergeConflictDialog(
+                conflict = details,
+                isBusy = isProcessing,
+                onDismiss = {
+                    showConflictDialog = false
+                    conflictDetails = null
+                },
+                onApply = { resolvedContent ->
+                    guardLaunch {
+                        val result = gitRepository.resolveConflictWithContent(repository, details.path, resolvedContent)
+                        if (result.isSuccess) {
+                            showConflictDialog = false
+                            conflictDetails = null
+                            reloadChanges()
+                            snackbarHostState.showSnackbar(context.getString(R.string.changes_conflict_manual_success))
+                        } else {
+                            val fallback = context.getString(R.string.changes_conflict_resolve_failed)
+                            snackbarHostState.showSnackbar(result.exceptionOrNull()?.localizedMessage ?: fallback)
+                        }
+                    }
+                }
+            )
+        }
+    }
 }
 
 @Composable
 private fun ChangesContent(
     isLoading: Boolean,
     isProcessing: Boolean,
+    isConflictLoading: Boolean,
     snackbarHostState: SnackbarHostState,
     stagedFiles: List<FileChange>,
     unstagedFiles: List<FileChange>,
@@ -157,6 +253,9 @@ private fun ChangesContent(
     onCommit: () -> Unit,
     onPush: () -> Unit,
     onFileToggle: (FileChange) -> Unit,
+    onResolveConflict: (FileChange) -> Unit,
+    onAcceptOurs: (FileChange) -> Unit,
+    onAcceptTheirs: (FileChange) -> Unit,
     canPush: Boolean,
     pendingPushCommits: Int
 ) {
@@ -179,7 +278,7 @@ private fun ChangesContent(
                     .padding(innerPadding)
                     .padding(16.dp)
             ) {
-                if (isProcessing) {
+                if (isProcessing || isConflictLoading) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     Spacer(modifier = Modifier.height(12.dp))
                 }
@@ -202,7 +301,10 @@ private fun ChangesContent(
                 FileChangesList(
                     stagedFiles = stagedFiles,
                     unstagedFiles = unstagedFiles,
-                    onFileToggle = onFileToggle
+                    onFileToggle = onFileToggle,
+                    onResolveConflict = onResolveConflict,
+                    onAcceptOurs = onAcceptOurs,
+                    onAcceptTheirs = onAcceptTheirs
                 )
             }
         }
@@ -293,7 +395,10 @@ private fun CommitSection(
 private fun FileChangesList(
     stagedFiles: List<FileChange>,
     unstagedFiles: List<FileChange>,
-    onFileToggle: (FileChange) -> Unit
+    onFileToggle: (FileChange) -> Unit,
+    onResolveConflict: (FileChange) -> Unit,
+    onAcceptOurs: (FileChange) -> Unit,
+    onAcceptTheirs: (FileChange) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxHeight(),
@@ -311,7 +416,10 @@ private fun FileChangesList(
                 FileChangeCard(
                     file = file,
                     isStaged = true,
-                    onToggle = { onFileToggle(file) }
+                    onToggle = { onFileToggle(file) },
+                    onResolveConflict = { onResolveConflict(file) },
+                    onAcceptOurs = { onAcceptOurs(file) },
+                    onAcceptTheirs = { onAcceptTheirs(file) }
                 )
             }
         }
@@ -327,7 +435,10 @@ private fun FileChangesList(
                 FileChangeCard(
                     file = file,
                     isStaged = false,
-                    onToggle = { onFileToggle(file) }
+                    onToggle = { onFileToggle(file) },
+                    onResolveConflict = { onResolveConflict(file) },
+                    onAcceptOurs = { onAcceptOurs(file) },
+                    onAcceptTheirs = { onAcceptTheirs(file) }
                 )
             }
         }
@@ -359,6 +470,256 @@ private fun FileChangesList(
             }
         }
     }
+}
+
+private enum class SectionChoice {
+    OURS,
+    THEIRS,
+    CUSTOM
+}
+
+private data class SectionUiState(
+    val section: MergeConflictSection,
+    val choice: MutableState<SectionChoice>,
+    val customText: MutableState<String>
+)
+
+@Composable
+private fun MergeConflictDialog(
+    conflict: MergeConflict,
+    isBusy: Boolean,
+    onDismiss: () -> Unit,
+    onApply: (String) -> Unit
+) {
+    val scrollState = rememberScrollState()
+
+    val sectionStates = remember(conflict) {
+        conflict.sections.map { section ->
+            SectionUiState(
+                section = section,
+                choice = mutableStateOf(SectionChoice.OURS),
+                customText = mutableStateOf(section.oursContent)
+            )
+        }
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .heightIn(min = 200.dp, max = 620.dp),
+            shape = RoundedCornerShape(18.dp),
+            tonalElevation = 4.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(scrollState)
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = conflict.path,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Выберите, какие изменения сохранить в каждом конфликте или отредактируйте вручную.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                sectionStates.forEachIndexed { index, state ->
+                    ConflictSectionEditor(
+                        index = index,
+                        state = state,
+                        oursLabel = conflict.oursLabel,
+                        theirsLabel = conflict.theirsLabel
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isBusy) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .size(20.dp)
+                                .padding(end = 12.dp),
+                            strokeWidth = 2.dp
+                        )
+                    }
+                    TextButton(onClick = onDismiss) {
+                        Text("Отмена")
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Button(
+                        onClick = {
+                            val selections = sectionStates.map { state ->
+                                when (state.choice.value) {
+                                    SectionChoice.OURS -> state.section.oursContent
+                                    SectionChoice.THEIRS -> state.section.theirsContent
+                                    SectionChoice.CUSTOM -> state.customText.value
+                                }
+                            }
+                            val resolvedContent = buildResolvedContent(conflict, selections)
+                            onApply(resolvedContent)
+                        },
+                        enabled = !isBusy
+                    ) {
+                        Icon(Icons.Default.Done, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Сохранить решение")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConflictSectionEditor(
+    index: Int,
+    state: SectionUiState,
+    oursLabel: String,
+    theirsLabel: String
+) {
+    val section = state.section
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "Конфликт ${index + 1}",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = state.choice.value == SectionChoice.OURS,
+                    onClick = {
+                        state.choice.value = SectionChoice.OURS
+                        state.customText.value = section.oursContent
+                    },
+                    label = { Text("Текущая ветка ($oursLabel)") }
+                )
+                FilterChip(
+                    selected = state.choice.value == SectionChoice.THEIRS,
+                    onClick = {
+                        state.choice.value = SectionChoice.THEIRS
+                        state.customText.value = section.theirsContent
+                    },
+                    label = { Text("Входящая ветка ($theirsLabel)") }
+                )
+                FilterChip(
+                    selected = state.choice.value == SectionChoice.CUSTOM,
+                    onClick = {
+                        state.choice.value = SectionChoice.CUSTOM
+                    },
+                    label = { Text("Вручную") }
+                )
+            }
+
+            section.baseContent?.let { base ->
+                SectionDiffPreview(
+                    title = "Базовая версия",
+                    content = base
+                )
+            }
+
+            SectionDiffPreview(
+                title = "Текущая ветка",
+                content = section.oursContent
+            )
+            SectionDiffPreview(
+                title = "Входящая ветка",
+                content = section.theirsContent
+            )
+
+            if (state.choice.value == SectionChoice.CUSTOM) {
+                OutlinedTextField(
+                    value = state.customText.value,
+                    onValueChange = { state.customText.value = it },
+                    label = { Text("Свое решение") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 4
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionDiffPreview(
+    title: String,
+    content: String
+) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Surface(
+                tonalElevation = 0.dp,
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = if (content.isEmpty()) "(пусто)" else content,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
+    }
+}
+
+private fun buildResolvedContent(conflict: MergeConflict, selections: List<String>): String {
+    val lines = conflict.originalLines
+    val result = mutableListOf<String>()
+    var cursor = 0
+
+    conflict.sections.forEachIndexed { index, section ->
+        while (cursor < section.startLineIndex && cursor < lines.size) {
+            result.add(lines[cursor])
+            cursor++
+        }
+
+        val replacement = selections.getOrNull(index).orEmpty()
+        if (replacement.isNotEmpty()) {
+            result.addAll(replacement.split("\n"))
+        }
+
+        cursor = section.endLineIndex.coerceAtMost(lines.size)
+    }
+
+    while (cursor < lines.size) {
+        result.add(lines[cursor])
+        cursor++
+    }
+
+    return result.joinToString("\n")
 }
 
 @Composable

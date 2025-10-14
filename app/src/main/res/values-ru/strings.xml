@@ -199,6 +199,11 @@
     <string name="changes_unable_to_stage">Не удалось добавить все изменения</string>
     <string name="changes_unable_to_stage_file">Не удалось добавить файл</string>
     <string name="changes_unable_to_unstage_file">Не удалось убрать файл из индекса</string>
+    <string name="changes_conflict_resolved_current">Конфликты решены версией текущей ветки</string>
+    <string name="changes_conflict_resolved_incoming">Конфликты решены входящими изменениями</string>
+    <string name="changes_conflict_resolve_failed">Не удалось решить конфликт</string>
+    <string name="changes_conflict_details_failed">Не удалось загрузить детали конфликта</string>
+    <string name="changes_conflict_manual_success">Конфликты устранены</string>
 
     <!-- GraphPresetDialog -->
     <string name="graph_preset_title">Пресет графа</string>

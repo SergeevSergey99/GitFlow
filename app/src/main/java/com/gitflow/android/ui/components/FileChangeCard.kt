@@ -19,7 +19,10 @@ import com.gitflow.android.data.models.FileChange
 fun FileChangeCard(
     file: FileChange,
     isStaged: Boolean,
-    onToggle: () -> Unit
+    onToggle: () -> Unit,
+    onResolveConflict: ((FileChange) -> Unit)? = null,
+    onAcceptOurs: ((FileChange) -> Unit)? = null,
+    onAcceptTheirs: ((FileChange) -> Unit)? = null
 ) {
     val statusColor = when (file.status) {
         ChangeStatus.ADDED -> Color(0xFF4CAF50)
@@ -79,6 +82,77 @@ fun FileChangeCard(
                             color = Color(0xFFF44336)
                         )
                     }
+                }
+
+                if (file.hasConflicts) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    AssistChipRow(
+                        conflictCount = file.conflictSections,
+                        onResolveConflict = onResolveConflict,
+                        onAcceptOurs = onAcceptOurs,
+                        onAcceptTheirs = onAcceptTheirs,
+                        file = file
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AssistChipRow(
+    conflictCount: Int,
+    onResolveConflict: ((FileChange) -> Unit)?,
+    onAcceptOurs: ((FileChange) -> Unit)?,
+    onAcceptTheirs: ((FileChange) -> Unit)?,
+    file: FileChange
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = if (conflictCount > 0) {
+                "Конфликтов: $conflictCount"
+            } else {
+                "Есть нерешенные конфликты"
+            },
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.error
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            onResolveConflict?.let { resolver ->
+                AssistChip(
+                    onClick = { resolver(file) },
+                    label = { Text("Показать конфликты") },
+                    leadingIcon = {
+                        Icon(Icons.Default.Warning, contentDescription = null, modifier = Modifier.size(16.dp))
+                    }
+                )
+            }
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            onAcceptOurs?.let { ours ->
+                FilledTonalButton(
+                    onClick = { ours(file) },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Icon(Icons.Default.Done, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Версия текущей ветки")
+                }
+            }
+            onAcceptTheirs?.let { theirs ->
+                OutlinedButton(
+                    onClick = { theirs(file) },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Версия удаленной ветки")
                 }
             }
         }
