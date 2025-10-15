@@ -1,8 +1,10 @@
 package com.gitflow.android.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,19 +15,36 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Label
+import androidx.compose.material.icons.filled.LabelOff
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.MergeType
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material3.Card
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -34,6 +53,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -47,6 +67,7 @@ import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.RealGitRepository
 import com.gitflow.android.ui.config.GraphConfig
 import com.gitflow.android.ui.screens.main.EmptyStateMessage
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
@@ -59,6 +80,7 @@ import kotlin.math.max
  * 3) Вся геометрия в dp→px внутри DrawScope, линии совпадают с точками на любой плотности.
  */
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EnhancedGraphView(
     repository: Repository?,
@@ -70,17 +92,85 @@ fun EnhancedGraphView(
         return
     }
 
+    val context = LocalContext.current
     var commits by remember { mutableStateOf<List<Commit>>(emptyList()) }
     var selectedCommit by remember { mutableStateOf<Commit?>(null) }
     var showCommitDetail by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+    var actionCommit by remember { mutableStateOf<Commit?>(null) }
+    var showActionsSheet by remember { mutableStateOf(false) }
+    var commitTags by remember { mutableStateOf<List<String>>(emptyList()) }
+    var tagsLoading by remember { mutableStateOf(false) }
+    var isOperationRunning by remember { mutableStateOf(false) }
+    var pendingDialog by remember { mutableStateOf<CommitActionDialog?>(null) }
+    val currentBranchName = repository.currentBranch.ifEmpty { "HEAD" }
 
     // Загружаем коммиты при смене репозитория
     LaunchedEffect(repository) {
         isLoading = true
         commits = gitRepository.getCommits(repository)
         isLoading = false
+    }
+
+    LaunchedEffect(actionCommit) {
+        if (actionCommit != null) {
+            tagsLoading = true
+            commitTags = gitRepository.getTagsForCommit(repository, actionCommit!!.hash)
+            tagsLoading = false
+        } else {
+            commitTags = emptyList()
+            tagsLoading = false
+        }
+    }
+
+    fun showSnackbarMessage(message: String) {
+        scope.launch {
+            snackbarHostState.showSnackbar(message)
+        }
+    }
+
+    fun runRepositoryAction(
+        commit: Commit,
+        successMessage: String,
+        clearSelection: Boolean = true,
+        operation: suspend () -> Result<Unit>
+    ) {
+        if (isOperationRunning) return
+        scope.launch {
+            isOperationRunning = true
+            val outcome = try {
+                operation()
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+            if (outcome.isSuccess) {
+                try {
+                    commits = gitRepository.getCommits(repository)
+                } catch (refreshError: Exception) {
+                    val fallback = context.getString(R.string.graph_commit_operation_failed_generic)
+                    val message = refreshError.localizedMessage?.takeIf { it.isNotBlank() } ?: fallback
+                    showSnackbarMessage(context.getString(R.string.graph_commit_operation_failed, message))
+                }
+
+                if (clearSelection) {
+                    actionCommit = null
+                    commitTags = emptyList()
+                } else {
+                    actionCommit = commit
+                    commitTags = gitRepository.getTagsForCommit(repository, commit.hash)
+                }
+                pendingDialog = null
+                showActionsSheet = false
+                showSnackbarMessage(successMessage)
+            } else {
+                val fallback = context.getString(R.string.graph_commit_operation_failed_generic)
+                val message = outcome.exceptionOrNull()?.localizedMessage?.takeIf { it.isNotBlank() } ?: fallback
+                showSnackbarMessage(context.getString(R.string.graph_commit_operation_failed, message))
+            }
+            isOperationRunning = false
+        }
     }
 
     val graphData = remember(commits) { buildGraphData(commits) }
@@ -102,9 +192,20 @@ fun EnhancedGraphView(
                 onCommitClick = { commit ->
                     selectedCommit = commit
                     showCommitDetail = true
+                },
+                onCommitLongPress = { commit ->
+                    actionCommit = commit
+                    showActionsSheet = true
                 }
             )
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(16.dp)
+        )
     }
 
     if (showCommitDetail && selectedCommit != null) {
@@ -118,6 +219,357 @@ fun EnhancedGraphView(
             }
         )
     }
+
+    if (showActionsSheet && actionCommit != null) {
+        val commitForActions = actionCommit!!
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = {
+                showActionsSheet = false
+                actionCommit = null
+                commitTags = emptyList()
+            },
+            sheetState = sheetState
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.graph_commit_actions_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = commitForActions.message.ifBlank { commitForActions.hash },
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = commitForActions.hash.take(10),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                if (tagsLoading) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                } else if (commitTags.isNotEmpty()) {
+                    Text(
+                        text = stringResource(R.string.graph_commit_tags_label, commitTags.size),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = commitTags.joinToString(", "),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace
+                    )
+                } else {
+                    Text(
+                        text = stringResource(R.string.graph_commit_tags_empty),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                CommitActionListItem(
+                    icon = Icons.Default.Restore,
+                    text = stringResource(R.string.graph_commit_action_reset, currentBranchName),
+                    enabled = !isOperationRunning,
+                    onClick = {
+                        showActionsSheet = false
+                        pendingDialog = CommitActionDialog.Reset(commitForActions)
+                    }
+                )
+
+                CommitActionListItem(
+                    icon = Icons.Default.Label,
+                    text = stringResource(R.string.graph_commit_action_tag_add),
+                    enabled = !isOperationRunning,
+                    onClick = {
+                        showActionsSheet = false
+                        pendingDialog = CommitActionDialog.AddTag(commitForActions)
+                    }
+                )
+
+                val canDeleteTag = commitTags.isNotEmpty()
+                CommitActionListItem(
+                    icon = Icons.Default.LabelOff,
+                    text = stringResource(R.string.graph_commit_action_tag_delete),
+                    enabled = canDeleteTag && !isOperationRunning,
+                    onClick = {
+                        if (canDeleteTag) {
+                            showActionsSheet = false
+                            pendingDialog = CommitActionDialog.DeleteTag(commitForActions, commitTags)
+                        }
+                    }
+                )
+
+                CommitActionListItem(
+                    icon = Icons.Default.ContentCopy,
+                    text = stringResource(R.string.graph_commit_action_cherry_pick),
+                    enabled = !isOperationRunning,
+                    onClick = {
+                        showActionsSheet = false
+                        pendingDialog = CommitActionDialog.CherryPick(commitForActions)
+                    }
+                )
+
+                CommitActionListItem(
+                    icon = Icons.Default.MergeType,
+                    text = stringResource(R.string.graph_commit_action_merge, currentBranchName),
+                    enabled = !isOperationRunning,
+                    onClick = {
+                        showActionsSheet = false
+                        pendingDialog = CommitActionDialog.Merge(commitForActions)
+                    }
+                )
+            }
+        }
+    }
+
+    when (val dialogState = pendingDialog) {
+        is CommitActionDialog.Reset -> {
+            AlertDialog(
+                onDismissRequest = { if (!isOperationRunning) pendingDialog = null },
+                title = { Text(stringResource(R.string.graph_commit_reset_confirm_title)) },
+                text = {
+                    Text(
+                        text = stringResource(
+                            R.string.graph_commit_reset_confirm_message,
+                            currentBranchName,
+                            dialogState.commit.hash.take(7)
+                        )
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = !isOperationRunning,
+                        onClick = {
+                            runRepositoryAction(
+                                commit = dialogState.commit,
+                                successMessage = context.getString(
+                                    R.string.graph_commit_reset_success,
+                                    currentBranchName,
+                                    dialogState.commit.hash.take(7)
+                                )
+                            ) {
+                                gitRepository.hardResetToCommit(repository, dialogState.commit.hash)
+                            }
+                        }
+                    ) {
+                        Text(stringResource(R.string.graph_commit_confirm))
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        enabled = !isOperationRunning,
+                        onClick = { pendingDialog = null }
+                    ) {
+                        Text(stringResource(R.string.graph_commit_cancel))
+                    }
+                }
+            )
+        }
+
+        is CommitActionDialog.AddTag -> {
+            var tagName by remember(dialogState) { mutableStateOf("") }
+            AlertDialog(
+                onDismissRequest = { if (!isOperationRunning) pendingDialog = null },
+                title = { Text(stringResource(R.string.graph_commit_add_tag_title)) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedTextField(
+                            value = tagName,
+                            onValueChange = { tagName = it },
+                            label = { Text(stringResource(R.string.graph_commit_add_tag_hint)) },
+                            singleLine = true
+                        )
+                        Text(
+                            text = stringResource(R.string.graph_commit_add_tag_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = tagName.isNotBlank() && !isOperationRunning,
+                        onClick = {
+                            val trimmed = tagName.trim()
+                            runRepositoryAction(
+                                commit = dialogState.commit,
+                                successMessage = context.getString(R.string.graph_commit_add_tag_success, trimmed),
+                                clearSelection = false
+                            ) {
+                                gitRepository.createTag(repository, trimmed, dialogState.commit.hash)
+                            }
+                        }
+                    ) {
+                        Text(stringResource(R.string.graph_commit_add_tag_button))
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        enabled = !isOperationRunning,
+                        onClick = { pendingDialog = null }
+                    ) {
+                        Text(stringResource(R.string.graph_commit_cancel))
+                    }
+                }
+            )
+        }
+
+        is CommitActionDialog.DeleteTag -> {
+            val tags = dialogState.availableTags
+            var selectedTag by remember(dialogState) {
+                mutableStateOf(tags.firstOrNull().orEmpty())
+            }
+            AlertDialog(
+                onDismissRequest = { if (!isOperationRunning) pendingDialog = null },
+                title = { Text(stringResource(R.string.graph_commit_delete_tag_title)) },
+                text = {
+                    if (tags.isEmpty()) {
+                        Text(stringResource(R.string.graph_commit_delete_tag_placeholder))
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            tags.forEach { tag ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { selectedTag = tag }
+                                        .padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = selectedTag == tag,
+                                        onClick = { selectedTag = tag }
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = tag,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = selectedTag.isNotBlank() && !isOperationRunning,
+                        onClick = {
+                            val tagToDelete = selectedTag
+                            runRepositoryAction(
+                                commit = dialogState.commit,
+                                successMessage = context.getString(R.string.graph_commit_delete_tag_success, tagToDelete),
+                                clearSelection = false
+                            ) {
+                                gitRepository.deleteTag(repository, tagToDelete)
+                            }
+                        }
+                    ) {
+                        Text(stringResource(R.string.graph_commit_delete_tag_button))
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        enabled = !isOperationRunning,
+                        onClick = { pendingDialog = null }
+                    ) {
+                        Text(stringResource(R.string.graph_commit_cancel))
+                    }
+                }
+            )
+        }
+
+        is CommitActionDialog.CherryPick -> {
+            AlertDialog(
+                onDismissRequest = { if (!isOperationRunning) pendingDialog = null },
+                title = { Text(stringResource(R.string.graph_commit_cherry_pick_title)) },
+                text = {
+                    Text(
+                        stringResource(
+                            R.string.graph_commit_cherry_pick_message,
+                            dialogState.commit.hash.take(7)
+                        )
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = !isOperationRunning,
+                        onClick = {
+                            runRepositoryAction(
+                                commit = dialogState.commit,
+                                successMessage = context.getString(R.string.graph_commit_cherry_pick_success)
+                            ) {
+                                gitRepository.cherryPickCommit(repository, dialogState.commit.hash)
+                            }
+                        }
+                    ) {
+                        Text(stringResource(R.string.graph_commit_confirm))
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        enabled = !isOperationRunning,
+                        onClick = { pendingDialog = null }
+                    ) {
+                        Text(stringResource(R.string.graph_commit_cancel))
+                    }
+                }
+            )
+        }
+
+        is CommitActionDialog.Merge -> {
+            AlertDialog(
+                onDismissRequest = { if (!isOperationRunning) pendingDialog = null },
+                title = { Text(stringResource(R.string.graph_commit_merge_title)) },
+                text = {
+                    Text(
+                        stringResource(
+                            R.string.graph_commit_merge_message,
+                            dialogState.commit.hash.take(7),
+                            currentBranchName
+                        )
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = !isOperationRunning,
+                        onClick = {
+                            runRepositoryAction(
+                                commit = dialogState.commit,
+                                successMessage = context.getString(R.string.graph_commit_merge_success)
+                            ) {
+                                gitRepository.mergeCommitIntoCurrentBranch(repository, dialogState.commit.hash)
+                            }
+                        }
+                    ) {
+                        Text(stringResource(R.string.graph_commit_confirm))
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        enabled = !isOperationRunning,
+                        onClick = { pendingDialog = null }
+                    ) {
+                        Text(stringResource(R.string.graph_commit_cancel))
+                    }
+                }
+            )
+        }
+
+        null -> Unit
+    }
 }
 
 /* ============================ Canvas / Rows ============================ */
@@ -126,7 +578,8 @@ fun EnhancedGraphView(
 private fun GraphCanvas(
     graphData: GraphData,
     config: GraphConfig,
-    onCommitClick: (Commit) -> Unit
+    onCommitClick: (Commit) -> Unit,
+    onCommitLongPress: (Commit) -> Unit
 ) {
     val horizontalScrollState = rememberScrollState()
 
@@ -148,13 +601,47 @@ private fun GraphCanvas(
                 maxLanes = graphData.maxLane,
                 config = config,
                 horizontalScrollState = horizontalScrollState,
-                onClick = { onCommitClick(commit) }
+                onClick = { onCommitClick(commit) },
+                onLongPress = { onCommitLongPress(commit) }
             )
         }
         item { Spacer(Modifier.height(24.dp)) }
     }
 }
 
+@Composable
+private fun CommitActionListItem(
+    icon: ImageVector,
+    text: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(12.dp)
+    ListItem(
+        headlineContent = { Text(text) },
+        leadingContent = {
+            androidx.compose.material3.Icon(
+                imageVector = icon,
+                contentDescription = null
+            )
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .alpha(if (enabled) 1f else 0.5f)
+            .clickable(enabled = enabled) { onClick() }
+    )
+}
+
+private sealed class CommitActionDialog {
+    data class Reset(val commit: Commit) : CommitActionDialog()
+    data class AddTag(val commit: Commit) : CommitActionDialog()
+    data class DeleteTag(val commit: Commit, val availableTags: List<String>) : CommitActionDialog()
+    data class CherryPick(val commit: Commit) : CommitActionDialog()
+    data class Merge(val commit: Commit) : CommitActionDialog()
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun GraphCommitRow(
     commit: Commit,
@@ -164,7 +651,8 @@ private fun GraphCommitRow(
     maxLanes: Int,
     config: GraphConfig,
     horizontalScrollState: androidx.compose.foundation.ScrollState,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongPress: () -> Unit
 ) {
     val nodeColor = laneColor(nodeData.lane)
 
@@ -172,7 +660,10 @@ private fun GraphCommitRow(
         modifier = Modifier
             .wrapContentWidth()
             .height(config.rowHeight)
-            .clickable { onClick() }
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongPress
+            )
             .padding(horizontal = config.rowPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {

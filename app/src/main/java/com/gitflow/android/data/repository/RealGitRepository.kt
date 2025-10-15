@@ -11,7 +11,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.eclipse.jgit.api.CheckoutCommand
+import org.eclipse.jgit.api.CherryPickResult
 import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.api.MergeResult
 import org.eclipse.jgit.api.ResetCommand
 import org.eclipse.jgit.api.errors.GitAPIException
 import org.eclipse.jgit.diff.DiffFormatter
@@ -821,6 +823,160 @@ class RealGitRepository(private val context: Context) {
                     .call()
             }
             Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun hardResetToCommit(
+        repository: com.gitflow.android.data.models.Repository,
+        commitHash: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
+            git.use { gitInstance ->
+                gitInstance.reset()
+                    .setRef(commitHash)
+                    .setMode(ResetCommand.ResetType.HARD)
+                    .call()
+            }
+            refreshRepository(repository)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun createTag(
+        repository: com.gitflow.android.data.models.Repository,
+        tagName: String,
+        commitHash: String,
+        force: Boolean = false
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
+            git.use { gitInstance ->
+                val existing = gitInstance.tagList().call().any { it.name.removePrefix("refs/tags/") == tagName }
+                if (existing && !force) {
+                    throw IllegalStateException("Tag already exists")
+                }
+
+                val objectId = gitInstance.repository.resolve(commitHash)
+                    ?: throw IllegalArgumentException("Cannot resolve commit")
+
+                gitInstance.tag()
+                    .setName(tagName)
+                    .setObjectId(objectId)
+                    .setAnnotated(false)
+                    .setForceUpdate(force)
+                    .call()
+            }
+            refreshRepository(repository)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteTag(
+        repository: com.gitflow.android.data.models.Repository,
+        tagName: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
+            git.use { gitInstance ->
+                gitInstance.tagDelete()
+                    .setTags(tagName)
+                    .call()
+            }
+            refreshRepository(repository)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getTagsForCommit(
+        repository: com.gitflow.android.data.models.Repository,
+        commitHash: String
+    ): List<String> = withContext(Dispatchers.IO) {
+        try {
+            val git = openRepository(repository.path) ?: return@withContext emptyList()
+            git.use { gitInstance ->
+                getTagsForCommit(gitInstance, commitHash)
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun cherryPickCommit(
+        repository: com.gitflow.android.data.models.Repository,
+        commitHash: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
+            val outcome = git.use { gitInstance ->
+                val objectId = gitInstance.repository.resolve(commitHash)
+                    ?: throw IllegalArgumentException("Cannot resolve commit")
+
+                val result = gitInstance.cherryPick()
+                    .include(objectId)
+                    .call()
+
+                return@use when (result.status) {
+                    CherryPickResult.CherryPickStatus.OK -> {
+                        refreshRepository(repository)
+                        Result.success(Unit)
+                    }
+                    CherryPickResult.CherryPickStatus.CONFLICTING -> {
+                        val conflicts = result.failingPaths?.keys?.joinToString(", ") ?: "Conflicts detected"
+                        Result.failure(IllegalStateException("Cherry-pick conflict: $conflicts"))
+                    }
+                    else -> {
+                        Result.failure(IllegalStateException("Cherry-pick failed: ${result.status}"))
+                    }
+                }
+            }
+            outcome
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun mergeCommitIntoCurrentBranch(
+        repository: com.gitflow.android.data.models.Repository,
+        commitHash: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
+            val outcome = git.use { gitInstance ->
+                val objectId = gitInstance.repository.resolve(commitHash)
+                    ?: throw IllegalArgumentException("Cannot resolve commit")
+
+                val result = gitInstance.merge()
+                    .include(objectId)
+                    .setCommit(true)
+                    .call()
+
+                return@use when (result.mergeStatus) {
+                    MergeResult.MergeStatus.FAST_FORWARD,
+                    MergeResult.MergeStatus.ALREADY_UP_TO_DATE,
+                    MergeResult.MergeStatus.MERGED,
+                    MergeResult.MergeStatus.MERGED_NOT_COMMITTED -> {
+                        refreshRepository(repository)
+                        Result.success(Unit)
+                    }
+                    MergeResult.MergeStatus.CONFLICTING -> {
+                        val conflicts = result.conflicts?.keys?.joinToString(", ") ?: "Conflicts detected"
+                        Result.failure(IllegalStateException("Merge produced conflicts: $conflicts"))
+                    }
+                    else -> {
+                        Result.failure(IllegalStateException("Merge failed: ${result.mergeStatus}"))
+                    }
+                }
+            }
+            outcome
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -1772,18 +1928,20 @@ class RealGitRepository(private val context: Context) {
 
     private fun getTagsForCommit(git: Git, commitHash: String): List<String> {
         return try {
-            val tags = git.tagList().call()
             val repository = git.repository
-            val commitId = repository.resolve(commitHash)
+            val targetCommit = repository.resolve(commitHash) ?: return emptyList()
 
-            tags.filter { tag ->
-                try {
-                    val tagCommit = repository.resolve(tag.objectId.name)
-                    tagCommit == commitId
-                } catch (e: Exception) {
-                    false
+            git.tagList()
+                .call()
+                .mapNotNull { tagRef ->
+                    val peeled = repository.refDatabase.peel(tagRef)
+                    val targetId = peeled.peeledObjectId ?: tagRef.objectId
+                    if (targetId == targetCommit) {
+                        tagRef.name.removePrefix("refs/tags/")
+                    } else {
+                        null
+                    }
                 }
-            }.map { it.name.removePrefix("refs/tags/") }
         } catch (e: Exception) {
             emptyList()
         }

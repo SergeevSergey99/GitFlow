@@ -218,6 +218,38 @@
     <string name="graph_preset_wide_desc">Wide view for graphs with many branches</string>
     <string name="graph_preset_cancel">Cancel</string>
 
+    <!-- Graph commit actions -->
+    <string name="graph_commit_actions_title">Commit actions</string>
+    <string name="graph_commit_tags_label">Tags on this commit: %1$d</string>
+    <string name="graph_commit_tags_empty">No tags on this commit</string>
+    <string name="graph_commit_action_reset">Hard reset %1$s to this commit</string>
+    <string name="graph_commit_action_tag_add">Add tag…</string>
+    <string name="graph_commit_action_tag_delete">Remove tag…</string>
+    <string name="graph_commit_action_cherry_pick">Cherry-pick into current branch</string>
+    <string name="graph_commit_action_merge">Merge into %1$s</string>
+    <string name="graph_commit_reset_confirm_title">Reset branch?</string>
+    <string name="graph_commit_reset_confirm_message">Branch %1$s will be hard reset to %2$s. All local changes after this commit will be lost.</string>
+    <string name="graph_commit_reset_success">Branch %1$s reset to %2$s</string>
+    <string name="graph_commit_confirm">Confirm</string>
+    <string name="graph_commit_cancel">Cancel</string>
+    <string name="graph_commit_operation_failed">Operation failed: %1$s</string>
+    <string name="graph_commit_operation_failed_generic">Unknown error</string>
+    <string name="graph_commit_add_tag_title">Add tag to commit</string>
+    <string name="graph_commit_add_tag_hint">Tag name</string>
+    <string name="graph_commit_add_tag_description">Tags help you mark releases and important snapshots.</string>
+    <string name="graph_commit_add_tag_button">Create tag</string>
+    <string name="graph_commit_add_tag_success">Tag %1$s created</string>
+    <string name="graph_commit_delete_tag_title">Remove tag</string>
+    <string name="graph_commit_delete_tag_placeholder">There are no tags on this commit yet.</string>
+    <string name="graph_commit_delete_tag_button">Delete tag</string>
+    <string name="graph_commit_delete_tag_success">Tag %1$s removed</string>
+    <string name="graph_commit_cherry_pick_title">Cherry-pick commit?</string>
+    <string name="graph_commit_cherry_pick_message">Apply commit %1$s on top of the current branch.</string>
+    <string name="graph_commit_cherry_pick_success">Cherry-pick completed</string>
+    <string name="graph_commit_merge_title">Merge commit?</string>
+    <string name="graph_commit_merge_message">Merge commit %1$s into branch %2$s.</string>
+    <string name="graph_commit_merge_success">Merge completed</string>
+
     <!-- DeleteRepositoryDialog -->
     <string name="delete_repo_title">Delete Repository</string>
     <string name="delete_repo_checkbox">Also delete repository files</string>

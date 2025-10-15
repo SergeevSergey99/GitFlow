@@ -218,6 +218,38 @@
     <string name="graph_preset_wide_desc">Широкий вид для графов с множеством веток</string>
     <string name="graph_preset_cancel">Отмена</string>
 
+    <!-- Graph commit actions -->
+    <string name="graph_commit_actions_title">Действия с коммитом</string>
+    <string name="graph_commit_tags_label">Теги у коммита: %1$d</string>
+    <string name="graph_commit_tags_empty">Теги для этого коммита отсутствуют</string>
+    <string name="graph_commit_action_reset">Жёстко откатить %1$s к этому коммиту</string>
+    <string name="graph_commit_action_tag_add">Добавить тег…</string>
+    <string name="graph_commit_action_tag_delete">Удалить тег…</string>
+    <string name="graph_commit_action_cherry_pick">Выполнить cherry-pick в текущую ветку</string>
+    <string name="graph_commit_action_merge">Слить в %1$s</string>
+    <string name="graph_commit_reset_confirm_title">Сбросить ветку?</string>
+    <string name="graph_commit_reset_confirm_message">Ветка %1$s будет жёстко сброшена до %2$s. Все локальные изменения после этого коммита будут потеряны.</string>
+    <string name="graph_commit_reset_success">Ветка %1$s сброшена до %2$s</string>
+    <string name="graph_commit_confirm">Подтвердить</string>
+    <string name="graph_commit_cancel">Отмена</string>
+    <string name="graph_commit_operation_failed">Не удалось выполнить операцию: %1$s</string>
+    <string name="graph_commit_operation_failed_generic">Неизвестная ошибка</string>
+    <string name="graph_commit_add_tag_title">Добавить тег к коммиту</string>
+    <string name="graph_commit_add_tag_hint">Название тега</string>
+    <string name="graph_commit_add_tag_description">Теги помогают помечать релизы и важные снимки.</string>
+    <string name="graph_commit_add_tag_button">Создать тег</string>
+    <string name="graph_commit_add_tag_success">Тег %1$s создан</string>
+    <string name="graph_commit_delete_tag_title">Удалить тег</string>
+    <string name="graph_commit_delete_tag_placeholder">У этого коммита ещё нет тегов.</string>
+    <string name="graph_commit_delete_tag_button">Удалить тег</string>
+    <string name="graph_commit_delete_tag_success">Тег %1$s удалён</string>
+    <string name="graph_commit_cherry_pick_title">Выполнить cherry-pick?</string>
+    <string name="graph_commit_cherry_pick_message">Применить коммит %1$s поверх текущей ветки.</string>
+    <string name="graph_commit_cherry_pick_success">Cherry-pick выполнен</string>
+    <string name="graph_commit_merge_title">Слить коммит?</string>
+    <string name="graph_commit_merge_message">Слить коммит %1$s в ветку %2$s.</string>
+    <string name="graph_commit_merge_success">Слияние завершено</string>
+
     <!-- DeleteRepositoryDialog -->
     <string name="delete_repo_title">Удаление репозитория</string>
     <string name="delete_repo_checkbox">Также удалить файлы репозитория</string>
