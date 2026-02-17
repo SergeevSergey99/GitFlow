@@ -40,6 +40,10 @@ class OAuthActivity : ComponentActivity() {
             "github.com",
             "gitlab.com"
         )
+
+        internal fun isHostAllowed(host: String): Boolean {
+            return ALLOWED_HOSTS.any { host == it || host.endsWith(".$it") }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -151,10 +155,7 @@ fun OAuthScreen(
                                 }
 
                                 val host = request.url?.host ?: return true
-                                val isAllowed = OAuthActivity.ALLOWED_HOSTS.any {
-                                    host == it || host.endsWith(".$it")
-                                }
-                                if (!isAllowed) {
+                                if (!OAuthActivity.isHostAllowed(host)) {
                                     return true // Block navigation to unknown hosts
                                 }
                                 return false

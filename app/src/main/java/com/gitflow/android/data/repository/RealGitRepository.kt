@@ -827,10 +827,11 @@ class RealGitRepository(private val context: Context) {
 
                 val objectId = gitInstance.repository.resolve(commitHash)
                     ?: throw IllegalArgumentException("Cannot resolve commit")
+                val revObject = RevWalk(gitInstance.repository).parseAny(objectId)
 
                 gitInstance.tag()
                     .setName(tagName)
-                    .setObjectId(objectId)
+                    .setObjectId(revObject)
                     .setAnnotated(false)
                     .setForceUpdate(force)
                     .call()
