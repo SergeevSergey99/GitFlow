@@ -24,7 +24,6 @@ import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
-import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.RealGitRepository
 import com.gitflow.android.ui.components.RepositoryCard
@@ -310,24 +309,6 @@ private fun startManualClone(
             val targetName = if (name.isBlank()) fallbackName else name
             val targetPath = "${appDir.absolutePath}/repositories/$targetName"
 
-            val finalUrl = if (!url.contains("@")) {
-                val githubToken = authManager.getAccessToken(GitProvider.GITHUB)
-                when {
-                    !githubToken.isNullOrEmpty() && url.contains("github.com") ->
-                        url.replace("https://", "https://$githubToken@")
-                    else -> {
-                        val gitlabToken = authManager.getAccessToken(GitProvider.GITLAB)
-                        if (!gitlabToken.isNullOrEmpty() && url.contains("gitlab.com")) {
-                            url.replace("https://", "https://$gitlabToken@")
-                        } else {
-                            url
-                        }
-                    }
-                }
-            } else {
-                url
-            }
-
             val resolvedSize = try {
                 approximateSize ?: authManager.getRepositoryApproximateSize(url)
             } catch (e: Exception) {
@@ -338,7 +319,7 @@ private fun startManualClone(
                 context = context,
                 repoName = targetName,
                 repoFullName = url,
-                cloneUrl = finalUrl,
+                cloneUrl = url,
                 localPath = targetPath,
                 approximateSize = resolvedSize
             )

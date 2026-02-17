@@ -12,27 +12,29 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class AuthViewModel : ViewModel() {
-    
+
     private val _githubUser = MutableStateFlow<GitUser?>(null)
     val githubUser: StateFlow<GitUser?> = _githubUser.asStateFlow()
-    
+
     private val _gitlabUser = MutableStateFlow<GitUser?>(null)
     val gitlabUser: StateFlow<GitUser?> = _gitlabUser.asStateFlow()
-    
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
-    
+
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
-    
+
     var currentProvider: GitProvider? = null
         private set
-    
+
+    private var pendingState: String? = null
+
     fun initializeAuth(authManager: AuthManager) {
         _githubUser.value = authManager.getCurrentUser(GitProvider.GITHUB)
         _gitlabUser.value = authManager.getCurrentUser(GitProvider.GITLAB)
     }
-    
+
     fun startAuth(
         provider: GitProvider,
         authManager: AuthManager,
@@ -41,13 +43,15 @@ class AuthViewModel : ViewModel() {
         currentProvider = provider
         _errorMessage.value = null
         _isLoading.value = true
-        
+
         try {
-            val authUrl = authManager.getAuthUrl(provider)
+            val (authUrl, state) = authManager.getAuthUrl(provider)
+            pendingState = state
             val intent = Intent(authManager.context, OAuthActivity::class.java).apply {
                 putExtra(OAuthActivity.EXTRA_PROVIDER, provider.name)
                 putExtra(OAuthActivity.EXTRA_AUTH_URL, authUrl)
                 putExtra(OAuthActivity.EXTRA_REDIRECT_URI, "gitflow://oauth/callback")
+                putExtra(OAuthActivity.EXTRA_STATE, state)
             }
             launchIntent(intent)
         } catch (e: Exception) {
@@ -55,15 +59,15 @@ class AuthViewModel : ViewModel() {
             _errorMessage.value = "Ошибка запуска авторизации: ${e.message}"
         }
     }
-    
-    fun handleAuthCallback(provider: GitProvider, code: String, authManager: AuthManager) {
+
+    fun handleAuthCallback(provider: GitProvider, code: String, state: String, authManager: AuthManager) {
         viewModelScope.launch {
             _isLoading.value = true
             _errorMessage.value = null
-            
+
             try {
-                val result = authManager.handleAuthCallback(provider, code)
-                
+                val result = authManager.handleAuthCallback(provider, code, state)
+
                 if (result.success) {
                     when (provider) {
                         GitProvider.GITHUB -> _githubUser.value = result.user
@@ -77,10 +81,11 @@ class AuthViewModel : ViewModel() {
             } finally {
                 _isLoading.value = false
                 currentProvider = null
+                pendingState = null
             }
         }
     }
-    
+
     fun logout(provider: GitProvider, authManager: AuthManager) {
         authManager.logout(provider)
         when (provider) {
@@ -88,13 +93,14 @@ class AuthViewModel : ViewModel() {
             GitProvider.GITLAB -> _gitlabUser.value = null
         }
     }
-    
+
     fun setError(error: String) {
         _errorMessage.value = error
         _isLoading.value = false
         currentProvider = null
+        pendingState = null
     }
-    
+
     fun clearError() {
         _errorMessage.value = null
     }

@@ -44,9 +44,10 @@ fun AuthScreen(
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val code = result.data?.getStringExtra(OAuthActivity.RESULT_CODE)
+            val state = result.data?.getStringExtra(OAuthActivity.RESULT_STATE)
             val provider = viewModel.currentProvider
-            if (code != null && provider != null) {
-                viewModel.handleAuthCallback(provider, code, authManager)
+            if (code != null && state != null && provider != null) {
+                viewModel.handleAuthCallback(provider, code, state, authManager)
             }
         } else {
             val error = result.data?.getStringExtra(OAuthActivity.RESULT_ERROR) ?: "Авторизация отменена"

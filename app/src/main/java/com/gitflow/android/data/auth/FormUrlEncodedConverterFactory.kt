@@ -21,24 +21,17 @@ class FormUrlEncodedConverterFactory : Converter.Factory() {
     private class FormUrlEncodedConverter : Converter<ResponseBody, GitHubOAuthResponse> {
         override fun convert(value: ResponseBody): GitHubOAuthResponse? {
             val responseString = value.string()
-            android.util.Log.d("FormUrlEncodedConverter", "GitHub OAuth response: $responseString")
             val params = parseUrlEncoded(responseString)
 
-            android.util.Log.d("FormUrlEncodedConverter", "Parsed params: $params")
-
-            // Проверяем на ошибки в ответе
             if (params.containsKey("error")) {
                 val error = params["error"]
                 val errorDescription = params["error_description"] ?: ""
-                android.util.Log.e("FormUrlEncodedConverter", "GitHub OAuth error: $error - $errorDescription")
                 throw IllegalArgumentException("GitHub OAuth error: $error - $errorDescription")
             }
 
             val accessToken = params["access_token"]
             if (accessToken.isNullOrEmpty()) {
-                android.util.Log.e("FormUrlEncodedConverter", "Missing access_token in response. Full response: $responseString")
-                android.util.Log.e("FormUrlEncodedConverter", "Available params: ${params.keys}")
-                throw IllegalArgumentException("Missing access_token in response: $responseString")
+                throw IllegalArgumentException("Missing access_token in OAuth response")
             }
 
             return GitHubOAuthResponse(

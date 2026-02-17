@@ -65,7 +65,6 @@ class CloneProgressCallback(private val trackingKey: String? = null) : ProgressM
     private val progressHistory = mutableListOf<Pair<Long, Int>>() // timestamp, completed work
 
     override fun start(totalTasks: Int) {
-        android.util.Log.d("CloneProgress", "start() called with totalTasks: $totalTasks")
         totalWork = totalTasks
         completedWork = 0
         currentStage = "Starting clone..."
@@ -76,7 +75,6 @@ class CloneProgressCallback(private val trackingKey: String? = null) : ProgressM
     }
 
     override fun beginTask(title: String, totalWork: Int) {
-        android.util.Log.d("CloneProgress", "beginTask() called: $title, totalWork: $totalWork")
         currentStage = title
         this.totalWork = totalWork
         this.completedWork = 0
@@ -139,7 +137,6 @@ class CloneProgressCallback(private val trackingKey: String? = null) : ProgressM
             isCancellable = !cancelled && totalWork > 0
         )
 
-        android.util.Log.d("CloneProgress", "updateProgress: $newProgress")
         _progress.value = newProgress
         trackingKey?.let { CloneProgressTracker.updateProgress(it, newProgress) }
     }
@@ -327,65 +324,32 @@ class RealGitRepository(private val context: Context) {
                 return@withContext Result.failure(Exception("Directory already exists: ${targetDir.absolutePath}"))
             }
 
-            // Создаем родительские директории если они не существуют
             targetDir.parentFile?.mkdirs()
 
-            android.util.Log.d("RealGitRepository", "Начинаем клонирование репозитория")
-            android.util.Log.d("RealGitRepository", "URL: $url")
-            android.util.Log.d("RealGitRepository", "Директория: ${targetDir.absolutePath}")
-
-            // Проверяем, содержит ли URL токен
-            val (cleanUrl, token) = if (url.contains("@")) {
-                android.util.Log.d("RealGitRepository", "URL содержит токен, извлекаем его")
-                val tokenMatch = Regex("https://([^@]+)@(.+)").find(url)
-                if (tokenMatch != null) {
-                    val extractedToken = tokenMatch.groupValues[1]
-                    val cleanUrlValue = "https://${tokenMatch.groupValues[2]}"
-                    android.util.Log.d("RealGitRepository", "Чистый URL: $cleanUrlValue")
-                    android.util.Log.d("RealGitRepository", "Токен: ${extractedToken.take(7)}...")
-                    Pair(cleanUrlValue, extractedToken)
-                } else {
-                    Pair(url, null)
-                }
-            } else {
-                android.util.Log.d("RealGitRepository", "URL не содержит токен")
-                Pair(url, null)
-            }
-
             val cloneCommand = Git.cloneRepository()
-                .setURI(cleanUrl)
+                .setURI(url)
                 .setDirectory(targetDir)
 
-            // Настраиваем аутентификацию если есть токен
-            token?.let {
-                android.util.Log.d("RealGitRepository", "Настраиваем CredentialsProvider с токеном")
-                val credentialsProvider = org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider(it, "")
-                cloneCommand.setCredentialsProvider(credentialsProvider)
+            resolveCredentialsProvider(url)?.let {
+                cloneCommand.setCredentialsProvider(it)
             }
 
-            // Добавляем прогресс мониторинг если предоставлен
             progressCallback?.let {
-                android.util.Log.d("RealGitRepository", "Setting progress monitor: $it")
                 cloneCommand.setProgressMonitor(it)
             }
 
             val git = try {
                 cloneCommand.call()
             } catch (e: Exception) {
-                // Проверяем, была ли операция отменена
                 if (progressCallback?.isCancelled() == true) {
-                    android.util.Log.d("RealGitRepository", "Клонирование отменено пользователем")
-                    // Очищаем частично загруженные файлы
                     if (targetDir.exists()) {
                         targetDir.deleteRecursively()
-                        android.util.Log.d("RealGitRepository", "Удалены частично загруженные файлы: ${targetDir.absolutePath}")
                     }
                     return@withContext Result.failure(Exception("Clone cancelled by user"))
                 } else {
                     throw e
                 }
             }
-            android.util.Log.d("RealGitRepository", "Клонирование завершено успешно")
 
             val name = targetDir.name
             val currentBranch = git.repository.branch
@@ -1012,11 +976,8 @@ class RealGitRepository(private val context: Context) {
 
     suspend fun getCommitDiffs(commit: Commit, repository: com.gitflow.android.data.models.Repository): List<FileDiff> = withContext(Dispatchers.IO) {
         try {
-            android.util.Log.d("RealGitRepository", "Getting diffs for commit: ${commit.hash} in repository: ${repository.name}")
-
             val git = openRepository(repository.path)
             if (git == null) {
-                android.util.Log.e("RealGitRepository", "Failed to open repository: ${repository.path}")
                 return@withContext emptyList()
             }
 
@@ -1042,8 +1003,6 @@ class RealGitRepository(private val context: Context) {
                     .setNewTree(newTreeParser)
                     .call()
 
-                android.util.Log.d("RealGitRepository", "Found ${diffEntries.size} diff entries")
-
                 for (diffEntry in diffEntries) {
                     val outputStream = ByteArrayOutputStream()
                     val formatter = DiffFormatter(outputStream)
@@ -1052,7 +1011,6 @@ class RealGitRepository(private val context: Context) {
                     formatter.close()
 
                     val diffText = outputStream.toString()
-                    android.util.Log.d("RealGitRepository", "Processing diff for file: ${diffEntry.newPath ?: diffEntry.oldPath}")
                     val fileDiff = parseDiffText(diffEntry, diffText)
                     diffs.add(fileDiff)
                 }
@@ -1098,50 +1056,37 @@ class RealGitRepository(private val context: Context) {
 
             revWalk.close()
             git.close()
-            android.util.Log.d("RealGitRepository", "Returning ${diffs.size} diffs")
             diffs
         } catch (e: Exception) {
-            android.util.Log.e("RealGitRepository", "Error getting commit diffs", e)
             emptyList()
         }
     }
 
     suspend fun getCommitDiffs(commit: Commit): List<FileDiff> = withContext(Dispatchers.IO) {
         try {
-            android.util.Log.d("RealGitRepository", "Getting diffs for commit: ${commit.hash}")
-
             // Находим репозиторий по коммиту
             val repositories = getRepositories()
-            android.util.Log.d("RealGitRepository", "Searching through ${repositories.size} repositories for commit")
 
             val repo = repositories.find { repository ->
                 try {
-                    android.util.Log.d("RealGitRepository", "Checking repository: ${repository.name} at ${repository.path}")
                     val git = openRepository(repository.path)
                     if (git == null) {
-                        android.util.Log.w("RealGitRepository", "Could not open repository at ${repository.path}")
                         return@find false
                     }
                     val hasCommit = git.repository.resolve(commit.hash) != null
-                    android.util.Log.d("RealGitRepository", "Repository ${repository.name} has commit ${commit.hash}: $hasCommit")
                     git.close()
                     hasCommit
                 } catch (e: Exception) {
-                    android.util.Log.e("RealGitRepository", "Error checking repository ${repository.name}", e)
                     false
                 }
             }
 
             if (repo == null) {
-                android.util.Log.e("RealGitRepository", "Repository not found for commit: ${commit.hash}")
                 return@withContext emptyList()
             }
 
-            android.util.Log.d("RealGitRepository", "Found repository: ${repo.name}")
-
             val git = openRepository(repo.path)
             if (git == null) {
-                android.util.Log.e("RealGitRepository", "Failed to open repository: ${repo.path}")
                 return@withContext emptyList()
             }
 
@@ -1167,8 +1112,6 @@ class RealGitRepository(private val context: Context) {
                     .setNewTree(newTreeParser)
                     .call()
 
-                android.util.Log.d("RealGitRepository", "Found ${diffEntries.size} diff entries")
-
                 for (diffEntry in diffEntries) {
                     val outputStream = ByteArrayOutputStream()
                     val formatter = DiffFormatter(outputStream)
@@ -1177,7 +1120,6 @@ class RealGitRepository(private val context: Context) {
                     formatter.close()
 
                     val diffText = outputStream.toString()
-                    android.util.Log.d("RealGitRepository", "Processing diff for file: ${diffEntry.newPath ?: diffEntry.oldPath}")
                     val fileDiff = parseDiffText(diffEntry, diffText)
                     diffs.add(fileDiff)
                 }
@@ -1223,10 +1165,8 @@ class RealGitRepository(private val context: Context) {
 
             revWalk.close()
             git.close()
-            android.util.Log.d("RealGitRepository", "Returning ${diffs.size} diffs")
             diffs
         } catch (e: Exception) {
-            android.util.Log.e("RealGitRepository", "Error getting commit diffs", e)
             emptyList()
         }
     }
@@ -1297,11 +1237,8 @@ class RealGitRepository(private val context: Context) {
 
     suspend fun getCommitFileTree(commit: Commit, repository: com.gitflow.android.data.models.Repository): FileTreeNode = withContext(Dispatchers.IO) {
         try {
-            android.util.Log.d("RealGitRepository", "Getting file tree for commit: ${commit.hash} in repository: ${repository.name}")
-
             val git = openRepository(repository.path)
             if (git == null) {
-                android.util.Log.e("RealGitRepository", "Failed to open repository: ${repository.path}")
                 return@withContext FileTreeNode("", "", FileTreeNodeType.DIRECTORY)
             }
 
@@ -1334,25 +1271,19 @@ class RealGitRepository(private val context: Context) {
                 )
             }
 
-            android.util.Log.d("RealGitRepository", "Found ${files.size} files in commit")
-
             treeWalk.close()
             revWalk.close()
             git.close()
 
             val result = buildFileTree(files)
-            android.util.Log.d("RealGitRepository", "Built file tree with ${result.children.size} root items")
             result
         } catch (e: Exception) {
-            android.util.Log.e("RealGitRepository", "Error getting commit file tree", e)
             FileTreeNode("", "", FileTreeNodeType.DIRECTORY)
         }
     }
 
     suspend fun getCommitFileTree(commit: Commit): FileTreeNode = withContext(Dispatchers.IO) {
         try {
-            android.util.Log.d("RealGitRepository", "Getting file tree for commit: ${commit.hash}")
-
             // Находим репозиторий по коммиту
             val repositories = getRepositories()
             val repo = repositories.find { repository ->
@@ -1367,15 +1298,11 @@ class RealGitRepository(private val context: Context) {
             }
 
             if (repo == null) {
-                android.util.Log.e("RealGitRepository", "Repository not found for commit: ${commit.hash}")
                 return@withContext FileTreeNode("", "", FileTreeNodeType.DIRECTORY)
             }
 
-            android.util.Log.d("RealGitRepository", "Found repository: ${repo.name}")
-
             val git = openRepository(repo.path)
             if (git == null) {
-                android.util.Log.e("RealGitRepository", "Failed to open repository: ${repo.path}")
                 return@withContext FileTreeNode("", "", FileTreeNodeType.DIRECTORY)
             }
 
@@ -1408,17 +1335,13 @@ class RealGitRepository(private val context: Context) {
                 )
             }
 
-            android.util.Log.d("RealGitRepository", "Found ${files.size} files in commit")
-
             treeWalk.close()
             revWalk.close()
             git.close()
 
             val result = buildFileTree(files)
-            android.util.Log.d("RealGitRepository", "Built file tree with ${result.children.size} root items")
             result
         } catch (e: Exception) {
-            android.util.Log.e("RealGitRepository", "Error getting commit file tree", e)
             FileTreeNode("", "", FileTreeNodeType.DIRECTORY)
         }
     }
@@ -1568,7 +1491,6 @@ class RealGitRepository(private val context: Context) {
             }
             commits
         } catch (e: Exception) {
-            android.util.Log.e("RealGitRepository", "Error fetching history for $filePath", e)
             emptyList()
         } finally {
             git.close()
@@ -1715,7 +1637,6 @@ class RealGitRepository(private val context: Context) {
                 .call()
             true
         } catch (e: Exception) {
-            android.util.Log.e("RealGitRepository", "Error restoring file from commit $sourceCommitHash", e)
             false
         } finally {
             git.close()
@@ -1743,7 +1664,6 @@ class RealGitRepository(private val context: Context) {
                 .call()
             true
         } catch (e: Exception) {
-            android.util.Log.e("RealGitRepository", "Error restoring file to parent of $commitHash", e)
             false
         } finally {
             git.close()

@@ -2,6 +2,8 @@ package com.gitflow.android.data.auth
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import com.gitflow.android.data.models.*
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
@@ -12,41 +14,58 @@ import java.net.URI
 import java.net.URLEncoder
 
 class AuthManager(val context: Context) {
-    
-    private val preferences: SharedPreferences = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-    private val gson = Gson()
-    
-    init {
-        try {
-            android.util.Log.d("AuthManager", "Начинаем инициализацию AuthManager")
-            OAuthConfig.initialize(context)
 
-            // Проверка инициализации OAuth конфигурации
-            if (!OAuthConfig.isConfigured()) {
-                android.util.Log.w("AuthManager", "OAuth конфигурация не загружена! Проверьте наличие oauth.properties файла или переменных окружения")
-            } else {
-                android.util.Log.i("AuthManager", "OAuth конфигурация успешно загружена")
-            }
-            android.util.Log.d("AuthManager", "AuthManager инициализирован успешно")
-        } catch (e: Exception) {
-            android.util.Log.e("AuthManager", "Ошибка инициализации AuthManager: ${e.message}", e)
-            throw e
-        }
+    private val preferences: SharedPreferences = createEncryptedPreferences()
+    private val gson = Gson()
+
+    // In-memory map: state -> code_verifier (for PKCE)
+    private val pendingAuthStates = mutableMapOf<String, String>()
+
+    init {
+        OAuthConfig.initialize(context)
+        migrateFromUnencryptedPrefs()
     }
-    
+
+    private fun createEncryptedPreferences(): SharedPreferences {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        return EncryptedSharedPreferences.create(
+            context,
+            "auth_prefs_encrypted",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }
+
+    private fun migrateFromUnencryptedPrefs() {
+        val oldPrefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+        if (oldPrefs.all.isEmpty()) return
+
+        val editor = preferences.edit()
+        for ((key, value) in oldPrefs.all) {
+            when (value) {
+                is String -> editor.putString(key, value)
+            }
+        }
+        editor.apply()
+        oldPrefs.edit().clear().apply()
+    }
+
     companion object {
-        
+
         private const val GITHUB_AUTH_URL = "https://github.com/login/oauth/authorize"
         private const val GITHUB_API_URL = "https://api.github.com/"
         private const val GITLAB_AUTH_URL = "https://gitlab.com/oauth/authorize"
         private const val GITLAB_API_URL = "https://gitlab.com/"
-        
+
         private const val KEY_GITHUB_TOKEN = "github_token"
         private const val KEY_GITLAB_TOKEN = "gitlab_token"
         private const val KEY_GITHUB_USER = "github_user"
         private const val KEY_GITLAB_USER = "gitlab_user"
     }
-    
+
     private val githubTokenApi: GitHubApi by lazy {
         val okHttpClient = okhttp3.OkHttpClient.Builder()
             .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
@@ -76,7 +95,7 @@ class AuthManager(val context: Context) {
             .build()
             .create(GitHubApi::class.java)
     }
-    
+
     private val gitlabApi: GitLabApi by lazy {
         Retrofit.Builder()
             .baseUrl(GITLAB_API_URL)
@@ -84,128 +103,130 @@ class AuthManager(val context: Context) {
             .build()
             .create(GitLabApi::class.java)
     }
-    
-    // Генерация URL для авторизации
-    fun getAuthUrl(provider: GitProvider): String {
+
+    /**
+     * Returns (authUrl, state) pair. The state must be passed to OAuthActivity
+     * and validated on callback.
+     */
+    fun getAuthUrl(provider: GitProvider): Pair<String, String> {
         if (!OAuthConfig.isConfigured()) {
             throw IllegalStateException("OAuth конфигурация не загружена! Проверьте наличие oauth.properties файла или переменных окружения")
         }
-        
-        return when (provider) {
+
+        val codeVerifier = PKCEHelper.generateCodeVerifier()
+        val codeChallenge = PKCEHelper.generateCodeChallenge(codeVerifier)
+        val state = java.util.UUID.randomUUID().toString()
+
+        pendingAuthStates[state] = codeVerifier
+
+        val url = when (provider) {
             GitProvider.GITHUB -> {
                 val scope = URLEncoder.encode("repo user", "UTF-8")
-                "$GITHUB_AUTH_URL?client_id=${OAuthConfig.githubClientId}&redirect_uri=${URLEncoder.encode(OAuthConfig.REDIRECT_URI, "UTF-8")}&scope=$scope&response_type=code"
+                "$GITHUB_AUTH_URL?client_id=${OAuthConfig.githubClientId}" +
+                    "&redirect_uri=${URLEncoder.encode(OAuthConfig.REDIRECT_URI, "UTF-8")}" +
+                    "&scope=$scope&response_type=code" +
+                    "&code_challenge=${URLEncoder.encode(codeChallenge, "UTF-8")}" +
+                    "&code_challenge_method=S256" +
+                    "&state=${URLEncoder.encode(state, "UTF-8")}"
             }
             GitProvider.GITLAB -> {
                 val scope = URLEncoder.encode("read_user read_repository write_repository", "UTF-8")
-                "$GITLAB_AUTH_URL?client_id=${OAuthConfig.gitlabClientId}&redirect_uri=${URLEncoder.encode(OAuthConfig.REDIRECT_URI, "UTF-8")}&scope=$scope&response_type=code"
+                "$GITLAB_AUTH_URL?client_id=${OAuthConfig.gitlabClientId}" +
+                    "&redirect_uri=${URLEncoder.encode(OAuthConfig.REDIRECT_URI, "UTF-8")}" +
+                    "&scope=$scope&response_type=code" +
+                    "&code_challenge=${URLEncoder.encode(codeChallenge, "UTF-8")}" +
+                    "&code_challenge_method=S256" +
+                    "&state=${URLEncoder.encode(state, "UTF-8")}"
             }
         }
+        return Pair(url, state)
     }
-    
-    // Обработка OAuth callback
-    suspend fun handleAuthCallback(provider: GitProvider, code: String): AuthResult = withContext(Dispatchers.IO) {
+
+    suspend fun handleAuthCallback(provider: GitProvider, code: String, state: String): AuthResult = withContext(Dispatchers.IO) {
         try {
+            val codeVerifier = pendingAuthStates.remove(state)
+                ?: return@withContext AuthResult(success = false, error = "Invalid or expired OAuth state")
+
             when (provider) {
-                GitProvider.GITHUB -> handleGitHubCallback(code)
-                GitProvider.GITLAB -> handleGitLabCallback(code)
+                GitProvider.GITHUB -> handleGitHubCallback(code, codeVerifier)
+                GitProvider.GITLAB -> handleGitLabCallback(code, codeVerifier)
             }
         } catch (e: Exception) {
             AuthResult(success = false, error = e.message ?: "Ошибка авторизации")
         }
     }
-    
-    private suspend fun handleGitHubCallback(code: String): AuthResult {
+
+    private suspend fun handleGitHubCallback(code: String, codeVerifier: String): AuthResult {
         try {
             val tokenRequest = mapOf(
                 "client_id" to OAuthConfig.githubClientId,
                 "client_secret" to OAuthConfig.githubClientSecret,
                 "code" to code,
-                "redirect_uri" to OAuthConfig.REDIRECT_URI
+                "redirect_uri" to OAuthConfig.REDIRECT_URI,
+                "code_verifier" to codeVerifier
             )
 
-            android.util.Log.d("AuthManager", "Отправляем запрос на получение токена GitHub")
-            android.util.Log.d("AuthManager", "Client ID: ${OAuthConfig.githubClientId}")
-            android.util.Log.d("AuthManager", "Code: $code")
             val tokenResponse = githubTokenApi.getAccessToken(tokenRequest)
 
             if (!tokenResponse.isSuccessful) {
-                val errorBody = tokenResponse.errorBody()?.string()
-                android.util.Log.e("AuthManager", "Ошибка получения токена: ${tokenResponse.code()}, $errorBody")
                 return AuthResult(success = false, error = "Не удалось получить токен: ${tokenResponse.code()}")
             }
-            
-            val oauthResponse = tokenResponse.body()!!
-            android.util.Log.d("AuthManager", "Токен GitHub успешно получен")
+
+            val oauthResponse = tokenResponse.body()
+                ?: return AuthResult(success = false, error = "Empty token response")
 
             val token = OAuthToken(
                 accessToken = oauthResponse.access_token,
                 tokenType = oauthResponse.token_type,
                 scope = oauthResponse.scope
             )
-            android.util.Log.d("AuthManager", "Access Token: ${token.accessToken}")
-            android.util.Log.d("AuthManager", "Token Type: ${token.tokenType}")
-            android.util.Log.d("AuthManager", "Scope: ${token.scope}")
 
-            android.util.Log.d("AuthManager", "Начинаем запрос к GitHub API для получения пользователя")
             val userResponse = try {
-                val response = githubApi.getCurrentUser("Bearer ${token.accessToken}")
-                android.util.Log.d("AuthManager", "Запрос к GitHub API выполнен")
-                android.util.Log.d("AuthManager", "userResponse isSuccessful: ${response.isSuccessful}")
-                android.util.Log.d("AuthManager", "userResponse code: ${response.code()}")
-                response
+                githubApi.getCurrentUser("Bearer ${token.accessToken}")
             } catch (e: Exception) {
-                android.util.Log.e("AuthManager", "Ошибка при выполнении запроса к GitHub API: ${e.message}", e)
                 return AuthResult(success = false, error = "Ошибка сети: ${e.message}")
             }
 
             if (!userResponse.isSuccessful) {
-                val errorBody = userResponse.errorBody()?.string()
-                android.util.Log.e("AuthManager", "Ошибка получения пользователя: ${userResponse.code()}, $errorBody")
                 return AuthResult(success = false, error = "Не удалось получить информацию о пользователе: ${userResponse.code()}")
             }
 
-            android.util.Log.d("AuthManager", "Успешно получен ответ от GitHub API для пользователя")
-            val user = try {
-                val githubUser = userResponse.body()!!
-                android.util.Log.d("AuthManager", "GitHub пользователь: ${githubUser.login}, id: ${githubUser.id}")
-                GitUser(
-                    id = githubUser.id,
-                    login = githubUser.login,
-                    name = githubUser.name,
-                    email = githubUser.email,
-                    avatarUrl = githubUser.avatar_url,
-                    provider = GitProvider.GITHUB
-                )
-            } catch (e: Exception) {
-                android.util.Log.e("AuthManager", "Ошибка парсинга пользователя GitHub: ${e.message}", e)
-                return AuthResult(success = false, error = "Ошибка парсинга пользователя: ${e.message}")
-            }
-            
-            // Сохраняем токен и пользователя
+            val githubUser = userResponse.body()
+                ?: return AuthResult(success = false, error = "Empty user response")
+            val user = GitUser(
+                id = githubUser.id,
+                login = githubUser.login,
+                name = githubUser.name,
+                email = githubUser.email,
+                avatarUrl = githubUser.avatar_url,
+                provider = GitProvider.GITHUB
+            )
+
             saveToken(GitProvider.GITHUB, token)
             saveUser(GitProvider.GITHUB, user)
-            
+
             return AuthResult(success = true, user = user, token = token)
         } catch (e: Exception) {
             return AuthResult(success = false, error = e.message ?: "Ошибка авторизации GitHub")
         }
     }
-    
-    private suspend fun handleGitLabCallback(code: String): AuthResult {
+
+    private suspend fun handleGitLabCallback(code: String, codeVerifier: String): AuthResult {
         try {
             val tokenResponse = gitlabApi.getAccessToken(
                 clientId = OAuthConfig.gitlabClientId,
                 clientSecret = OAuthConfig.gitlabClientSecret,
                 code = code,
-                redirectUri = OAuthConfig.REDIRECT_URI
+                redirectUri = OAuthConfig.REDIRECT_URI,
+                codeVerifier = codeVerifier
             )
-            
+
             if (!tokenResponse.isSuccessful) {
                 return AuthResult(success = false, error = "Не удалось получить токен")
             }
-            
-            val oauthResponse = tokenResponse.body()!!
+
+            val oauthResponse = tokenResponse.body()
+                ?: return AuthResult(success = false, error = "Empty token response")
             val token = OAuthToken(
                 accessToken = oauthResponse.access_token,
                 tokenType = oauthResponse.token_type,
@@ -213,13 +234,14 @@ class AuthManager(val context: Context) {
                 refreshToken = oauthResponse.refresh_token,
                 expiresAt = oauthResponse.expires_in?.let { System.currentTimeMillis() + (it * 1000) }
             )
-            
+
             val userResponse = gitlabApi.getCurrentUser("Bearer ${token.accessToken}")
             if (!userResponse.isSuccessful) {
                 return AuthResult(success = false, error = "Не удалось получить информацию о пользователе")
             }
-            
-            val gitlabUser = userResponse.body()!!
+
+            val gitlabUser = userResponse.body()
+                ?: return AuthResult(success = false, error = "Empty user response")
             val user = GitUser(
                 id = gitlabUser.id,
                 login = gitlabUser.username,
@@ -228,141 +250,80 @@ class AuthManager(val context: Context) {
                 avatarUrl = gitlabUser.avatar_url,
                 provider = GitProvider.GITLAB
             )
-            
-            // Сохраняем токен и пользователя
+
             saveToken(GitProvider.GITLAB, token)
             saveUser(GitProvider.GITLAB, user)
-            
+
             return AuthResult(success = true, user = user, token = token)
         } catch (e: Exception) {
             return AuthResult(success = false, error = e.message ?: "Ошибка авторизации GitLab")
         }
     }
-    
-    // Получение списка доступных репозиториев
+
     suspend fun getRepositories(provider: GitProvider): List<GitRemoteRepository> = withContext(Dispatchers.IO) {
-        try {
-            android.util.Log.d("AuthManager", "Начинаем получение репозиториев для провайдера: $provider")
+        val token = getToken(provider)
+            ?: throw Exception("Токен не найден для провайдера $provider")
 
-            val token = getToken(provider)
-            if (token == null) {
-                android.util.Log.e("AuthManager", "Токен не найден для провайдера: $provider")
-                throw Exception("Токен не найден для провайдера $provider")
-            }
+        val authHeader = "Bearer ${token.accessToken}"
 
-            val authHeader = "Bearer ${token.accessToken}"
-            android.util.Log.d("AuthManager", "Токен найден, выполняем запрос к API")
-
-            val repositories = when (provider) {
-                GitProvider.GITHUB -> getGitHubRepositories(authHeader)
-                GitProvider.GITLAB -> getGitLabRepositories(authHeader)
-            }
-
-            android.util.Log.d("AuthManager", "Получено ${repositories.size} репозиториев для провайдера $provider")
-            repositories
-        } catch (e: Exception) {
-            android.util.Log.e("AuthManager", "Ошибка при получении репозиториев для провайдера $provider: ${e.message}", e)
-            throw e
+        when (provider) {
+            GitProvider.GITHUB -> getGitHubRepositories(authHeader)
+            GitProvider.GITLAB -> getGitLabRepositories(authHeader)
         }
     }
-    
+
     private suspend fun getGitHubRepositories(authHeader: String): List<GitRemoteRepository> {
-        try {
-            android.util.Log.d("AuthManager", "Запрашиваем репозитории пользователя от GitHub API")
-            val repositories = mutableListOf<GitRemoteRepository>()
+        val repositories = mutableListOf<GitRemoteRepository>()
 
-            // Получаем репозитории пользователя
-            val userReposResponse = githubApi.getUserRepositories(authHeader)
-            android.util.Log.d("AuthManager", "Ответ от getUserRepositories: код ${userReposResponse.code()}, успешно: ${userReposResponse.isSuccessful}")
+        val userReposResponse = githubApi.getUserRepositories(authHeader)
 
-            if (userReposResponse.isSuccessful) {
-                val userRepos = userReposResponse.body()
-                android.util.Log.d("AuthManager", "Получено ${userRepos?.size ?: 0} репозиториев пользователя")
-                userRepos?.forEach { repo ->
-                    repositories.add(repo.toGitRemoteRepository())
-                }
-            } else {
-                val errorBody = userReposResponse.errorBody()?.string()
-                android.util.Log.e("AuthManager", "Ошибка получения репозиториев пользователя: ${userReposResponse.code()}, $errorBody")
-                throw Exception("Ошибка получения репозиториев пользователя: ${userReposResponse.code()}")
+        if (userReposResponse.isSuccessful) {
+            userReposResponse.body()?.forEach { repo ->
+                repositories.add(repo.toGitRemoteRepository())
             }
+        } else {
+            throw Exception("Ошибка получения репозиториев пользователя: ${userReposResponse.code()}")
+        }
 
-            // Получаем репозитории организаций
-            try {
-                android.util.Log.d("AuthManager", "Запрашиваем организации пользователя")
-                val orgsResponse = githubApi.getUserOrganizations(authHeader)
-                android.util.Log.d("AuthManager", "Ответ от getUserOrganizations: код ${orgsResponse.code()}, успешно: ${orgsResponse.isSuccessful}")
-
-                if (orgsResponse.isSuccessful) {
-                    val orgs = orgsResponse.body()
-                    android.util.Log.d("AuthManager", "Найдено ${orgs?.size ?: 0} организаций")
-                    orgs?.forEach { org ->
-                        try {
-                            android.util.Log.d("AuthManager", "Запрашиваем репозитории для организации: ${org.login}")
-                            val orgReposResponse = githubApi.getOrganizationRepositories(authHeader, org.login)
-                            if (orgReposResponse.isSuccessful) {
-                                val orgRepos = orgReposResponse.body()
-                                android.util.Log.d("AuthManager", "Получено ${orgRepos?.size ?: 0} репозиториев для организации ${org.login}")
-                                orgRepos?.forEach { repo ->
-                                    repositories.add(repo.toGitRemoteRepository())
-                                }
-                            } else {
-                                android.util.Log.w("AuthManager", "Не удалось получить репозитории для организации ${org.login}: ${orgReposResponse.code()}")
+        try {
+            val orgsResponse = githubApi.getUserOrganizations(authHeader)
+            if (orgsResponse.isSuccessful) {
+                orgsResponse.body()?.forEach { org ->
+                    try {
+                        val orgReposResponse = githubApi.getOrganizationRepositories(authHeader, org.login)
+                        if (orgReposResponse.isSuccessful) {
+                            orgReposResponse.body()?.forEach { repo ->
+                                repositories.add(repo.toGitRemoteRepository())
                             }
-                        } catch (e: Exception) {
-                            android.util.Log.w("AuthManager", "Ошибка при получении репозиториев организации ${org.login}: ${e.message}")
                         }
-                    }
-                } else {
-                    android.util.Log.w("AuthManager", "Не удалось получить список организаций: ${orgsResponse.code()}")
+                    } catch (_: Exception) { }
                 }
-            } catch (e: Exception) {
-                android.util.Log.w("AuthManager", "Ошибка при получении организаций: ${e.message}. Продолжаем только с пользовательскими репозиториями")
             }
+        } catch (_: Exception) { }
 
-            val result = repositories.distinctBy { it.id }
-            android.util.Log.d("AuthManager", "Итого уникальных репозиториев GitHub: ${result.size}")
-            return result
-        } catch (e: Exception) {
-            android.util.Log.e("AuthManager", "Ошибка в getGitHubRepositories: ${e.message}", e)
-            throw e
-        }
+        return repositories.distinctBy { it.id }
     }
-    
+
     private suspend fun getGitLabRepositories(authHeader: String): List<GitRemoteRepository> {
-        try {
-            android.util.Log.d("AuthManager", "Запрашиваем проекты пользователя от GitLab API")
-            val repositories = mutableListOf<GitRemoteRepository>()
+        val repositories = mutableListOf<GitRemoteRepository>()
 
-            // Получаем проекты пользователя
-            val projectsResponse = gitlabApi.getUserProjects(authHeader)
-            android.util.Log.d("AuthManager", "Ответ от getUserProjects: код ${projectsResponse.code()}, успешно: ${projectsResponse.isSuccessful}")
+        val projectsResponse = gitlabApi.getUserProjects(authHeader)
 
-            if (projectsResponse.isSuccessful) {
-                val projects = projectsResponse.body()
-                android.util.Log.d("AuthManager", "Получено ${projects?.size ?: 0} проектов GitLab")
-                projects?.forEach { project ->
-                    repositories.add(project.toGitRemoteRepository())
-                }
-            } else {
-                val errorBody = projectsResponse.errorBody()?.string()
-                android.util.Log.e("AuthManager", "Ошибка получения проектов GitLab: ${projectsResponse.code()}, $errorBody")
-                throw Exception("Ошибка получения проектов GitLab: ${projectsResponse.code()}")
+        if (projectsResponse.isSuccessful) {
+            projectsResponse.body()?.forEach { project ->
+                repositories.add(project.toGitRemoteRepository())
             }
-
-            android.util.Log.d("AuthManager", "Итого репозиториев GitLab: ${repositories.size}")
-            return repositories
-        } catch (e: Exception) {
-            android.util.Log.e("AuthManager", "Ошибка в getGitLabRepositories: ${e.message}", e)
-            throw e
+        } else {
+            throw Exception("Ошибка получения проектов GitLab: ${projectsResponse.code()}")
         }
+
+        return repositories
     }
-    
-    // Проверка авторизации
+
     fun isAuthenticated(provider: GitProvider): Boolean {
         return getToken(provider) != null
     }
-    
+
     fun getCurrentUser(provider: GitProvider): GitUser? {
         val userJson = when (provider) {
             GitProvider.GITHUB -> preferences.getString(KEY_GITHUB_USER, null)
@@ -375,7 +336,6 @@ class AuthManager(val context: Context) {
         return getToken(provider)?.accessToken
     }
 
-    // Выход из аккаунта
     fun logout(provider: GitProvider) {
         val editor = preferences.edit()
         when (provider) {
@@ -398,7 +358,6 @@ class AuthManager(val context: Context) {
         val uri = try {
             URI(normalizedUrl)
         } catch (e: Exception) {
-            android.util.Log.w("AuthManager", "Не удалось разобрать URL репозитория: $rawUrl", e)
             return@withContext null
         }
 
@@ -413,47 +372,19 @@ class AuthManager(val context: Context) {
                 else -> null
             }
         } catch (e: Exception) {
-            android.util.Log.w("AuthManager", "Ошибка при попытке получить размер репозитория: ${e.message}", e)
             null
         }
     }
 
-    // Получение токена для клонирования
-    fun getCloneUrl(repository: GitRemoteRepository, useHttps: Boolean = true): String? {
-        android.util.Log.d("AuthManager", "getCloneUrl вызван для репозитория: ${repository.fullName}")
-        android.util.Log.d("AuthManager", "Provider: ${repository.provider}")
-
-        val token = getToken(repository.provider)
-        if (token == null) {
-            android.util.Log.e("AuthManager", "Токен не найден для провайдера: ${repository.provider}")
-            return null
-        }
-
-        android.util.Log.d("AuthManager", "Формируем clone URL для репозитория: ${repository.fullName}")
-        android.util.Log.d("AuthManager", "Оригинальный clone URL: ${repository.cloneUrl}")
-        android.util.Log.d("AuthManager", "Токен найден: ${token.accessToken.take(7)}...")
-
-        return if (useHttps) {
-            val cloneUrl = when (repository.provider) {
-                GitProvider.GITHUB -> {
-                    // Для GitHub используем токен в URL с именем пользователя
-                    repository.cloneUrl.replace("https://", "https://${token.accessToken}@")
-                }
-                GitProvider.GITLAB -> {
-                    // Для GitLab используем токен в URL
-                    repository.cloneUrl.replace("https://", "https://oauth2:${token.accessToken}@")
-                }
-            }
-            android.util.Log.d("AuthManager", "Итоговый clone URL: $cloneUrl")
-            cloneUrl
-        } else {
-            // SSH URL не требует токена в URL, но требует настроенного SSH ключа
-            android.util.Log.d("AuthManager", "Используем SSH URL: ${repository.sshUrl}")
-            repository.sshUrl
-        }
+    /**
+     * Returns the clean clone URL without embedded tokens.
+     * Authentication is handled by RealGitRepository.resolveCredentialsProvider().
+     */
+    fun getCloneUrl(repository: GitRemoteRepository): String? {
+        val token = getToken(repository.provider) ?: return null
+        return repository.cloneUrl
     }
-    
-    // Приватные методы для работы с хранением
+
     private fun saveToken(provider: GitProvider, token: OAuthToken) {
         val key = when (provider) {
             GitProvider.GITHUB -> KEY_GITHUB_TOKEN
@@ -461,7 +392,7 @@ class AuthManager(val context: Context) {
         }
         preferences.edit().putString(key, gson.toJson(token)).apply()
     }
-    
+
     private fun saveUser(provider: GitProvider, user: GitUser) {
         val key = when (provider) {
             GitProvider.GITHUB -> KEY_GITHUB_USER
@@ -469,7 +400,7 @@ class AuthManager(val context: Context) {
         }
         preferences.edit().putString(key, gson.toJson(user)).apply()
     }
-    
+
     private fun getToken(provider: GitProvider): OAuthToken? {
         val key = when (provider) {
             GitProvider.GITHUB -> KEY_GITHUB_TOKEN
