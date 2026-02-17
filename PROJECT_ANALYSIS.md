@@ -101,7 +101,7 @@ repository.cloneUrl.replace("https://", "https://${token.accessToken}@")
 android.util.Log.d("AuthManager", "Итоговый clone URL: $cloneUrl") // Полный токен в логе!
 ```
 
-**Рекомендация:** Использовать `CredentialsProvider` в JGit вместо встраивания токена в URL. В `RealGitRepository.kt:355-363` этот подход уже частично реализован - нужно использовать его повсеместно.
+**Рекомендация:** Использовать `CredentialsProvider` в JGit вместо встраивания токена в URL. В `GitRepository.kt:355-363` этот подход уже частично реализован - нужно использовать его повсеместно.
 
 ### 2.4 Отсутствие PKCE в OAuth
 - **Файл:** `AuthManager.kt:89-103`
@@ -156,7 +156,7 @@ val oauthResponse = tokenResponse.body()!!  // Crash при null body
 
 ```kotlin
 // MainScreen.kt:31 - антипаттерн:
-val gitRepository = remember { RealGitRepository(context) }
+val gitRepository = remember { GitRepository(context) }
 
 // SettingsScreen.kt:51-52 - то же самое:
 val authManager = remember { AuthManager(context) }
@@ -175,11 +175,11 @@ class MainViewModel @Inject constructor(
 | Файл | Строк | Проблема |
 |------|-------|----------|
 | `CommitDetailDialog.kt` | **2895** | UI + логика в одном файле |
-| `RealGitRepository.kt` | **2199** | Все Git-операции в одном классе |
+| `GitRepository.kt` | **2199** | Все Git-операции в одном классе |
 | `SettingsScreen.kt` | **1125** | Экран настроек + разрешения + языки |
 | `AuthManager.kt` | **~600** | OAuth + API + хранение + маппинг |
 
-**Рекомендация для `RealGitRepository.kt`** - разделить на:
+**Рекомендация для `GitRepository.kt`** - разделить на:
 - `CommitOperations` - коммиты, лог, diff
 - `BranchOperations` - ветки, checkout, merge
 - `RemoteOperations` - pull, push, fetch, clone
@@ -194,11 +194,11 @@ class MainViewModel @Inject constructor(
 
 ### 3.3 Отсутствие интерфейсов/абстракций
 - **Серьёзность:** ВЫСОКАЯ
-- **Описание:** `RealGitRepository` - конкретный класс без интерфейса. Невозможно подменить для тестирования.
+- **Описание:** `GitRepository` - конкретный класс без интерфейса. Невозможно подменить для тестирования.
 
 ```kotlin
 // Текущий код - жёсткая привязка:
-class RealGitRepository(private val context: Context) { ... }
+class GitRepository(private val context: Context) { ... }
 
 // Должно быть:
 interface GitRepository {
@@ -206,11 +206,11 @@ interface GitRepository {
     suspend fun getCommits(repository: Repository): List<Commit>
     // ...
 }
-class RealGitRepository(
+class GitRepository(
     private val context: Context,
     private val dataStore: RepositoryDataStore,
     private val authManager: AuthManager
-) : GitRepository { ... }
+) : IGitRepository { ... }
 ```
 
 ### 3.4 Отсутствие доменного слоя
@@ -233,7 +233,7 @@ class CloneRepositoryUseCase(
 - **Описание:** `MainScreen` и `ChangesScreen` хранят всё состояние в `remember { }`. Нет ViewModel - состояние теряется при повороте экрана (хотя Compose частично компенсирует).
 
 ### 3.6 Дублирование кода
-- **Файл:** `RealGitRepository.kt:1013-1107` vs `1109-1230`
+- **Файл:** `GitRepository.kt:1013-1107` vs `1109-1230`
 - **Серьёзность:** СРЕДНЯЯ
 - **Описание:** Метод `getCommitDiffs` имеет два перегруженных варианта с ~95% идентичным кодом. Аналогично `getFileContent`, `getFileContentBytes`, `restoreFileToCommit` - все имеют пары с/без `repository` параметра, с дублированием логики поиска репозитория.
 
@@ -242,7 +242,7 @@ class CloneRepositoryUseCase(
 ## 4. Проблемы производительности
 
 ### 4.1 Загрузка всех коммитов без пагинации
-- **Файл:** `RealGitRepository.kt:489-574`
+- **Файл:** `GitRepository.kt:489-574`
 - **Серьёзность:** КРИТИЧЕСКАЯ
 - **Описание:** Метод `getCommits()` загружает ВСЮ историю коммитов в память. Для крупных репозиториев (Linux kernel: 1M+ коммитов) это вызовет OOM crash.
 
@@ -271,7 +271,7 @@ suspend fun getCommits(
 ```
 
 ### 4.2 Повторное открытие репозитория
-- **Файл:** `RealGitRepository.kt` (множество мест)
+- **Файл:** `GitRepository.kt` (множество мест)
 - **Серьёзность:** ВЫСОКАЯ
 - **Описание:** Каждый вызов метода вызывает `openRepository()` заново. Нет кэширования `Git` объектов.
 
@@ -285,12 +285,12 @@ git.close()
 **Рекомендация:** Создать пул/кэш Git-объектов с LRU-политикой.
 
 ### 4.3 Поиск репозитория для коммита (brute force)
-- **Файл:** `RealGitRepository.kt:1109-1133, 1445-1458, 1496-1508, 1585-1597`
+- **Файл:** `GitRepository.kt:1109-1133, 1445-1458, 1496-1508, 1585-1597`
 - **Серьёзность:** СРЕДНЯЯ
 - **Описание:** Метод `findRepositoryContainingCommit` перебирает ВСЕ репозитории, открывая каждый, чтобы найти нужный коммит. При 20+ репозиториях это ощутимо тормозит.
 
 ### 4.4 Теги считываются для каждого коммита
-- **Файл:** `RealGitRepository.kt:543` (вызывается в цикле на строке 538)
+- **Файл:** `GitRepository.kt:543` (вызывается в цикле на строке 538)
 - **Серьёзность:** СРЕДНЯЯ
 - **Описание:** `getTagsForCommit()` вызывается для КАЖДОГО коммита в истории, каждый раз делая `git.tagList().call()`.
 
@@ -303,12 +303,12 @@ git.close()
 **Рекомендация:** Внедрить Room для кэширования часто используемых данных.
 
 ### 4.6 Утечки ресурсов
-- **Файлы:** множественные места в `RealGitRepository.kt`
+- **Файлы:** множественные места в `GitRepository.kt`
 - **Серьёзность:** СРЕДНЯЯ
 - **Описание:** RevWalk, TreeWalk, Git объекты не всегда закрываются в `finally` блоках. При исключении ресурсы утекают.
 
 ```kotlin
-// Проблемный паттерн (RealGitRepository.kt:1024-1100):
+// Проблемный паттерн (GitRepository.kt:1024-1100):
 val revWalk = RevWalk(jgitRepository)  // Открыт
 // ... код который может бросить исключение ...
 revWalk.close()  // Может не выполниться!
@@ -327,7 +327,7 @@ revWalk.close()  // Может не выполниться!
 | Файл | Количество Log вызовов |
 |------|----------------------|
 | `AuthManager.kt` | 58 |
-| `RealGitRepository.kt` | 49 |
+| `GitRepository.kt` | 49 |
 | `OAuthConfig.kt` | 19 |
 | `RemoteRepositoriesScreen.kt` | 16 |
 | `RemoteRepositoriesViewModel.kt` | 15 |
@@ -344,8 +344,8 @@ revWalk.close()  // Может не выполниться!
 ```
 MainScreen.kt:179      - TODO: Implement GitOperationsSheet
 CommitDetailDialog.kt:1814 - TODO: Добавить копирование в буфер обмена
-RealGitRepository.kt:1262  - TODO: Подсчитать количество новых коммитов (pull)
-RealGitRepository.kt:1289  - TODO: Подсчитать количество отправленных коммитов (push)
+GitRepository.kt:1262  - TODO: Подсчитать количество новых коммитов (pull)
+GitRepository.kt:1289  - TODO: Подсчитать количество отправленных коммитов (push)
 ```
 
 ### 5.3 Закомментированный код
@@ -434,7 +434,7 @@ sealed class GitResult<out T> {
 
 **Приоритет 1 (критично):**
 - `AuthManager` - OAuth flow, хранение/получение токенов
-- `RealGitRepository` - все Git-операции
+- `GitRepository` - все Git-операции
 - `RepositoryDataStore` - персистентность данных
 
 **Приоритет 2 (важно):**
@@ -492,7 +492,7 @@ sealed class GitResult<out T> {
 | **Blame View** | Просмотр автора каждой строки файла |
 | **SSH-ключи** | Генерация и управление SSH-ключами для Git |
 | **Token Refresh** | Обновление истёкших GitLab-токенов (`refreshToken` не используется) |
-| **SAF-поддержка** | Полноценная работа с Storage Access Framework (сейчас - заглушка, `RealGitRepository.kt:215`) |
+| **SAF-поддержка** | Полноценная работа с Storage Access Framework (сейчас - заглушка, `GitRepository.kt:215`) |
 
 ### 9.2 Средний приоритет
 
@@ -538,8 +538,7 @@ sealed class GitResult<out T> {
 ### Фаза 2: Архитектура и производительность
 
 - [ ] Внедрить Hilt для DI
-- [ ] Создать интерфейс `GitRepository`
-- [ ] Разделить `RealGitRepository` на специализированные классы
+- [ ] Разделить `GitRepository` на специализированные классы
 - [ ] Разделить `CommitDetailDialog` на компоненты + ViewModel
 - [ ] Добавить пагинацию коммитов
 - [ ] Добавить кэширование Git-объектов (пул)
@@ -591,5 +590,5 @@ CI/CD:                       Нет
 ProGuard-правила:            Пустые
 Минификация release:         Отключена
 Самый большой файл:          CommitDetailDialog.kt (2895 строк)
-Второй по размеру:           RealGitRepository.kt (2199 строк)
+Второй по размеру:           GitRepository.kt (2199 строк)
 ```
