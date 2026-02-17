@@ -10,7 +10,6 @@ import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -175,17 +174,6 @@ fun SettingsScreen(
                 }
             )
 
-            StorageSettingsSection(
-                customStoragePath = customStoragePath,
-                settingsManager = settingsManager,
-                context = context,
-                onChooseFolder = { folderPickerLauncher.launch(null) },
-                onReset = {
-                    settingsManager.setCustomStorageUri(null)
-                    customStoragePath = null
-                }
-            )
-
             LanguageSettingsSection(
                 currentLanguage = currentLanguage,
                 onLanguageClick = { showLanguageDialog = true }
@@ -208,7 +196,14 @@ fun SettingsScreen(
                             permissionLauncher.launch(requirement.permissions.toTypedArray())
                         }
                     },
-                    onOpenSettings = openSettings
+                    onOpenSettings = openSettings,
+                    customStoragePath = customStoragePath,
+                    settingsManager = settingsManager,
+                    onChooseFolder = { folderPickerLauncher.launch(null) },
+                    onResetFolder = {
+                        settingsManager.setCustomStorageUri(null)
+                        customStoragePath = null
+                    }
                 )
             }
 
@@ -905,7 +900,7 @@ private fun NetworkSettingsSection(
 }
 
 @Composable
-private fun StorageSettingsSection(
+private fun StoragePathPicker(
     customStoragePath: String?,
     settingsManager: AppSettingsManager,
     context: Context,
@@ -919,12 +914,13 @@ private fun StorageSettingsSection(
         null
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth()
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        tonalElevation = 2.dp
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -933,12 +929,12 @@ private fun StorageSettingsSection(
             ) {
                 Text(
                     text = stringResource(R.string.settings_storage_title),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 16.sp
                 )
                 Surface(
                     color = if (isConfigured) MaterialTheme.colorScheme.primaryContainer
-                    else MaterialTheme.colorScheme.errorContainer,
+                    else MaterialTheme.colorScheme.surfaceVariant,
                     shape = MaterialTheme.shapes.small
                 ) {
                     Text(
@@ -949,7 +945,7 @@ private fun StorageSettingsSection(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                         fontSize = 12.sp,
                         color = if (isConfigured) MaterialTheme.colorScheme.onPrimaryContainer
-                        else MaterialTheme.colorScheme.onErrorContainer,
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -994,7 +990,11 @@ private fun PermissionsSection(
     requirements: List<PermissionRequirement>,
     refreshKey: Int,
     onRequest: (PermissionRequirement) -> Unit,
-    onOpenSettings: (PermissionRequirement) -> Unit
+    onOpenSettings: (PermissionRequirement) -> Unit,
+    customStoragePath: String?,
+    settingsManager: AppSettingsManager,
+    onChooseFolder: () -> Unit,
+    onResetFolder: () -> Unit
 ) {
     if (requirements.isEmpty()) return
 
@@ -1027,6 +1027,27 @@ private fun PermissionsSection(
                     isGranted = isGranted,
                     onRequest = onRequest,
                     onOpenSettings = onOpenSettings
+                )
+                if (requirement.id == "storage" && isGranted) {
+                    StoragePathPicker(
+                        customStoragePath = customStoragePath,
+                        settingsManager = settingsManager,
+                        context = context,
+                        onChooseFolder = onChooseFolder,
+                        onReset = onResetFolder
+                    )
+                }
+            }
+
+            // On Android 13+ there's no storage permission requirement,
+            // but SAF works without it — show picker directly
+            if (requirements.none { it.id == "storage" }) {
+                StoragePathPicker(
+                    customStoragePath = customStoragePath,
+                    settingsManager = settingsManager,
+                    context = context,
+                    onChooseFolder = onChooseFolder,
+                    onReset = onResetFolder
                 )
             }
         }

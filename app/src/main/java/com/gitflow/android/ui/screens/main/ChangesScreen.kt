@@ -580,6 +580,7 @@ private fun MergeConflictDialog(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ConflictSectionEditor(
     index: Int,
