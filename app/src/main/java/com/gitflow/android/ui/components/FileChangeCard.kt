@@ -12,6 +12,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.gitflow.android.R
 import com.gitflow.android.data.models.ChangeStatus
 import com.gitflow.android.data.models.FileChange
 
@@ -112,9 +114,9 @@ private fun AssistChipRow(
     ) {
         Text(
             text = if (conflictCount > 0) {
-                "Конфликтов: $conflictCount"
+                stringResource(R.string.file_change_conflicts_count, conflictCount)
             } else {
-                "Есть нерешенные конфликты"
+                stringResource(R.string.file_change_conflicts_unresolved)
             },
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.error
@@ -125,7 +127,7 @@ private fun AssistChipRow(
             onResolveConflict?.let { resolver ->
                 AssistChip(
                     onClick = { resolver(file) },
-                    label = { Text("Показать конфликты") },
+                    label = { Text(stringResource(R.string.file_change_show_conflicts)) },
                     leadingIcon = {
                         Icon(Icons.Default.Warning, contentDescription = null, modifier = Modifier.size(16.dp))
                     }
@@ -142,7 +144,7 @@ private fun AssistChipRow(
                 ) {
                     Icon(Icons.Default.Done, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Версия текущей ветки")
+                    Text(stringResource(R.string.file_change_accept_ours))
                 }
             }
             onAcceptTheirs?.let { theirs ->
@@ -152,7 +154,7 @@ private fun AssistChipRow(
                 ) {
                     Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Версия удаленной ветки")
+                    Text(stringResource(R.string.file_change_accept_theirs))
                 }
             }
         }

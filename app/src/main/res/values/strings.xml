@@ -84,6 +84,49 @@
     <string name="settings_permission_granted">Granted</string>
     <string name="settings_permission_not_granted">Not granted</string>
 
+    <!-- Conflict Resolution -->
+    <string name="changes_conflict_choose_hint">Choose which changes to keep for each conflict, or edit manually.</string>
+    <string name="changes_conflict_save">Save resolution</string>
+    <string name="changes_conflict_cancel">Cancel</string>
+    <string name="changes_conflict_number">Conflict %1$d</string>
+    <string name="changes_conflict_ours_label">Current branch (%1$s)</string>
+    <string name="changes_conflict_theirs_label">Incoming branch (%1$s)</string>
+    <string name="changes_conflict_manual">Manually</string>
+    <string name="changes_conflict_base_version">Base version</string>
+    <string name="changes_conflict_ours_branch">Current branch</string>
+    <string name="changes_conflict_theirs_branch">Incoming branch</string>
+    <string name="changes_conflict_custom_label">Custom resolution</string>
+    <string name="changes_conflict_empty">(empty)</string>
+
+    <!-- FileChangeCard -->
+    <string name="file_change_conflicts_count">Conflicts: %1$d</string>
+    <string name="file_change_conflicts_unresolved">Unresolved conflicts</string>
+    <string name="file_change_show_conflicts">Show conflicts</string>
+    <string name="file_change_accept_ours">Current branch version</string>
+    <string name="file_change_accept_theirs">Incoming branch version</string>
+
+    <!-- Remote Repositories -->
+    <string name="remote_repos_title">Remote Repositories</string>
+    <string name="remote_repos_back">Back</string>
+    <string name="remote_repos_refresh">Refresh</string>
+    <string name="remote_repos_loading">Loading repositories…</string>
+    <string name="remote_repos_not_authorized">Not authorized</string>
+    <string name="remote_repos_retry">Retry</string>
+    <string name="remote_repos_select_provider">Select a provider to view repositories</string>
+    <string name="remote_repos_not_found">No repositories found</string>
+    <string name="remote_repos_private">Private</string>
+    <string name="remote_repos_updated">Updated %1$s</string>
+    <string name="remote_repos_clone">Clone</string>
+    <string name="remote_repos_large_title">Large repository</string>
+    <string name="remote_repos_large_message_size">Approximate size: %1$s. Clone anyway?</string>
+    <string name="remote_repos_large_message">Repository size is over 50 MB. Clone anyway?</string>
+    <string name="remote_repos_clone_confirm">Yes, clone</string>
+    <string name="remote_repos_clone_cancel">Cancel</string>
+    <string name="remote_repos_clone_dialog_title">Clone repository</string>
+    <string name="remote_repos_clone_path_label">Choose clone path:</string>
+    <string name="remote_repos_clone_size">Approximate size: %1$s</string>
+    <string name="remote_repos_local_path">Local path</string>
+
     <!-- About -->
     <string name="settings_about">About</string>
     <string name="settings_about_app_name">GitFlow for Android</string>

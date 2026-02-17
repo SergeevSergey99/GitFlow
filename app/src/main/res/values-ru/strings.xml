@@ -84,6 +84,49 @@
     <string name="settings_permission_granted">Выдано</string>
     <string name="settings_permission_not_granted">Не выдано</string>
 
+    <!-- Conflict Resolution -->
+    <string name="changes_conflict_choose_hint">Выберите, какие изменения сохранить в каждом конфликте или отредактируйте вручную.</string>
+    <string name="changes_conflict_save">Сохранить решение</string>
+    <string name="changes_conflict_cancel">Отмена</string>
+    <string name="changes_conflict_number">Конфликт %1$d</string>
+    <string name="changes_conflict_ours_label">Текущая ветка (%1$s)</string>
+    <string name="changes_conflict_theirs_label">Входящая ветка (%1$s)</string>
+    <string name="changes_conflict_manual">Вручную</string>
+    <string name="changes_conflict_base_version">Базовая версия</string>
+    <string name="changes_conflict_ours_branch">Текущая ветка</string>
+    <string name="changes_conflict_theirs_branch">Входящая ветка</string>
+    <string name="changes_conflict_custom_label">Свое решение</string>
+    <string name="changes_conflict_empty">(пусто)</string>
+
+    <!-- FileChangeCard -->
+    <string name="file_change_conflicts_count">Конфликтов: %1$d</string>
+    <string name="file_change_conflicts_unresolved">Есть нерешенные конфликты</string>
+    <string name="file_change_show_conflicts">Показать конфликты</string>
+    <string name="file_change_accept_ours">Версия текущей ветки</string>
+    <string name="file_change_accept_theirs">Версия удаленной ветки</string>
+
+    <!-- Remote Repositories -->
+    <string name="remote_repos_title">Удаленные репозитории</string>
+    <string name="remote_repos_back">Назад</string>
+    <string name="remote_repos_refresh">Обновить</string>
+    <string name="remote_repos_loading">Загрузка репозиториев…</string>
+    <string name="remote_repos_not_authorized">Не авторизован</string>
+    <string name="remote_repos_retry">Повторить</string>
+    <string name="remote_repos_select_provider">Выберите провайдер для просмотра репозиториев</string>
+    <string name="remote_repos_not_found">Репозитории не найдены</string>
+    <string name="remote_repos_private">Частный</string>
+    <string name="remote_repos_updated">Обновлен %1$s</string>
+    <string name="remote_repos_clone">Клонировать</string>
+    <string name="remote_repos_large_title">Большой репозиторий</string>
+    <string name="remote_repos_large_message_size">Примерный размер: %1$s. Точно хотите клонировать?</string>
+    <string name="remote_repos_large_message">Размер репозитория больше 50 МБ. Точно хотите клонировать?</string>
+    <string name="remote_repos_clone_confirm">Да, клонировать</string>
+    <string name="remote_repos_clone_cancel">Отмена</string>
+    <string name="remote_repos_clone_dialog_title">Клонировать репозиторий</string>
+    <string name="remote_repos_clone_path_label">Выберите путь для клонирования:</string>
+    <string name="remote_repos_clone_size">Примерный размер: %1$s</string>
+    <string name="remote_repos_local_path">Локальный путь</string>
+
     <!-- About -->
     <string name="settings_about">О приложении</string>
     <string name="settings_about_app_name">GitFlow для Android</string>

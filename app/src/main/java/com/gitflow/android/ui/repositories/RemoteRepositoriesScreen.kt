@@ -25,6 +25,8 @@ import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitRemoteRepository
+import androidx.compose.ui.res.stringResource
+import com.gitflow.android.R
 import com.gitflow.android.data.settings.AppSettingsManager
 import com.gitflow.android.ui.components.CloneProgressOverlay
 import java.io.File
@@ -108,17 +110,17 @@ fun RemoteRepositoriesScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Удаленные репозитории") },
+                title = { Text(stringResource(R.string.remote_repos_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
+                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.remote_repos_back))
                     }
                 },
                 actions = {
                     IconButton(
                         onClick = { viewModel.refreshRepositories(authManager) }
                     ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Обновить")
+                        Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.remote_repos_refresh))
                     }
                 }
             )
@@ -155,7 +157,7 @@ fun RemoteRepositoriesScreen(
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             CircularProgressIndicator()
-                            Text("Загрузка репозиториев...")
+                            Text(stringResource(R.string.remote_repos_loading))
                         }
                     }
                 } else if (errorMessage != null) {
@@ -237,14 +239,14 @@ fun ProviderTabs(
                 if (!isGitHubAuthenticated) {
                     Icon(
                         Icons.Default.Lock,
-                        contentDescription = "Не авторизован",
+                        contentDescription = stringResource(R.string.remote_repos_not_authorized),
                         modifier = Modifier.size(16.dp),
                         tint = Color.Gray
                     )
                 }
             }
         }
-        
+
         Tab(
             selected = selectedProvider == GitProvider.GITLAB,
             onClick = {
@@ -268,7 +270,7 @@ fun ProviderTabs(
                 if (!isGitLabAuthenticated) {
                     Icon(
                         Icons.Default.Lock,
-                        contentDescription = "Не авторизован",
+                        contentDescription = stringResource(R.string.remote_repos_not_authorized),
                         modifier = Modifier.size(16.dp),
                         tint = Color.Gray
                     )
@@ -310,7 +312,7 @@ fun ErrorMessage(
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Button(onClick = onRetry) {
-                    Text("Повторить")
+                    Text(stringResource(R.string.remote_repos_retry))
                 }
             }
         }
@@ -336,8 +338,8 @@ fun EmptyRepositoriesMessage(selectedProvider: GitProvider?) {
             )
             Text(
                 text = when (selectedProvider) {
-                    null -> "Выберите провайдер для просмотра репозиториев"
-                    else -> "Репозитории не найдены"
+                    null -> stringResource(R.string.remote_repos_select_provider)
+                    else -> stringResource(R.string.remote_repos_not_found)
                 },
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -409,7 +411,7 @@ fun RepositoryCard(
                     if (repository.private) {
                         Icon(
                             Icons.Default.Lock,
-                            contentDescription = "Частный",
+                            contentDescription = stringResource(R.string.remote_repos_private),
                             modifier = Modifier.size(16.dp),
                             tint = MaterialTheme.colorScheme.primary
                         )
@@ -445,7 +447,7 @@ fun RepositoryCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Обновлен ${formatDate(repository.updatedAt)}",
+                    text = stringResource(R.string.remote_repos_updated, formatDate(repository.updatedAt)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -460,7 +462,7 @@ fun RepositoryCard(
                             strokeWidth = 2.dp
                         )
                     } else {
-                        Text("Клонировать")
+                        Text(stringResource(R.string.remote_repos_clone))
                     }
                 }
             }
@@ -492,13 +494,13 @@ fun RepositoryCard(
                 showSizeWarning = false
                 pendingClonePath = null
             },
-            title = { Text("Большой репозиторий") },
+            title = { Text(stringResource(R.string.remote_repos_large_title)) },
             text = {
                 Text(
                     text = if (formattedSize != null) {
-                        "Примерный размер: $formattedSize. Точно хотите клонировать?"
+                        stringResource(R.string.remote_repos_large_message_size, formattedSize)
                     } else {
-                        "Размер репозитория больше 50 МБ. Точно хотите клонировать?"
+                        stringResource(R.string.remote_repos_large_message)
                     }
                 )
             },
@@ -513,7 +515,7 @@ fun RepositoryCard(
                         }
                     }
                 ) {
-                    Text("Да, клонировать")
+                    Text(stringResource(R.string.remote_repos_clone_confirm))
                 }
             },
             dismissButton = {
@@ -523,7 +525,7 @@ fun RepositoryCard(
                         pendingClonePath = null
                     }
                 ) {
-                    Text("Отмена")
+                    Text(stringResource(R.string.remote_repos_clone_cancel))
                 }
             }
         )
@@ -546,20 +548,20 @@ fun CloneDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Клонировать репозиторий") },
+        title = { Text(stringResource(R.string.remote_repos_clone_dialog_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("Выберите путь для клонирования:")
+                Text(stringResource(R.string.remote_repos_clone_path_label))
                 formatRepositorySize(approximateSizeBytes)?.let { sizeString ->
                     Text(
-                        text = "Примерный размер: $sizeString",
+                        text = stringResource(R.string.remote_repos_clone_size, sizeString),
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
                 OutlinedTextField(
                     value = localPath,
                     onValueChange = { localPath = it },
-                    label = { Text("Локальный путь") },
+                    label = { Text(stringResource(R.string.remote_repos_local_path)) },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -569,12 +571,12 @@ fun CloneDialog(
                 onClick = { onConfirm(localPath) },
                 enabled = localPath.isNotBlank()
             ) {
-                Text("Клонировать")
+                Text(stringResource(R.string.remote_repos_clone))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Отмена")
+                Text(stringResource(R.string.remote_repos_clone_cancel))
             }
         }
     )

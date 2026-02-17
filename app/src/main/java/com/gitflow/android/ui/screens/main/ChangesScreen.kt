@@ -525,7 +525,7 @@ private fun MergeConflictDialog(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "Выберите, какие изменения сохранить в каждом конфликте или отредактируйте вручную.",
+                    text = stringResource(R.string.changes_conflict_choose_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -553,7 +553,7 @@ private fun MergeConflictDialog(
                         )
                     }
                     TextButton(onClick = onDismiss) {
-                        Text("Отмена")
+                        Text(stringResource(R.string.changes_conflict_cancel))
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Button(
@@ -572,7 +572,7 @@ private fun MergeConflictDialog(
                     ) {
                         Icon(Icons.Default.Done, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Сохранить решение")
+                        Text(stringResource(R.string.changes_conflict_save))
                     }
                 }
             }
@@ -597,7 +597,7 @@ private fun ConflictSectionEditor(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "Конфликт ${index + 1}",
+                text = stringResource(R.string.changes_conflict_number, index + 1),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold
             )
@@ -610,7 +610,7 @@ private fun ConflictSectionEditor(
                         state.choice.value = SectionChoice.OURS
                         state.customText.value = section.oursContent
                     },
-                    label = { Text("Текущая ветка ($oursLabel)") }
+                    label = { Text(stringResource(R.string.changes_conflict_ours_label, oursLabel)) }
                 )
                 FilterChip(
                     selected = state.choice.value == SectionChoice.THEIRS,
@@ -618,30 +618,30 @@ private fun ConflictSectionEditor(
                         state.choice.value = SectionChoice.THEIRS
                         state.customText.value = section.theirsContent
                     },
-                    label = { Text("Входящая ветка ($theirsLabel)") }
+                    label = { Text(stringResource(R.string.changes_conflict_theirs_label, theirsLabel)) }
                 )
                 FilterChip(
                     selected = state.choice.value == SectionChoice.CUSTOM,
                     onClick = {
                         state.choice.value = SectionChoice.CUSTOM
                     },
-                    label = { Text("Вручную") }
+                    label = { Text(stringResource(R.string.changes_conflict_manual)) }
                 )
             }
 
             section.baseContent?.let { base ->
                 SectionDiffPreview(
-                    title = "Базовая версия",
+                    title = stringResource(R.string.changes_conflict_base_version),
                     content = base
                 )
             }
 
             SectionDiffPreview(
-                title = "Текущая ветка",
+                title = stringResource(R.string.changes_conflict_ours_branch),
                 content = section.oursContent
             )
             SectionDiffPreview(
-                title = "Входящая ветка",
+                title = stringResource(R.string.changes_conflict_theirs_branch),
                 content = section.theirsContent
             )
 
@@ -649,7 +649,7 @@ private fun ConflictSectionEditor(
                 OutlinedTextField(
                     value = state.customText.value,
                     onValueChange = { state.customText.value = it },
-                    label = { Text("Свое решение") },
+                    label = { Text(stringResource(R.string.changes_conflict_custom_label)) },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 4
                 )
@@ -687,7 +687,7 @@ private fun SectionDiffPreview(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = if (content.isEmpty()) "(пусто)" else content,
+                    text = if (content.isEmpty()) stringResource(R.string.changes_conflict_empty) else content,
                     style = MaterialTheme.typography.bodyMedium,
                     fontFamily = FontFamily.Monospace
                 )
