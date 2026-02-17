@@ -55,6 +55,15 @@
     <string name="settings_wifi_only">Загрузка только по Wi-Fi</string>
     <string name="settings_wifi_only_description">Блокировать клонирование через мобильные данные для экономии трафика</string>
 
+    <!-- Storage Settings -->
+    <string name="settings_storage_title">Хранилище</string>
+    <string name="settings_storage_description">Папка для клонирования репозиториев</string>
+    <string name="settings_storage_default">По умолчанию (Android/data)</string>
+    <string name="settings_storage_choose">Выбрать папку</string>
+    <string name="settings_storage_reset">Сбросить</string>
+    <string name="settings_storage_configured">Настроено</string>
+    <string name="settings_storage_not_configured">Не настроено</string>
+
     <!-- Language Settings -->
     <string name="settings_language">Язык</string>
     <string name="settings_language_description">Выберите язык приложения</string>

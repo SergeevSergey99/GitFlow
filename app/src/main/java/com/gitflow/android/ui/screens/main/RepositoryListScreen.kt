@@ -28,6 +28,7 @@ import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.RealGitRepository
 import com.gitflow.android.ui.components.RepositoryCard
 import com.gitflow.android.ui.components.dialogs.AddRepositoryDialog
+import com.gitflow.android.data.settings.AppSettingsManager
 import com.gitflow.android.ui.components.dialogs.DeleteRepositoryDialog
 import com.gitflow.android.services.CloneRepositoryService
 import kotlinx.coroutines.CoroutineScope
@@ -162,8 +163,8 @@ fun RepositoryListScreen(
                             errorMessage = null
 
                             // Creating new repository
-                            val appDir = context.getExternalFilesDir(null) ?: context.filesDir
-                            val localPath = "${appDir.absolutePath}/repositories/$name"
+                            val baseDir = AppSettingsManager(context).getRepositoriesBaseDir(context)
+                            val localPath = "${baseDir.absolutePath}/$name"
 
                             val result = gitRepository.createRepository(name, localPath)
                             result.fold(
@@ -304,10 +305,10 @@ private fun startManualClone(
 ) {
     scope.launch {
         try {
-            val appDir = context.getExternalFilesDir(null) ?: context.filesDir
+            val baseDir = AppSettingsManager(context).getRepositoriesBaseDir(context)
             val fallbackName = url.substringAfterLast('/').removeSuffix(".git")
             val targetName = if (name.isBlank()) fallbackName else name
-            val targetPath = "${appDir.absolutePath}/repositories/$targetName"
+            val targetPath = "${baseDir.absolutePath}/$targetName"
 
             val resolvedSize = try {
                 approximateSize ?: authManager.getRepositoryApproximateSize(url)

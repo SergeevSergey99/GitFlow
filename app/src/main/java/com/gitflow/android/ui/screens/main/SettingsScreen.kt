@@ -10,6 +10,7 @@ import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -63,6 +64,22 @@ fun SettingsScreen(
     var showPreviewSettings by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var currentLanguage by remember { mutableStateOf(settingsManager.getLanguage()) }
+    var customStoragePath by remember { mutableStateOf(settingsManager.getCustomStorageUri()) }
+
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+            settingsManager.setCustomStorageUri(uri.toString())
+            customStoragePath = uri.toString()
+            val baseDir = settingsManager.getRepositoriesBaseDir(context)
+            settingsManager.ensureNomediaFile(baseDir)
+        }
+    }
 
     val permissionRequirements = remember {
         PermissionRequirement.buildList(context.applicationContext)
@@ -155,6 +172,17 @@ fun SettingsScreen(
                 onWifiOnlyChanged = { enabled ->
                     wifiOnlyDownloads = enabled
                     settingsManager.setWifiOnlyDownloadsEnabled(enabled)
+                }
+            )
+
+            StorageSettingsSection(
+                customStoragePath = customStoragePath,
+                settingsManager = settingsManager,
+                context = context,
+                onChooseFolder = { folderPickerLauncher.launch(null) },
+                onReset = {
+                    settingsManager.setCustomStorageUri(null)
+                    customStoragePath = null
                 }
             )
 
@@ -871,6 +899,91 @@ private fun NetworkSettingsSection(
                     checked = wifiOnlyDownloads,
                     onCheckedChange = onWifiOnlyChanged
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StorageSettingsSection(
+    customStoragePath: String?,
+    settingsManager: AppSettingsManager,
+    context: Context,
+    onChooseFolder: () -> Unit,
+    onReset: () -> Unit
+) {
+    val isConfigured = customStoragePath != null
+    val displayPath = if (isConfigured) {
+        settingsManager.getRepositoriesBaseDir(context).absolutePath
+    } else {
+        null
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_storage_title),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+                Surface(
+                    color = if (isConfigured) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.errorContainer,
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        text = stringResource(
+                            if (isConfigured) R.string.settings_storage_configured
+                            else R.string.settings_storage_not_configured
+                        ),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        fontSize = 12.sp,
+                        color = if (isConfigured) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onErrorContainer,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            Text(
+                text = stringResource(R.string.settings_storage_description),
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Text(
+                text = displayPath ?: stringResource(R.string.settings_storage_default),
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onChooseFolder,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.settings_storage_choose))
+                }
+                if (isConfigured) {
+                    OutlinedButton(onClick = onReset) {
+                        Text(stringResource(R.string.settings_storage_reset))
+                    }
+                }
             }
         }
     }

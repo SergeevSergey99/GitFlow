@@ -55,6 +55,15 @@
     <string name="settings_wifi_only">Wi-Fi only downloads</string>
     <string name="settings_wifi_only_description">Block cloning on mobile data to save traffic</string>
 
+    <!-- Storage Settings -->
+    <string name="settings_storage_title">Storage</string>
+    <string name="settings_storage_description">Folder for cloned repositories</string>
+    <string name="settings_storage_default">Default (Android/data)</string>
+    <string name="settings_storage_choose">Choose folder</string>
+    <string name="settings_storage_reset">Reset</string>
+    <string name="settings_storage_configured">Configured</string>
+    <string name="settings_storage_not_configured">Not configured</string>
+
     <!-- Language Settings -->
     <string name="settings_language">Language</string>
     <string name="settings_language_description">Choose app language</string>

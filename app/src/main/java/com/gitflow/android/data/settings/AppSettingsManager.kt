@@ -1,7 +1,12 @@
 package com.gitflow.android.data.settings
 
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
+import android.net.Uri
+import android.os.Environment
+import android.provider.DocumentsContract
+import java.io.File
 import java.util.LinkedHashSet
 import java.util.Locale
 
@@ -106,6 +111,54 @@ class AppSettingsManager(context: Context) {
         preferences.edit().putString(KEY_LANGUAGE, language).apply()
     }
 
+    fun getCustomStorageUri(): String? {
+        return preferences.getString(KEY_CUSTOM_STORAGE_URI, null)
+    }
+
+    fun setCustomStorageUri(uri: String?) {
+        preferences.edit().putString(KEY_CUSTOM_STORAGE_URI, uri).apply()
+    }
+
+    fun getRepositoriesBaseDir(context: Context): File {
+        val uriString = getCustomStorageUri()
+        if (uriString != null) {
+            val resolved = resolveTreeUriToFile(context, Uri.parse(uriString))
+            if (resolved != null && resolved.isDirectory && resolved.canWrite()) {
+                ensureNomediaFile(resolved)
+                return resolved
+            }
+        }
+        val fallback = File(context.getExternalFilesDir(null) ?: context.filesDir, "repositories")
+        if (!fallback.exists()) fallback.mkdirs()
+        return fallback
+    }
+
+    private fun resolveTreeUriToFile(context: Context, treeUri: Uri): File? {
+        return try {
+            val docId = DocumentsContract.getTreeDocumentId(treeUri)
+            val split = docId.split(":")
+            val basePath = if (split[0] == "primary") {
+                Environment.getExternalStorageDirectory()
+            } else {
+                File("/storage/${split[0]}")
+            }
+            File(basePath, split.getOrElse(1) { "" })
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun ensureNomediaFile(dir: File) {
+        val nomedia = File(dir, ".nomedia")
+        if (!nomedia.exists()) {
+            try {
+                dir.mkdirs()
+                nomedia.createNewFile()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     private fun sanitizeToken(value: String?, allowDots: Boolean = false): String? {
         if (value.isNullOrBlank()) return null
         var token = value.trim()
@@ -122,6 +175,7 @@ class AppSettingsManager(context: Context) {
         internal const val KEY_PREVIEW_EXTENSIONS = "preview_extensions"
         internal const val KEY_PREVIEW_FILE_NAMES = "preview_file_names"
         private const val KEY_LANGUAGE = "app_language"
+        private const val KEY_CUSTOM_STORAGE_URI = "custom_storage_uri"
 
         const val LANGUAGE_SYSTEM = "system"
         const val LANGUAGE_ENGLISH = "en"
