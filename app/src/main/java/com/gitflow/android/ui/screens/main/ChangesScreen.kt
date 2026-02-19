@@ -25,14 +25,14 @@ import com.gitflow.android.data.models.FileChange
 import com.gitflow.android.data.models.MergeConflict
 import com.gitflow.android.data.models.MergeConflictSection
 import com.gitflow.android.data.models.Repository
-import com.gitflow.android.data.repository.GitRepository
+import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.ui.components.FileChangeCard
 import kotlinx.coroutines.launch
 
 @Composable
 fun ChangesScreen(
     repository: Repository?,
-    gitRepository: GitRepository
+    gitRepository: IGitRepository
 ) {
     val context = LocalContext.current
     if (repository == null) {

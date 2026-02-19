@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.MergeType
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
@@ -61,7 +62,7 @@ import androidx.compose.ui.unit.times
 import com.gitflow.android.R
 import com.gitflow.android.data.models.Commit
 import com.gitflow.android.data.models.Repository
-import com.gitflow.android.data.repository.GitRepository
+import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.ui.config.GraphConfig
 import com.gitflow.android.ui.screens.main.EmptyStateMessage
 import kotlinx.coroutines.launch
@@ -79,7 +80,7 @@ import java.util.*
 @Composable
 fun EnhancedGraphView(
     repository: Repository?,
-    gitRepository: GitRepository,
+    gitRepository: IGitRepository,
     config: GraphConfig = GraphConfig.Default
 ) {
     if (repository == null) {
@@ -102,10 +103,15 @@ fun EnhancedGraphView(
     var pendingDialog by remember { mutableStateOf<CommitActionDialog?>(null) }
     val currentBranchName = repository.currentBranch.ifEmpty { "HEAD" }
 
-    // Загружаем коммиты при смене репозитория
-    LaunchedEffect(repository) {
+    // Pagination state
+    var currentPageSize by remember(repository.id) { mutableStateOf(50) }
+    var hasMoreCommits by remember { mutableStateOf(true) }
+
+    // Загружаем коммиты при смене репозитория или размера страницы
+    LaunchedEffect(repository.id, currentPageSize) {
         isLoading = true
-        commits = gitRepository.getCommits(repository)
+        commits = gitRepository.getCommits(repository, page = 0, pageSize = currentPageSize)
+        hasMoreCommits = commits.size >= currentPageSize
         isLoading = false
     }
 
@@ -142,7 +148,8 @@ fun EnhancedGraphView(
             }
             if (outcome.isSuccess) {
                 try {
-                    commits = gitRepository.getCommits(repository)
+                    commits = gitRepository.getCommits(repository, page = 0, pageSize = currentPageSize)
+                    hasMoreCommits = commits.size >= currentPageSize
                 } catch (refreshError: Exception) {
                     val fallback = context.getString(R.string.graph_commit_operation_failed_generic)
                     val message = refreshError.localizedMessage?.takeIf { it.isNotBlank() } ?: fallback
@@ -184,6 +191,8 @@ fun EnhancedGraphView(
             GraphCanvas(
                 graphData = graphData,
                 config = config,
+                hasMoreCommits = hasMoreCommits && !isLoading,
+                onLoadMore = { currentPageSize += 50 },
                 onCommitClick = { commit ->
                     selectedCommit = commit
                     showCommitDetail = true
@@ -573,6 +582,8 @@ fun EnhancedGraphView(
 private fun GraphCanvas(
     graphData: GraphData,
     config: GraphConfig,
+    hasMoreCommits: Boolean,
+    onLoadMore: () -> Unit,
     onCommitClick: (Commit) -> Unit,
     onCommitLongPress: (Commit) -> Unit
 ) {
@@ -599,6 +610,18 @@ private fun GraphCanvas(
                 onClick = { onCommitClick(commit) },
                 onLongPress = { onCommitLongPress(commit) }
             )
+        }
+        if (hasMoreCommits) {
+            item {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Button(onClick = onLoadMore) {
+                        Text(stringResource(R.string.graph_load_more_commits))
+                    }
+                }
+            }
         }
         item { Spacer(Modifier.height(24.dp)) }
     }

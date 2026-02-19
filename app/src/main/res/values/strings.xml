@@ -363,6 +363,7 @@
     <!-- EnhancedGraphScreen -->
     <string name="graph_select_repo">Select a repository to view commits</string>
     <string name="graph_no_commits">No commits found in this repository</string>
+    <string name="graph_load_more_commits">Load more commits</string>
     <string name="graph_merge_commit">Merge commit</string>
     <string name="graph_from_badge">from %1$s</string>
     <string name="graph_from_badge_branch">from %1$s • %2$s</string>

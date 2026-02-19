@@ -38,9 +38,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gitflow.android.R
 import com.gitflow.android.data.models.*
-import com.gitflow.android.data.repository.GitRepository
+import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.data.settings.AppSettingsManager
 import java.io.File
 import java.text.SimpleDateFormat
@@ -58,15 +59,15 @@ private val CodeLineContentSpacing = 16.dp
 fun CommitDetailDialog(
     commit: Commit,
     repository: Repository?,
-    gitRepository: GitRepository,
+    gitRepository: IGitRepository,
     onDismiss: () -> Unit
 ) {
-    var selectedTab by remember { mutableStateOf(0) }
-    var fileDiffs by remember { mutableStateOf<List<FileDiff>>(emptyList()) }
-    var isLoadingDiffs by remember { mutableStateOf(true) }
-    var diffsLoadError by remember { mutableStateOf<String?>(null) }
-    var selectedFile by remember { mutableStateOf<FileDiff?>(null) }
-    val scope = rememberCoroutineScope()
+    val viewModel: CommitDetailViewModel = viewModel(
+        key = commit.hash,
+        factory = CommitDetailViewModelFactory(gitRepository, commit, repository)
+    )
+    val uiState by viewModel.uiState.collectAsState()
+
     val context = LocalContext.current
     val settingsManager = remember { AppSettingsManager(context) }
     var previewExtensions by remember { mutableStateOf(settingsManager.getPreviewExtensions()) }
@@ -88,26 +89,6 @@ fun CommitDetailDialog(
 
     val normalizedPreviewFileNames = remember(previewFileNames) {
         previewFileNames.mapNotNull { normalizeFileNameToken(it) }.toSet()
-    }
-
-    // Загружаем диффы при открытии диалога
-    LaunchedEffect(commit, repository) {
-        isLoadingDiffs = true
-        diffsLoadError = null
-        android.util.Log.d("CommitDetailDialog", "Loading diffs for commit: ${commit.hash}")
-        try {
-            fileDiffs = if (repository != null) {
-                gitRepository.getCommitDiffs(commit, repository)
-            } else {
-                gitRepository.getCommitDiffs(commit)
-            }
-            android.util.Log.d("CommitDetailDialog", "Loaded ${fileDiffs.size} file diffs")
-        } catch (e: Exception) {
-            android.util.Log.e("CommitDetailDialog", "Failed to load diffs", e)
-            diffsLoadError = context.getString(R.string.commit_detail_diffs_load_error)
-        } finally {
-            isLoadingDiffs = false
-        }
     }
 
     Dialog(
@@ -147,7 +128,7 @@ fun CommitDetailDialog(
                             Spacer(modifier = Modifier.height(8.dp))
 
                             // Stats
-                            if (isLoadingDiffs) {
+                            if (uiState.isLoadingDiffs) {
                                 CircularProgressIndicator(modifier = Modifier.size(16.dp))
                             } else {
                                 Row(
@@ -155,17 +136,17 @@ fun CommitDetailDialog(
                                 ) {
                                     StatChip(
                                         icon = Icons.Default.Add,
-                                        value = "+${fileDiffs.sumOf { it.additions }}",
+                                        value = "+${uiState.fileDiffs.sumOf { it.additions }}",
                                         color = Color(0xFF4CAF50)
                                     )
                                     StatChip(
                                         icon = Icons.Default.Remove,
-                                        value = "-${fileDiffs.sumOf { it.deletions }}",
+                                        value = "-${uiState.fileDiffs.sumOf { it.deletions }}",
                                         color = Color(0xFFF44336)
                                     )
                                     StatChip(
                                         icon = Icons.Default.Description,
-                                        value = stringResource(R.string.commit_detail_files_count, fileDiffs.size),
+                                        value = stringResource(R.string.commit_detail_files_count, uiState.fileDiffs.size),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
@@ -180,13 +161,13 @@ fun CommitDetailDialog(
 
                 // Tabs
                 ScrollableTabRow(
-                    selectedTabIndex = selectedTab,
+                    selectedTabIndex = uiState.selectedTab,
                     modifier = Modifier.fillMaxWidth(),
                     edgePadding = 16.dp
                 ) {
                     Tab(
-                        selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
+                        selected = uiState.selectedTab == 0,
+                        onClick = { viewModel.selectTab(0) },
                         text = {
                             Text(
                                 text = stringResource(R.string.commit_detail_tab_files),
@@ -196,8 +177,8 @@ fun CommitDetailDialog(
                         }
                     )
                     Tab(
-                        selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
+                        selected = uiState.selectedTab == 1,
+                        onClick = { viewModel.selectTab(1) },
                         text = {
                             Text(
                                 text = stringResource(R.string.commit_detail_tab_changes),
@@ -207,8 +188,8 @@ fun CommitDetailDialog(
                         }
                     )
                     Tab(
-                        selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
+                        selected = uiState.selectedTab == 2,
+                        onClick = { viewModel.selectTab(2) },
                         text = {
                             Text(
                                 text = stringResource(R.string.commit_detail_tab_info),
@@ -218,8 +199,8 @@ fun CommitDetailDialog(
                         }
                     )
                     Tab(
-                        selected = selectedTab == 3,
-                        onClick = { selectedTab = 3 },
+                        selected = uiState.selectedTab == 3,
+                        onClick = { viewModel.selectTab(3) },
                         text = {
                             Text(
                                 text = stringResource(R.string.commit_detail_tab_file_tree),
@@ -231,9 +212,9 @@ fun CommitDetailDialog(
                 }
 
                 // Tab content
-                when (selectedTab) {
+                when (uiState.selectedTab) {
                     0 -> when {
-                        isLoadingDiffs -> {
+                        uiState.isLoadingDiffs -> {
                             Box(
                                 modifier = Modifier.fillMaxSize(),
                                 contentAlignment = Alignment.Center
@@ -241,7 +222,7 @@ fun CommitDetailDialog(
                                 CircularProgressIndicator()
                             }
                         }
-                        diffsLoadError != null -> {
+                        uiState.diffsLoadError != null -> {
                             Box(
                                 modifier = Modifier.fillMaxSize(),
                                 contentAlignment = Alignment.Center
@@ -257,7 +238,7 @@ fun CommitDetailDialog(
                                         tint = MaterialTheme.colorScheme.error
                                     )
                                     Text(
-                                        text = diffsLoadError!!,
+                                        text = uiState.diffsLoadError!!,
                                         color = MaterialTheme.colorScheme.error,
                                         textAlign = TextAlign.Center
                                     )
@@ -266,18 +247,18 @@ fun CommitDetailDialog(
                         }
                         else -> {
                             FileListView(
-                                fileDiffs = fileDiffs,
-                                selectedFile = selectedFile,
+                                fileDiffs = uiState.fileDiffs,
+                                selectedFile = uiState.selectedFile,
                                 allowedExtensions = normalizedPreviewExtensions,
                                 allowedFileNames = normalizedPreviewFileNames
                             ) { file ->
-                                selectedFile = file
-                                selectedTab = 1 // Переключаемся на вкладку Changes
+                                viewModel.selectFile(file)
+                                viewModel.selectTab(1)
                             }
                         }
                     }
                     1 -> when {
-                        isLoadingDiffs -> {
+                        uiState.isLoadingDiffs -> {
                             Box(
                                 modifier = Modifier.fillMaxSize(),
                                 contentAlignment = Alignment.Center
@@ -285,7 +266,7 @@ fun CommitDetailDialog(
                                 CircularProgressIndicator()
                             }
                         }
-                        diffsLoadError != null -> {
+                        uiState.diffsLoadError != null -> {
                             Box(
                                 modifier = Modifier.fillMaxSize(),
                                 contentAlignment = Alignment.Center
@@ -301,7 +282,7 @@ fun CommitDetailDialog(
                                         tint = MaterialTheme.colorScheme.error
                                     )
                                     Text(
-                                        text = diffsLoadError!!,
+                                        text = uiState.diffsLoadError!!,
                                         color = MaterialTheme.colorScheme.error,
                                         textAlign = TextAlign.Center
                                     )
@@ -310,14 +291,14 @@ fun CommitDetailDialog(
                         }
                         else -> {
                             DiffView(
-                                selectedFile = selectedFile,
+                                selectedFile = uiState.selectedFile,
                                 allowedExtensions = normalizedPreviewExtensions,
                                 allowedFileNames = normalizedPreviewFileNames
                             )
                         }
                     }
                     2 -> CommitInfoView(commit)
-                    3 -> FileTreeView(commit, repository, gitRepository)
+                    3 -> FileTreeView(commit, repository, gitRepository, viewModel)
                 }
             }
         }
@@ -1043,24 +1024,19 @@ fun formatFileSize(size: Long): String {
 }
 
 @Composable
-fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: GitRepository) {
-    var fileTree by remember { mutableStateOf<FileTreeNode?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
+fun FileTreeView(
+    commit: Commit,
+    repository: Repository?,
+    gitRepository: IGitRepository,
+    viewModel: CommitDetailViewModel
+) {
+    val uiState by viewModel.uiState.collectAsState()
+
+    // Pure UI state stays local
     var selectedFileForViewing by remember { mutableStateOf<FileTreeNode?>(null) }
     var pendingFileAction by remember { mutableStateOf<FileTreeNode?>(null) }
     var isExternalOpening by remember { mutableStateOf(false) }
-    var filterQuery by remember { mutableStateOf("") }
-    var showFilterBar by remember { mutableStateOf(false) }
-    var contextMenuTargetPath by remember { mutableStateOf<String?>(null) }
-    var isRestoringFile by remember { mutableStateOf(false) }
-    var historyDialogFile by remember { mutableStateOf<FileTreeNode?>(null) }
-    var fileHistory by remember { mutableStateOf<List<Commit>>(emptyList()) }
-    var isHistoryLoading by remember { mutableStateOf(false) }
-    var historyError by remember { mutableStateOf<String?>(null) }
-    var historyDiffCommit by remember { mutableStateOf<Commit?>(null) }
-    var historyDiff by remember { mutableStateOf<FileDiff?>(null) }
-    var isHistoryDiffLoading by remember { mutableStateOf(false) }
-    var historyDiffError by remember { mutableStateOf<String?>(null) }
+
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val settingsManager = remember { AppSettingsManager(context) }
@@ -1085,34 +1061,23 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: GitRepo
         previewFileNames.mapNotNull { normalizeFileNameToken(it) }.toSet()
     }
 
-    val filterTokens = remember(filterQuery) {
-        filterQuery.split(' ', ',', ';')
+    val filterTokens = remember(uiState.filterQuery) {
+        uiState.filterQuery.split(' ', ',', ';')
             .mapNotNull { token ->
                 val trimmed = token.trim()
                 if (trimmed.isEmpty()) null else trimmed.lowercase(Locale.ROOT)
             }
     }
 
-    val displayedTree = remember(fileTree, filterTokens) {
-        val root = fileTree ?: return@remember null
-        val tree = if (filterTokens.isEmpty()) {
-            root
-        } else {
-            filterFileTree(root, filterTokens)
-        }
-
+    val displayedTree = remember(uiState.fileTree, filterTokens) {
+        val root = uiState.fileTree ?: return@remember null
+        val tree = if (filterTokens.isEmpty()) root else filterFileTree(root, filterTokens)
         tree?.let { collapseSingleChildDirectories(it, isRoot = true) }
     }
 
-    // Загружаем дерево файлов при открытии
-    LaunchedEffect(commit, repository) {
-        isLoading = true
-        fileTree = if (repository != null) {
-            gitRepository.getCommitFileTree(commit, repository)
-        } else {
-            gitRepository.getCommitFileTree(commit)
-        }
-        isLoading = false
+    // Trigger tree loading when this composable first enters composition
+    LaunchedEffect(Unit) {
+        viewModel.loadFileTree()
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -1127,7 +1092,7 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: GitRepo
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (!showFilterBar) {
+                if (!uiState.showFilterBar) {
                     Icon(
                         Icons.Default.AccountTree,
                         contentDescription = null,
@@ -1141,7 +1106,7 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: GitRepo
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp
                         )
-                        if (isLoading) {
+                        if (uiState.isLoadingTree) {
                             Text(
                                 text = stringResource(R.string.commit_detail_file_tree_loading),
                                 fontSize = 12.sp,
@@ -1149,37 +1114,32 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: GitRepo
                             )
                         } else {
                             Text(
-                                text = stringResource(R.string.commit_detail_file_tree_commit_info, commit.hash.take(7), fileTree?.children?.sumOf { countFiles(it) } ?: 0),
+                                text = stringResource(R.string.commit_detail_file_tree_commit_info, commit.hash.take(7), uiState.fileTree?.children?.sumOf { countFiles(it) } ?: 0),
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
-                    IconButton(onClick = { showFilterBar = true }) {
+                    IconButton(onClick = { viewModel.toggleFilterBar() }) {
                         Icon(Icons.Default.Search, contentDescription = stringResource(R.string.commit_detail_file_tree_search_files))
                     }
                 } else {
                     OutlinedTextField(
-                        value = filterQuery,
-                        onValueChange = { filterQuery = it },
+                        value = uiState.filterQuery,
+                        onValueChange = { viewModel.setFilterQuery(it) },
                         label = { Text(stringResource(R.string.commit_detail_file_tree_filter)) },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
                         trailingIcon = {
-                            if (filterQuery.isNotBlank()) {
-                                IconButton(onClick = { filterQuery = "" }) {
+                            if (uiState.filterQuery.isNotBlank()) {
+                                IconButton(onClick = { viewModel.setFilterQuery("") }) {
                                     Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.commit_detail_file_tree_clear_filter))
                                 }
                             }
                         }
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    IconButton(
-                        onClick = {
-                            filterQuery = ""
-                            showFilterBar = false
-                        }
-                    ) {
+                    IconButton(onClick = { viewModel.closeFilterBar() }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.commit_detail_file_tree_close_search))
                     }
                 }
@@ -1187,7 +1147,7 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: GitRepo
         }
 
         // File tree content
-        if (isLoading) {
+        if (uiState.isLoadingTree) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
@@ -1208,48 +1168,30 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: GitRepo
                             level = 0,
                             isFiltering = filterTokens.isNotEmpty(),
                             hasParentCommit = commit.parents.isNotEmpty(),
-                            contextMenuTargetPath = contextMenuTargetPath,
-                            restoreInProgress = isRestoringFile,
+                            contextMenuTargetPath = uiState.contextMenuTargetPath,
+                            restoreInProgress = uiState.isRestoringFile,
                             onFileClicked = {
-                                contextMenuTargetPath = null
+                                viewModel.setContextMenuTarget(null)
                                 pendingFileAction = it
                             },
                             onFileLongPress = { fileNode ->
-                                if (!isRestoringFile) {
-                                    contextMenuTargetPath = fileNode.path
+                                if (!uiState.isRestoringFile) {
+                                    viewModel.setContextMenuTarget(fileNode.path)
                                 }
                             },
-                            onDismissContextMenu = { contextMenuTargetPath = null },
+                            onDismissContextMenu = { viewModel.setContextMenuTarget(null) },
                             onRestoreFromCommit = { fileNode ->
-                                if (isRestoringFile) return@FileTreeNodeItem
-                                contextMenuTargetPath = null
-                                isRestoringFile = true
-                                scope.launch {
-                                    try {
-                                        val success = try {
-                                            if (repository != null) {
-                                                gitRepository.restoreFileToCommit(commit, fileNode.path, repository)
-                                            } else {
-                                                gitRepository.restoreFileToCommit(commit, fileNode.path)
-                                            }
-                                        } catch (e: Exception) {
-                                            android.util.Log.e("CommitDetailDialog", "Failed to restore file to commit", e)
-                                            false
-                                        }
-                                        Toast.makeText(
-                                            context,
-                                            if (success) context.getString(R.string.commit_detail_toast_restored_commit) else context.getString(R.string.commit_detail_toast_restore_failed),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    } finally {
-                                        isRestoringFile = false
-                                    }
+                                viewModel.restoreFileToCommit(fileNode.path) { success ->
+                                    Toast.makeText(
+                                        context,
+                                        if (success) context.getString(R.string.commit_detail_toast_restored_commit) else context.getString(R.string.commit_detail_toast_restore_failed),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 }
                             },
                             onRestoreFromParent = { fileNode ->
-                                if (isRestoringFile) return@FileTreeNodeItem
                                 if (commit.parents.isEmpty()) {
-                                    contextMenuTargetPath = null
+                                    viewModel.setContextMenuTarget(null)
                                     Toast.makeText(
                                         context,
                                         context.getString(R.string.commit_detail_toast_no_parent),
@@ -1257,53 +1199,17 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: GitRepo
                                     ).show()
                                     return@FileTreeNodeItem
                                 }
-                                contextMenuTargetPath = null
-                                isRestoringFile = true
-                                scope.launch {
-                                    try {
-                                        val success = try {
-                                            if (repository != null) {
-                                                gitRepository.restoreFileToParentCommit(commit, fileNode.path, repository)
-                                            } else {
-                                                gitRepository.restoreFileToParentCommit(commit, fileNode.path)
-                                            }
-                                        } catch (e: Exception) {
-                                            android.util.Log.e("CommitDetailDialog", "Failed to restore file to parent commit", e)
-                                            false
-                                        }
-                                        Toast.makeText(
-                                            context,
-                                            if (success) context.getString(R.string.commit_detail_toast_restored_parent) else context.getString(R.string.commit_detail_toast_restore_failed),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    } finally {
-                                        isRestoringFile = false
-                                    }
+                                viewModel.restoreFileToParentCommit(fileNode.path) { success ->
+                                    Toast.makeText(
+                                        context,
+                                        if (success) context.getString(R.string.commit_detail_toast_restored_parent) else context.getString(R.string.commit_detail_toast_restore_failed),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 }
                             },
                             onViewHistory = { fileNode ->
-                                contextMenuTargetPath = null
-                                historyDialogFile = fileNode
-                                isHistoryLoading = true
-                                historyError = null
-                                scope.launch {
-                                    try {
-                                        val history = try {
-                                            if (repository != null) {
-                                                gitRepository.getFileHistory(commit, fileNode.path, repository)
-                                            } else {
-                                                gitRepository.getFileHistory(commit, fileNode.path)
-                                            }
-                                        } catch (e: Exception) {
-                                            android.util.Log.e("CommitDetailDialog", "Failed to load file history", e)
-                                            historyError = context.getString(R.string.commit_detail_history_error)
-                                            emptyList()
-                                        }
-                                        fileHistory = history
-                                    } finally {
-                                        isHistoryLoading = false
-                                    }
-                                }
+                                viewModel.setContextMenuTarget(null)
+                                viewModel.loadFileHistory(fileNode)
                             }
                         )
                     }
@@ -1395,74 +1301,32 @@ fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: GitRepo
         )
     }
 
-    historyDialogFile?.let { fileNode ->
+    uiState.historyDialogFile?.let { fileNode ->
         FileHistoryDialog(
             file = fileNode,
             commit = commit,
-            history = fileHistory,
-            isLoading = isHistoryLoading,
-            error = historyError,
-            isDiffLoading = isHistoryDiffLoading,
-            selectedHistoryCommit = historyDiffCommit,
-            onDismiss = {
-                historyDialogFile = null
-                historyError = null
-                fileHistory = emptyList()
-                historyDiffCommit = null
-                historyDiff = null
-                historyDiffError = null
-                isHistoryDiffLoading = false
-            },
+            history = uiState.fileHistory,
+            isLoading = uiState.isHistoryLoading,
+            error = uiState.historyError,
+            isDiffLoading = uiState.isHistoryDiffLoading,
+            selectedHistoryCommit = uiState.historyDiffCommit,
+            onDismiss = { viewModel.dismissHistory() },
             onSelectCommit = { historyCommit ->
-                if (isHistoryDiffLoading) return@FileHistoryDialog
-                historyDiffCommit = historyCommit
-                historyDiff = null
-                historyDiffError = null
-                isHistoryDiffLoading = true
-                scope.launch {
-                    try {
-                        val diffs = try {
-                            if (repository != null) {
-                                gitRepository.getCommitDiffs(historyCommit, repository)
-                            } else {
-                                gitRepository.getCommitDiffs(historyCommit)
-                            }
-                        } catch (e: Exception) {
-                            android.util.Log.e("CommitDetailDialog", "Failed to load diff for history commit", e)
-                            historyDiffError = context.getString(R.string.commit_detail_diff_load_failed)
-                            emptyList()
-                        }
-                        val matchingDiff = diffs.firstOrNull { diff ->
-                            diff.path == fileNode.path || diff.oldPath == fileNode.path
-                        }
-                        if (matchingDiff != null) {
-                            historyDiff = matchingDiff
-                        } else {
-                            historyDiffError = context.getString(R.string.commit_detail_diff_error)
-                        }
-                    } finally {
-                        isHistoryDiffLoading = false
-                    }
-                }
+                viewModel.loadHistoryDiff(historyCommit)
             }
         )
     }
 
-    historyDiffCommit?.let { historyCommit ->
+    uiState.historyDiffCommit?.let { historyCommit ->
         HistoryFileDiffDialog(
             commit = historyCommit,
-            filePath = historyDialogFile?.path ?: historyDialogFile?.name ?: "",
-            fileDiff = historyDiff,
-            isLoading = isHistoryDiffLoading,
-            error = historyDiffError,
+            filePath = uiState.historyDialogFile?.path ?: uiState.historyDialogFile?.name ?: "",
+            fileDiff = uiState.historyDiff,
+            isLoading = uiState.isHistoryDiffLoading,
+            error = uiState.historyDiffError,
             allowedExtensions = normalizedPreviewExtensions,
             allowedFileNames = normalizedPreviewFileNames,
-            onDismiss = {
-                historyDiffCommit = null
-                historyDiff = null
-                historyDiffError = null
-                isHistoryDiffLoading = false
-            }
+            onDismiss = { viewModel.dismissHistoryDiff() }
         )
     }
 }
@@ -1722,7 +1586,7 @@ fun FileViewerDialog(
     file: FileTreeNode,
     commit: Commit,
     repository: Repository?,
-    gitRepository: GitRepository,
+    gitRepository: IGitRepository,
     onDismiss: () -> Unit
 ) {
     var fileContent by remember { mutableStateOf<String?>(null) }
@@ -2552,7 +2416,7 @@ fun isPreviewSupported(
 
 suspend fun openFileInExternalApp(
     context: Context,
-    gitRepository: GitRepository,
+    gitRepository: IGitRepository,
     commit: Commit,
     file: FileTreeNode,
     repository: Repository?

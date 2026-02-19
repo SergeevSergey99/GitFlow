@@ -16,6 +16,7 @@ import androidx.navigation.NavController
 import com.gitflow.android.R
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.GitRepository
+import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.ui.config.GraphConfig
 import com.gitflow.android.ui.components.CloneProgressOverlay
 import com.gitflow.android.ui.screens.main.ChangesScreen
@@ -108,6 +109,7 @@ fun MainScreen(navController: NavController) {
             when (selectedTab) {
                 0 -> RepositoryListScreen(
                     repositories = repositories,
+                    gitRepository = gitRepository,
                     onRepositorySelected = {
                         selectedRepository = it
                         selectedTab = 1 // Switch to graph view
@@ -166,7 +168,7 @@ fun getGraphConfig(preset: String): GraphConfig {
 @Composable
 fun GitOperationsSheet(
     repository: Repository,
-    gitRepository: GitRepository,
+    gitRepository: IGitRepository,
     onDismiss: () -> Unit
 ) {
     // TODO: Implement GitOperationsSheet - это большой компонент, оставим пока заглушку

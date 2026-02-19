@@ -363,6 +363,7 @@
     <!-- EnhancedGraphScreen -->
     <string name="graph_select_repo">Выберите репозиторий для просмотра коммитов</string>
     <string name="graph_no_commits">Коммиты не найдены в этом репозитории</string>
+    <string name="graph_load_more_commits">Загрузить ещё коммиты</string>
     <string name="graph_merge_commit">Merge-коммит</string>
     <string name="graph_from_badge">из %1$s</string>
     <string name="graph_from_badge_branch">из %1$s • %2$s</string>
