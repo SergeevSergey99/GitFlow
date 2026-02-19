@@ -115,9 +115,13 @@ fun OAuthScreen(
     onClose: () -> Unit
 ) {
     var isLoading by remember { mutableStateOf(true) }
+    val webViewRef = remember { mutableStateOf<WebView?>(null) }
 
     DisposableEffect(Unit) {
-        onDispose { }
+        onDispose {
+            webViewRef.value?.destroy()
+            webViewRef.value = null
+        }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -141,7 +145,7 @@ fun OAuthScreen(
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { context ->
-                    WebView(context).apply {
+                    WebView(context).also { webViewRef.value = it }.apply {
                         webViewClient = object : WebViewClient() {
                             override fun shouldOverrideUrlLoading(
                                 view: WebView?,

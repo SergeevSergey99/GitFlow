@@ -18,8 +18,9 @@ class AuthManager(val context: Context) {
     private val preferences: SharedPreferences = createEncryptedPreferences()
     private val gson = Gson()
 
-    // In-memory map: state -> code_verifier (for PKCE)
-    private val pendingAuthStates = mutableMapOf<String, String>()
+    // In-memory map: state -> (code_verifier, createdAt) for PKCE
+    private data class PendingAuth(val codeVerifier: String, val createdAt: Long = System.currentTimeMillis())
+    private val pendingAuthStates = mutableMapOf<String, PendingAuth>()
 
     init {
         OAuthConfig.initialize(context)
@@ -54,6 +55,8 @@ class AuthManager(val context: Context) {
     }
 
     companion object {
+
+        private const val PKCE_STATE_TTL_MS = 10 * 60 * 1000L // 10 minutes
 
         private const val GITHUB_AUTH_URL = "https://github.com/login/oauth/authorize"
         private const val GITHUB_API_URL = "https://api.github.com/"
@@ -117,7 +120,10 @@ class AuthManager(val context: Context) {
         val codeChallenge = PKCEHelper.generateCodeChallenge(codeVerifier)
         val state = java.util.UUID.randomUUID().toString()
 
-        pendingAuthStates[state] = codeVerifier
+        // Evict expired states to avoid unbounded map growth
+        val now = System.currentTimeMillis()
+        pendingAuthStates.entries.removeIf { now - it.value.createdAt > PKCE_STATE_TTL_MS }
+        pendingAuthStates[state] = PendingAuth(codeVerifier)
 
         val url = when (provider) {
             GitProvider.GITHUB -> {
@@ -144,12 +150,16 @@ class AuthManager(val context: Context) {
 
     suspend fun handleAuthCallback(provider: GitProvider, code: String, state: String): AuthResult = withContext(Dispatchers.IO) {
         try {
-            val codeVerifier = pendingAuthStates.remove(state)
+            val pending = pendingAuthStates.remove(state)
                 ?: return@withContext AuthResult(success = false, error = "Invalid or expired OAuth state")
 
+            if (System.currentTimeMillis() - pending.createdAt > PKCE_STATE_TTL_MS) {
+                return@withContext AuthResult(success = false, error = "OAuth state expired, please try again")
+            }
+
             when (provider) {
-                GitProvider.GITHUB -> handleGitHubCallback(code, codeVerifier)
-                GitProvider.GITLAB -> handleGitLabCallback(code, codeVerifier)
+                GitProvider.GITHUB -> handleGitHubCallback(code, pending.codeVerifier)
+                GitProvider.GITLAB -> handleGitLabCallback(code, pending.codeVerifier)
             }
         } catch (e: Exception) {
             AuthResult(success = false, error = e.message ?: "Ошибка авторизации")
@@ -381,7 +391,7 @@ class AuthManager(val context: Context) {
      * Authentication is handled by RealGitRepository.resolveCredentialsProvider().
      */
     fun getCloneUrl(repository: GitRemoteRepository): String? {
-        val token = getToken(repository.provider) ?: return null
+        if (!isAuthenticated(repository.provider)) return null
         return repository.cloneUrl
     }
 

@@ -15,20 +15,19 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.gitflow.android.R
 import com.gitflow.android.data.models.Repository
-import com.gitflow.android.data.repository.RealGitRepository
+import com.gitflow.android.data.repository.GitRepository
 import com.gitflow.android.ui.config.GraphConfig
 import com.gitflow.android.ui.components.CloneProgressOverlay
 import com.gitflow.android.ui.screens.main.ChangesScreen
 import com.gitflow.android.ui.screens.main.RepositoryListScreen
 import com.gitflow.android.ui.screens.main.SettingsScreen
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(navController: NavController) {
     var selectedTab by remember { mutableStateOf(0) }
     val context = LocalContext.current
-    val gitRepository = remember { RealGitRepository(context) }
+    val gitRepository = remember { GitRepository(context) }
 
     // Используем Flow для автоматического обновления списка репозиториев
     val repositories by gitRepository.getRepositoriesFlow().collectAsState(initial = emptyList())
@@ -173,7 +172,7 @@ fun getGraphConfig(preset: String): GraphConfig {
 @Composable
 fun GitOperationsSheet(
     repository: Repository,
-    gitRepository: RealGitRepository,
+    gitRepository: GitRepository,
     onDismiss: () -> Unit
 ) {
     // TODO: Implement GitOperationsSheet - это большой компонент, оставим пока заглушку

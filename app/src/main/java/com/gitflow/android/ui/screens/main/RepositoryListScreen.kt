@@ -25,7 +25,7 @@ import androidx.navigation.NavController
 import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.Repository
-import com.gitflow.android.data.repository.RealGitRepository
+import com.gitflow.android.data.repository.GitRepository
 import com.gitflow.android.ui.components.RepositoryCard
 import com.gitflow.android.ui.components.dialogs.AddRepositoryDialog
 import com.gitflow.android.data.settings.AppSettingsManager
@@ -51,7 +51,7 @@ fun RepositoryListScreen(
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val gitRepository = remember { RealGitRepository(context) }
+    val gitRepository = remember { GitRepository(context) }
     val authManager = remember { AuthManager(context) }
 
     // Observe clone progress

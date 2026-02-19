@@ -22,9 +22,7 @@ import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.MergeType
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Restore
-import androidx.compose.material3.Card
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
@@ -57,21 +55,18 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.times
 import com.gitflow.android.R
 import com.gitflow.android.data.models.Commit
 import com.gitflow.android.data.models.Repository
-import com.gitflow.android.data.repository.RealGitRepository
+import com.gitflow.android.data.repository.GitRepository
 import com.gitflow.android.ui.config.GraphConfig
 import com.gitflow.android.ui.screens.main.EmptyStateMessage
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
-import kotlin.math.abs
-import kotlin.math.max
 
 /** Минимальный и рабочий экран графа. Исправления:
  * 1) Клики по коммиту открывают диалог деталей.
@@ -84,7 +79,7 @@ import kotlin.math.max
 @Composable
 fun EnhancedGraphView(
     repository: Repository?,
-    gitRepository: RealGitRepository,
+    gitRepository: GitRepository,
     config: GraphConfig = GraphConfig.Default
 ) {
     if (repository == null) {

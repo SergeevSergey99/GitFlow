@@ -6,12 +6,10 @@ import android.content.Context
 import android.content.Intent
 import android.webkit.MimeTypeMap
 import android.widget.Toast
-import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
@@ -20,7 +18,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -43,7 +40,7 @@ import androidx.core.content.FileProvider
 import androidx.compose.ui.res.stringResource
 import com.gitflow.android.R
 import com.gitflow.android.data.models.*
-import com.gitflow.android.data.repository.RealGitRepository
+import com.gitflow.android.data.repository.GitRepository
 import com.gitflow.android.data.settings.AppSettingsManager
 import java.io.File
 import java.text.SimpleDateFormat
@@ -61,7 +58,7 @@ private val CodeLineContentSpacing = 16.dp
 fun CommitDetailDialog(
     commit: Commit,
     repository: Repository?,
-    gitRepository: RealGitRepository,
+    gitRepository: GitRepository,
     onDismiss: () -> Unit
 ) {
     var selectedTab by remember { mutableStateOf(0) }
@@ -1046,7 +1043,7 @@ fun formatFileSize(size: Long): String {
 }
 
 @Composable
-fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: RealGitRepository) {
+fun FileTreeView(commit: Commit, repository: Repository?, gitRepository: GitRepository) {
     var fileTree by remember { mutableStateOf<FileTreeNode?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var selectedFileForViewing by remember { mutableStateOf<FileTreeNode?>(null) }
@@ -1725,7 +1722,7 @@ fun FileViewerDialog(
     file: FileTreeNode,
     commit: Commit,
     repository: Repository?,
-    gitRepository: RealGitRepository,
+    gitRepository: GitRepository,
     onDismiss: () -> Unit
 ) {
     var fileContent by remember { mutableStateOf<String?>(null) }
@@ -2555,7 +2552,7 @@ fun isPreviewSupported(
 
 suspend fun openFileInExternalApp(
     context: Context,
-    gitRepository: RealGitRepository,
+    gitRepository: GitRepository,
     commit: Commit,
     file: FileTreeNode,
     repository: Repository?
