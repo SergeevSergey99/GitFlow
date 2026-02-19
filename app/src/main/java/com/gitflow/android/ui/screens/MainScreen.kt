@@ -64,13 +64,7 @@ fun MainScreen(navController: NavController) {
                         }
                     }
                 },
-                actions = {
-                    if (selectedRepository != null) {
-                        /*IconButton(onClick = { showOperationsSheet = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.main_screen_operations))
-                        }*/
-                    }
-                },
+                actions = {},
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer

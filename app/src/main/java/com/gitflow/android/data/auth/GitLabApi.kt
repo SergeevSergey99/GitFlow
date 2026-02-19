@@ -61,7 +61,7 @@ data class GitLabGroup(
 )
 
 interface GitLabApi {
-    
+
     @POST("oauth/token")
     @FormUrlEncoded
     suspend fun getAccessToken(
@@ -71,6 +71,16 @@ interface GitLabApi {
         @Field("grant_type") grantType: String = "authorization_code",
         @Field("redirect_uri") redirectUri: String,
         @Field("code_verifier") codeVerifier: String
+    ): Response<GitLabOAuthResponse>
+
+    @POST("oauth/token")
+    @FormUrlEncoded
+    suspend fun refreshToken(
+        @Field("client_id") clientId: String,
+        @Field("client_secret") clientSecret: String,
+        @Field("refresh_token") refreshToken: String,
+        @Field("grant_type") grantType: String = "refresh_token",
+        @Field("redirect_uri") redirectUri: String
     ): Response<GitLabOAuthResponse>
     
     @GET("api/v4/user")

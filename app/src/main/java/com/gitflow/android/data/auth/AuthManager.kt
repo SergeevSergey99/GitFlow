@@ -57,6 +57,7 @@ class AuthManager(val context: Context) {
     companion object {
 
         private const val PKCE_STATE_TTL_MS = 10 * 60 * 1000L // 10 minutes
+        private const val TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000L // refresh 5 min before expiry
 
         private const val GITHUB_AUTH_URL = "https://github.com/login/oauth/authorize"
         private const val GITHUB_API_URL = "https://api.github.com/"
@@ -271,6 +272,10 @@ class AuthManager(val context: Context) {
     }
 
     suspend fun getRepositories(provider: GitProvider): List<GitRemoteRepository> = withContext(Dispatchers.IO) {
+        if (provider == GitProvider.GITLAB) {
+            refreshGitLabTokenIfNeeded()
+        }
+
         val token = getToken(provider)
             ?: throw Exception("Токен не найден для провайдера $provider")
 
@@ -344,6 +349,46 @@ class AuthManager(val context: Context) {
 
     fun getAccessToken(provider: GitProvider): String? {
         return getToken(provider)?.accessToken
+    }
+
+    private fun isTokenExpired(token: OAuthToken): Boolean {
+        val expiresAt = token.expiresAt ?: return false
+        return System.currentTimeMillis() >= expiresAt - TOKEN_EXPIRY_BUFFER_MS
+    }
+
+    /**
+     * Refreshes the GitLab access token using the stored refresh_token if it is
+     * expired or about to expire. Returns true if the token is valid after the call.
+     * No-op for GitHub (tokens don't expire).
+     */
+    suspend fun refreshGitLabTokenIfNeeded(): Boolean = withContext(Dispatchers.IO) {
+        val token = getToken(GitProvider.GITLAB) ?: return@withContext false
+        if (!isTokenExpired(token)) return@withContext true
+
+        val refreshToken = token.refreshToken ?: return@withContext false
+
+        try {
+            val response = gitlabApi.refreshToken(
+                clientId = OAuthConfig.gitlabClientId,
+                clientSecret = OAuthConfig.gitlabClientSecret,
+                refreshToken = refreshToken,
+                redirectUri = OAuthConfig.REDIRECT_URI
+            )
+            if (!response.isSuccessful) return@withContext false
+
+            val body = response.body() ?: return@withContext false
+            val newToken = OAuthToken(
+                accessToken = body.access_token,
+                tokenType = body.token_type,
+                scope = body.scope,
+                refreshToken = body.refresh_token ?: refreshToken,
+                expiresAt = body.expires_in?.let { System.currentTimeMillis() + it * 1000L }
+            )
+            saveToken(GitProvider.GITLAB, newToken)
+            true
+        } catch (e: Exception) {
+            false
+        }
     }
 
     fun logout(provider: GitProvider) {
