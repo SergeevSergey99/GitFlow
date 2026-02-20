@@ -323,12 +323,14 @@ class GitRepository(internal val context: Context) : IGitRepository {
         System.currentTimeMillis()
     }
 
-    internal fun calculateAheadBehind(git: Git): Pair<Int, Int> = try {
-        val fullBranch = git.repository.fullBranch ?: return 0 to 0
-        val trackingStatus = BranchTrackingStatus.of(git.repository, fullBranch) ?: return 0 to 0
-        trackingStatus.aheadCount to trackingStatus.behindCount
-    } catch (e: Exception) {
-        0 to 0
+    internal fun calculateAheadBehind(git: Git): Pair<Int, Int> {
+        return try {
+            val fullBranch = git.repository.fullBranch ?: return 0 to 0
+            val trackingStatus = BranchTrackingStatus.of(git.repository, fullBranch) ?: return 0 to 0
+            trackingStatus.aheadCount to trackingStatus.behindCount
+        } catch (e: Exception) {
+            0 to 0
+        }
     }
 
     internal fun getBranchName(ref: Ref): String = when {
@@ -337,15 +339,17 @@ class GitRepository(internal val context: Context) : IGitRepository {
         else -> ref.name
     }
 
-    internal fun getTagsForCommit(git: Git, commitHash: String): List<String> = try {
-        val repository = git.repository
-        val targetCommit = repository.resolve(commitHash) ?: return emptyList()
-        git.tagList().call().mapNotNull { tagRef ->
-            val peeled = repository.refDatabase.peel(tagRef)
-            val targetId = peeled.peeledObjectId ?: tagRef.objectId
-            if (targetId == targetCommit) tagRef.name.removePrefix("refs/tags/") else null
+    internal fun getTagsForCommit(git: Git, commitHash: String): List<String> {
+        return try {
+            val repository = git.repository
+            val targetCommit = repository.resolve(commitHash) ?: return emptyList()
+            git.tagList().call().mapNotNull { tagRef ->
+                val peeled = repository.refDatabase.peel(tagRef)
+                val targetId = peeled.peeledObjectId ?: tagRef.objectId
+                if (targetId == targetCommit) tagRef.name.removePrefix("refs/tags/") else null
+            }
+        } catch (e: Exception) {
+            emptyList()
         }
-    } catch (e: Exception) {
-        emptyList()
     }
 }
