@@ -155,19 +155,6 @@ data class CommitFileInfo(
     val content: String? = null
 )
 
-// Результаты Git операций
-data class PullResult(
-    val success: Boolean,
-    val newCommits: Int,
-    val conflicts: List<String>
-)
-
-data class PushResult(
-    val success: Boolean,
-    val pushedCommits: Int,
-    val message: String
-)
-
 // OAuth и авторизация модели
 @Serializable
 data class OAuthToken(

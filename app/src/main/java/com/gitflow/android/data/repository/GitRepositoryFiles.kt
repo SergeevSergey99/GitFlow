@@ -1,6 +1,7 @@
 package com.gitflow.android.data.repository
 
 import com.gitflow.android.data.models.*
+import com.gitflow.android.data.models.GitResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.eclipse.jgit.lib.Constants
@@ -92,46 +93,46 @@ internal suspend fun GitRepository.getFileContentBytesAutoImpl(commit: Commit, f
 // Restore file
 // ---------------------------------------------------------------------------
 
-internal suspend fun GitRepository.restoreFileToCommitImpl(commit: Commit, filePath: String, repository: Repository): Boolean = withContext(Dispatchers.IO) {
-    val git = openRepository(repository.path) ?: return@withContext false
+internal suspend fun GitRepository.restoreFileToCommitImpl(commit: Commit, filePath: String, repository: Repository): GitResult<Unit> = withContext(Dispatchers.IO) {
+    val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Failed to restore file")
     try {
         val repo = git.repository
-        val commitId = repo.resolve(commit.hash) ?: return@withContext false
+        val commitId = repo.resolve(commit.hash) ?: return@withContext GitResult.Failure.Generic("Failed to restore file")
         RevWalk(repo).use { rw -> rw.parseCommit(commitId) }
         git.checkout().setStartPoint(commit.hash).setForce(true).addPath(filePath).call()
-        true
+        GitResult.Success(Unit)
     } catch (e: Exception) {
-        false
+        GitResult.Failure.Generic(e.message ?: "Failed to restore file", e)
     } finally {
         git.close()
     }
 }
 
-internal suspend fun GitRepository.restoreFileToCommitAutoImpl(commit: Commit, filePath: String): Boolean {
-    val repo = findRepositoryForCommit(commit) ?: return false
+internal suspend fun GitRepository.restoreFileToCommitAutoImpl(commit: Commit, filePath: String): GitResult<Unit> {
+    val repo = findRepositoryForCommit(commit) ?: return GitResult.Failure.Generic("Failed to restore file")
     return restoreFileToCommitImpl(commit, filePath, repo)
 }
 
-internal suspend fun GitRepository.restoreFileToParentCommitImpl(commit: Commit, filePath: String, repository: Repository): Boolean = withContext(Dispatchers.IO) {
-    val git = openRepository(repository.path) ?: return@withContext false
+internal suspend fun GitRepository.restoreFileToParentCommitImpl(commit: Commit, filePath: String, repository: Repository): GitResult<Unit> = withContext(Dispatchers.IO) {
+    val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Failed to restore file")
     try {
         val repo = git.repository
-        val commitId = repo.resolve(commit.hash) ?: return@withContext false
+        val commitId = repo.resolve(commit.hash) ?: return@withContext GitResult.Failure.Generic("Failed to restore file")
         val parentHash = RevWalk(repo).use { rw ->
             rw.parseCommit(commitId).parents.firstOrNull()?.name
-        } ?: return@withContext false
+        } ?: return@withContext GitResult.Failure.Generic("Failed to restore file")
 
         git.checkout().setStartPoint(parentHash).setForce(true).addPath(filePath).call()
-        true
+        GitResult.Success(Unit)
     } catch (e: Exception) {
-        false
+        GitResult.Failure.Generic(e.message ?: "Failed to restore file", e)
     } finally {
         git.close()
     }
 }
 
-internal suspend fun GitRepository.restoreFileToParentCommitAutoImpl(commit: Commit, filePath: String): Boolean {
-    val repo = findRepositoryForCommit(commit) ?: return false
+internal suspend fun GitRepository.restoreFileToParentCommitAutoImpl(commit: Commit, filePath: String): GitResult<Unit> {
+    val repo = findRepositoryForCommit(commit) ?: return GitResult.Failure.Generic("Failed to restore file")
     return restoreFileToParentCommitImpl(commit, filePath, repo)
 }
 

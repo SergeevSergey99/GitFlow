@@ -24,6 +24,7 @@ import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
+import com.gitflow.android.data.models.GitResult
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.ui.components.RepositoryCard
@@ -167,16 +168,16 @@ fun RepositoryListScreen(
                             val localPath = "${baseDir.absolutePath}/$name"
 
                             val result = gitRepository.createRepository(name, localPath)
-                            result.fold(
-                                onSuccess = {
+                            when (result) {
+                                is GitResult.Success -> {
                                     showAddDialog = false
                                     isLoading = false
-                                },
-                                onFailure = { exception ->
-                                    errorMessage = exception.message ?: "Failed to create repository"
+                                }
+                                is GitResult.Failure -> {
+                                    errorMessage = result.message.ifBlank { "Failed to create repository" }
                                     isLoading = false
                                 }
-                            )
+                            }
                         } catch (e: Exception) {
                             errorMessage = e.message ?: "Unknown error occurred"
                             isLoading = false
@@ -191,16 +192,16 @@ fun RepositoryListScreen(
                         errorMessage = null
 
                         val result = gitRepository.addRepository(path)
-                        result.fold(
-                            onSuccess = {
+                        when (result) {
+                            is GitResult.Success -> {
                                 showAddDialog = false
                                 isLoading = false
-                            },
-                            onFailure = { exception ->
-                                errorMessage = exception.message ?: "Failed to add repository"
+                            }
+                            is GitResult.Failure -> {
+                                errorMessage = result.message.ifBlank { "Failed to add repository" }
                                 isLoading = false
                             }
-                        )
+                        }
                     } catch (e: Exception) {
                         errorMessage = e.message ?: "Unknown error occurred"
                         isLoading = false
@@ -227,16 +228,16 @@ fun RepositoryListScreen(
                         val repo = repositoryToDelete!!
                         if (deleteFiles) {
                             val result = gitRepository.removeRepositoryWithFiles(repo.id)
-                            result.fold(
-                                onSuccess = {
+                            when (result) {
+                                is GitResult.Success -> {
                                     showDeleteConfirmDialog = false
                                     repositoryToDelete = null
                                     deleteMessage = null
-                                },
-                                onFailure = { exception ->
-                                    deleteMessage = exception.message ?: "Failed to delete repository"
                                 }
-                            )
+                                is GitResult.Failure -> {
+                                    deleteMessage = result.message.ifBlank { "Failed to delete repository" }
+                                }
+                            }
                         } else {
                             gitRepository.removeRepository(repo.id)
                             showDeleteConfirmDialog = false

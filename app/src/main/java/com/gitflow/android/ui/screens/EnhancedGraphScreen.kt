@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.times
 import com.gitflow.android.R
 import com.gitflow.android.data.models.Commit
 import com.gitflow.android.data.models.Repository
+import com.gitflow.android.data.models.GitResult
 import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.ui.config.GraphConfig
 import com.gitflow.android.ui.screens.main.EmptyStateMessage
@@ -136,7 +137,7 @@ fun EnhancedGraphView(
         commit: Commit,
         successMessage: String,
         clearSelection: Boolean = true,
-        operation: suspend () -> Result<Unit>
+        operation: suspend () -> GitResult<Unit>
     ) {
         if (isOperationRunning) return
         scope.launch {
@@ -144,9 +145,9 @@ fun EnhancedGraphView(
             val outcome = try {
                 operation()
             } catch (e: Exception) {
-                Result.failure(e)
+                GitResult.Failure.Generic(e.localizedMessage ?: "Unknown error", e)
             }
-            if (outcome.isSuccess) {
+            if (outcome is GitResult.Success) {
                 try {
                     commits = gitRepository.getCommits(repository, page = 0, pageSize = currentPageSize)
                     hasMoreCommits = commits.size >= currentPageSize
@@ -168,7 +169,7 @@ fun EnhancedGraphView(
                 showSnackbarMessage(successMessage)
             } else {
                 val fallback = context.getString(R.string.graph_commit_operation_failed_generic)
-                val message = outcome.exceptionOrNull()?.localizedMessage?.takeIf { it.isNotBlank() } ?: fallback
+                val message = (outcome as? GitResult.Failure)?.message?.takeIf { it.isNotBlank() } ?: fallback
                 showSnackbarMessage(context.getString(R.string.graph_commit_operation_failed, message))
             }
             isOperationRunning = false

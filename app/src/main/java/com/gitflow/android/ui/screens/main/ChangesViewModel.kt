@@ -8,6 +8,7 @@ import com.gitflow.android.R
 import com.gitflow.android.data.models.ChangeStage
 import com.gitflow.android.data.models.ConflictResolutionStrategy
 import com.gitflow.android.data.models.FileChange
+import com.gitflow.android.data.models.GitResult
 import com.gitflow.android.data.models.MergeConflict
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.IGitRepository
@@ -122,8 +123,8 @@ class ChangesViewModel(
     fun stageAll() {
         guard {
             val result = gitRepository.stageAll(repository)
-            if (result.isFailure) {
-                emit(result.exceptionOrNull()?.localizedMessage ?: str(R.string.changes_unable_to_stage))
+            if (result !is GitResult.Success) {
+                emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_unable_to_stage))
             }
             reloadChanges()
         }
@@ -137,12 +138,12 @@ class ChangesViewModel(
         }
         guard {
             val result = gitRepository.commit(repository, message)
-            if (result.isSuccess) {
+            if (result is GitResult.Success) {
                 _uiState.update { it.copy(commitMessage = "") }
                 reloadChanges()
                 emit(str(R.string.changes_commit_created))
             } else {
-                emit(result.exceptionOrNull()?.localizedMessage ?: str(R.string.changes_commit_failed))
+                emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_commit_failed))
             }
         }
     }
@@ -150,10 +151,10 @@ class ChangesViewModel(
     fun push() {
         guard {
             val result = gitRepository.push(repository)
-            val msg = if (result.success) {
-                result.message.ifBlank { str(R.string.changes_push_successful) }
+            val msg = if (result is GitResult.Success) {
+                str(R.string.changes_push_successful)
             } else {
-                result.message.ifBlank { str(R.string.changes_push_failed) }
+                (result as? GitResult.Failure)?.message?.ifBlank { null } ?: str(R.string.changes_push_failed)
             }
             emit(msg)
         }
@@ -166,12 +167,12 @@ class ChangesViewModel(
             } else {
                 gitRepository.stageFile(repository, file)
             }
-            if (result.isFailure) {
+            if (result !is GitResult.Success) {
                 val fallback = if (file.stage == ChangeStage.STAGED)
                     str(R.string.changes_unable_to_unstage_file)
                 else
                     str(R.string.changes_unable_to_stage_file)
-                emit(result.exceptionOrNull()?.localizedMessage ?: fallback)
+                emit((result as? GitResult.Failure)?.message ?: fallback)
             }
             reloadChanges()
         }
@@ -180,11 +181,11 @@ class ChangesViewModel(
     fun acceptOurs(file: FileChange) {
         guard {
             val result = gitRepository.resolveConflict(repository, file.path, ConflictResolutionStrategy.OURS)
-            if (result.isSuccess) {
+            if (result is GitResult.Success) {
                 reloadChanges()
                 emit(str(R.string.changes_conflict_resolved_current))
             } else {
-                emit(result.exceptionOrNull()?.localizedMessage ?: str(R.string.changes_conflict_resolve_failed))
+                emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_conflict_resolve_failed))
             }
         }
     }
@@ -192,11 +193,11 @@ class ChangesViewModel(
     fun acceptTheirs(file: FileChange) {
         guard {
             val result = gitRepository.resolveConflict(repository, file.path, ConflictResolutionStrategy.THEIRS)
-            if (result.isSuccess) {
+            if (result is GitResult.Success) {
                 reloadChanges()
                 emit(str(R.string.changes_conflict_resolved_incoming))
             } else {
-                emit(result.exceptionOrNull()?.localizedMessage ?: str(R.string.changes_conflict_resolve_failed))
+                emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_conflict_resolve_failed))
             }
         }
     }
@@ -224,12 +225,12 @@ class ChangesViewModel(
         val path = _uiState.value.conflictDetails?.path ?: return
         guard {
             val result = gitRepository.resolveConflictWithContent(repository, path, resolvedContent)
-            if (result.isSuccess) {
+            if (result is GitResult.Success) {
                 _uiState.update { it.copy(conflictDetails = null) }
                 reloadChanges()
                 emit(str(R.string.changes_conflict_manual_success))
             } else {
-                emit(result.exceptionOrNull()?.localizedMessage ?: str(R.string.changes_conflict_resolve_failed))
+                emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_conflict_resolve_failed))
             }
         }
     }

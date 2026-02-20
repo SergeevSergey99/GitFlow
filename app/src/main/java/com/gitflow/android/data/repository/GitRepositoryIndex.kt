@@ -1,6 +1,7 @@
 package com.gitflow.android.data.repository
 
 import com.gitflow.android.data.models.*
+import com.gitflow.android.data.models.GitResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.eclipse.jgit.api.CheckoutCommand
@@ -82,43 +83,43 @@ internal suspend fun GitRepository.getChangedFilesImpl(repository: Repository): 
 // Staging
 // ---------------------------------------------------------------------------
 
-internal suspend fun GitRepository.stageFileImpl(repository: Repository, file: FileChange): Result<Unit> = withContext(Dispatchers.IO) {
+internal suspend fun GitRepository.stageFileImpl(repository: Repository, file: FileChange): GitResult<Unit> = withContext(Dispatchers.IO) {
     try {
-        val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
+        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
         git.use { g ->
             when (file.status) {
                 ChangeStatus.DELETED -> g.add().setUpdate(true).addFilepattern(file.path).call()
                 else -> g.add().addFilepattern(file.path).call()
             }
         }
-        Result.success(Unit)
+        GitResult.Success(Unit)
     } catch (e: Exception) {
-        Result.failure(e)
+        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
     }
 }
 
-internal suspend fun GitRepository.unstageFileImpl(repository: Repository, filePath: String): Result<Unit> = withContext(Dispatchers.IO) {
+internal suspend fun GitRepository.unstageFileImpl(repository: Repository, filePath: String): GitResult<Unit> = withContext(Dispatchers.IO) {
     try {
-        val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
+        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
         git.use { g ->
             g.reset().setMode(ResetCommand.ResetType.MIXED).addPath(filePath).call()
         }
-        Result.success(Unit)
+        GitResult.Success(Unit)
     } catch (e: Exception) {
-        Result.failure(e)
+        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
     }
 }
 
-internal suspend fun GitRepository.stageAllImpl(repository: Repository): Result<Unit> = withContext(Dispatchers.IO) {
+internal suspend fun GitRepository.stageAllImpl(repository: Repository): GitResult<Unit> = withContext(Dispatchers.IO) {
     try {
-        val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
+        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
         git.use { g ->
             g.add().addFilepattern(".").call()
             g.add().setUpdate(true).addFilepattern(".").call()
         }
-        Result.success(Unit)
+        GitResult.Success(Unit)
     } catch (e: Exception) {
-        Result.failure(e)
+        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
     }
 }
 
@@ -141,9 +142,9 @@ internal suspend fun GitRepository.getMergeConflictsImpl(repository: Repository)
 
 internal suspend fun GitRepository.resolveConflictImpl(
     repository: Repository, path: String, strategy: ConflictResolutionStrategy
-): Result<Unit> = withContext(Dispatchers.IO) {
+): GitResult<Unit> = withContext(Dispatchers.IO) {
     try {
-        val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
+        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
         git.use { g ->
             val stage = when (strategy) {
                 ConflictResolutionStrategy.OURS -> CheckoutCommand.Stage.OURS
@@ -152,25 +153,25 @@ internal suspend fun GitRepository.resolveConflictImpl(
             g.checkout().setStage(stage).addPath(path).call()
             g.add().addFilepattern(path).call()
         }
-        Result.success(Unit)
+        GitResult.Success(Unit)
     } catch (e: Exception) {
-        Result.failure(e)
+        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
     }
 }
 
 internal suspend fun GitRepository.resolveConflictWithContentImpl(
     repository: Repository, path: String, resolvedContent: String
-): Result<Unit> = withContext(Dispatchers.IO) {
+): GitResult<Unit> = withContext(Dispatchers.IO) {
     try {
         val file = File(repository.path, path)
         file.parentFile?.mkdirs()
         file.writeText(resolvedContent)
 
-        val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
+        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
         git.use { g -> g.add().addFilepattern(path).call() }
-        Result.success(Unit)
+        GitResult.Success(Unit)
     } catch (e: Exception) {
-        Result.failure(e)
+        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
     }
 }
 
@@ -178,13 +179,14 @@ internal suspend fun GitRepository.resolveConflictWithContentImpl(
 // Commit
 // ---------------------------------------------------------------------------
 
-internal suspend fun GitRepository.commitImpl(repository: Repository, message: String): Result<Unit> = withContext(Dispatchers.IO) {
+internal suspend fun GitRepository.commitImpl(repository: Repository, message: String): GitResult<Unit> = withContext(Dispatchers.IO) {
     try {
-        val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
+        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
         git.use { g ->
             val status = g.status().call()
             if (status.added.isEmpty() && status.changed.isEmpty() && status.removed.isEmpty()) {
-                throw IllegalStateException("No staged changes")
+                // inline use{} allows non-local return to withContext
+                return@withContext GitResult.Failure.NoStagedChanges()
             }
             val commitCommand = g.commit().setMessage(message)
             resolveCommitIdentity(g)?.let { (name, email) ->
@@ -194,9 +196,9 @@ internal suspend fun GitRepository.commitImpl(repository: Repository, message: S
             commitCommand.call()
         }
         refreshRepository(repository)
-        Result.success(Unit)
+        GitResult.Success(Unit)
     } catch (e: Exception) {
-        Result.failure(e)
+        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
     }
 }
 
