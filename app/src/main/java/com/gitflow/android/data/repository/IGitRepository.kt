@@ -11,8 +11,8 @@ interface IGitRepository {
     suspend fun cloneRepository(
         url: String,
         localPath: String,
-        customDestination: String?,
-        progressCallback: CloneProgressCallback?
+        customDestination: String? = null,
+        progressCallback: CloneProgressCallback? = null
     ): Result<Repository>
     suspend fun removeRepository(repositoryId: String)
     suspend fun removeRepositoryWithFiles(repositoryId: String): Result<Unit>

@@ -19,14 +19,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitRemoteRepository
-import androidx.compose.ui.res.stringResource
-import com.gitflow.android.R
 import com.gitflow.android.data.settings.AppSettingsManager
 import com.gitflow.android.ui.components.CloneProgressOverlay
 import java.io.File

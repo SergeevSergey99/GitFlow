@@ -305,8 +305,8 @@ class GitRepository(private val context: Context) : IGitRepository {
     override suspend fun cloneRepository(
         url: String,
         localPath: String,
-        customDestination: String? = null,
-        progressCallback: CloneProgressCallback? = null
+        customDestination: String?,
+        progressCallback: CloneProgressCallback?
     ): Result<Repository> = withContext(Dispatchers.IO) {
         try {
             val targetDir = if (!customDestination.isNullOrEmpty()) {
@@ -446,8 +446,8 @@ class GitRepository(private val context: Context) : IGitRepository {
 
     override suspend fun getCommits(
         repository: com.gitflow.android.data.models.Repository,
-        page: Int = 0,
-        pageSize: Int = 50
+        page: Int,
+        pageSize: Int
     ): List<Commit> = withContext(Dispatchers.IO) {
         try {
             val git = openRepository(repository.path) ?: return@withContext emptyList()
@@ -824,7 +824,7 @@ class GitRepository(private val context: Context) : IGitRepository {
         repository: com.gitflow.android.data.models.Repository,
         tagName: String,
         commitHash: String,
-        force: Boolean = false
+        force: Boolean
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
