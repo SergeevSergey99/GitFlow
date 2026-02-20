@@ -18,224 +18,82 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gitflow.android.R
 import com.gitflow.android.data.models.ChangeStage
-import com.gitflow.android.data.models.ConflictResolutionStrategy
 import com.gitflow.android.data.models.FileChange
 import com.gitflow.android.data.models.MergeConflict
 import com.gitflow.android.data.models.MergeConflictSection
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.ui.components.FileChangeCard
-import kotlinx.coroutines.launch
 
 @Composable
 fun ChangesScreen(
     repository: Repository?,
     gitRepository: IGitRepository
 ) {
-    val context = LocalContext.current
     if (repository == null) {
         EmptyStateMessage(stringResource(R.string.changes_select_repo))
         return
     }
 
+    val application = LocalContext.current.applicationContext as android.app.Application
+    val viewModel: ChangesViewModel = viewModel(
+        key = repository.id,
+        factory = ChangesViewModelFactory(application, gitRepository, repository)
+    )
+    val uiState by viewModel.uiState.collectAsState()
+
+    // Sync repository metadata (pendingPushCommits, canPush) when MainScreen's flow updates them
+    LaunchedEffect(repository.pendingPushCommits, repository.hasRemoteOrigin) {
+        viewModel.onRepositoryUpdated(repository)
+    }
+
     val snackbarHostState = remember { SnackbarHostState() }
-    var changes by remember { mutableStateOf<List<FileChange>>(emptyList()) }
-    var commitMessage by remember { mutableStateOf("") }
-    var isLoading by remember { mutableStateOf(true) }
-    var isProcessing by remember { mutableStateOf(false) }
-    var conflictDetails by remember { mutableStateOf<MergeConflict?>(null) }
-    var showConflictDialog by remember { mutableStateOf(false) }
-    var isConflictLoading by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(repository.id) {
-        isLoading = true
-        showConflictDialog = false
-        conflictDetails = null
-        changes = gitRepository.getChangedFiles(repository)
-        gitRepository.refreshRepository(repository)
-        isLoading = false
-        commitMessage = ""
-        isProcessing = false
-        isConflictLoading = false
-    }
-
-    val stagedFiles = changes.filter { it.stage == ChangeStage.STAGED }
-    val unstagedFiles = changes.filter { it.stage == ChangeStage.UNSTAGED }
-    val pendingPushCommits = repository.pendingPushCommits
-
-    suspend fun reloadChanges() {
-        changes = gitRepository.getChangedFiles(repository)
-        gitRepository.refreshRepository(repository)
-    }
-
-    fun guardLaunch(action: suspend () -> Unit) {
-        if (isProcessing) return
-        scope.launch {
-            isProcessing = true
-            try {
-                action()
-            } finally {
-                isProcessing = false
-            }
+    // Show transient snackbar messages emitted by the ViewModel
+    LaunchedEffect(uiState.message) {
+        uiState.message?.let { msg ->
+            snackbarHostState.showSnackbar(msg)
+            viewModel.clearMessage()
         }
     }
 
-    val stageAll = {
-        guardLaunch {
-            val result = gitRepository.stageAll(repository)
-            if (result.isFailure) {
-                val fallback = context.getString(R.string.changes_unable_to_stage)
-                snackbarHostState.showSnackbar(result.exceptionOrNull()?.localizedMessage ?: fallback)
-            }
-            reloadChanges()
-        }
+    val stagedFiles = remember(uiState.changes) {
+        uiState.changes.filter { it.stage == ChangeStage.STAGED }
     }
-
-    val commitChanges = commit@{
-        val message = commitMessage.trim()
-        if (message.isEmpty()) {
-            scope.launch { snackbarHostState.showSnackbar(context.getString(R.string.changes_commit_message_empty)) }
-            return@commit
-        }
-        guardLaunch {
-            val result = gitRepository.commit(repository, message)
-            if (result.isSuccess) {
-                commitMessage = ""
-                reloadChanges()
-                snackbarHostState.showSnackbar(context.getString(R.string.changes_commit_created))
-            } else {
-                val fallback = context.getString(R.string.changes_commit_failed)
-                snackbarHostState.showSnackbar(result.exceptionOrNull()?.localizedMessage ?: fallback)
-            }
-        }
-    }
-
-    val pushChanges = {
-        guardLaunch {
-            val result = gitRepository.push(repository)
-            val message = if (result.success) {
-                if (result.message.isNotBlank()) result.message else context.getString(R.string.changes_push_successful)
-            } else {
-                if (result.message.isNotBlank()) result.message else context.getString(R.string.changes_push_failed)
-            }
-            snackbarHostState.showSnackbar(message)
-        }
-    }
-
-    val toggleFile: (FileChange) -> Unit = { file ->
-        guardLaunch {
-            val result = if (file.stage == ChangeStage.STAGED) {
-                gitRepository.unstageFile(repository, file.path)
-            } else {
-                gitRepository.stageFile(repository, file)
-            }
-
-            if (result.isFailure) {
-                val fallback = if (file.stage == ChangeStage.STAGED) {
-                    context.getString(R.string.changes_unable_to_unstage_file)
-                } else {
-                    context.getString(R.string.changes_unable_to_stage_file)
-                }
-                snackbarHostState.showSnackbar(result.exceptionOrNull()?.localizedMessage ?: fallback)
-            }
-
-            reloadChanges()
-        }
-    }
-
-    val acceptOurs: (FileChange) -> Unit = { file ->
-        guardLaunch {
-            val result = gitRepository.resolveConflict(repository, file.path, ConflictResolutionStrategy.OURS)
-            if (result.isSuccess) {
-                reloadChanges()
-                snackbarHostState.showSnackbar(context.getString(R.string.changes_conflict_resolved_current))
-            } else {
-                val fallback = context.getString(R.string.changes_conflict_resolve_failed)
-                snackbarHostState.showSnackbar(result.exceptionOrNull()?.localizedMessage ?: fallback)
-            }
-        }
-    }
-
-    val acceptTheirs: (FileChange) -> Unit = { file ->
-        guardLaunch {
-            val result = gitRepository.resolveConflict(repository, file.path, ConflictResolutionStrategy.THEIRS)
-            if (result.isSuccess) {
-                reloadChanges()
-                snackbarHostState.showSnackbar(context.getString(R.string.changes_conflict_resolved_incoming))
-            } else {
-                val fallback = context.getString(R.string.changes_conflict_resolve_failed)
-                snackbarHostState.showSnackbar(result.exceptionOrNull()?.localizedMessage ?: fallback)
-            }
-        }
-    }
-
-    val openConflict: (FileChange) -> Unit = { file ->
-        scope.launch {
-            try {
-                isConflictLoading = true
-                val conflict = gitRepository.getMergeConflict(repository, file.path)
-                if (conflict != null) {
-                    conflictDetails = conflict
-                    showConflictDialog = true
-                } else {
-                    snackbarHostState.showSnackbar(context.getString(R.string.changes_conflict_details_failed))
-                }
-            } catch (e: Exception) {
-                snackbarHostState.showSnackbar(e.localizedMessage ?: context.getString(R.string.changes_conflict_details_failed))
-            } finally {
-                isConflictLoading = false
-            }
-        }
+    val unstagedFiles = remember(uiState.changes) {
+        uiState.changes.filter { it.stage == ChangeStage.UNSTAGED }
     }
 
     ChangesContent(
-        isLoading = isLoading,
-        isProcessing = isProcessing,
-        isConflictLoading = isConflictLoading,
+        isLoading = uiState.isLoading,
+        isProcessing = uiState.isProcessing,
+        isConflictLoading = uiState.isConflictLoading,
         snackbarHostState = snackbarHostState,
         stagedFiles = stagedFiles,
         unstagedFiles = unstagedFiles,
-        commitMessage = commitMessage,
-        onCommitMessageChange = { commitMessage = it },
-        onStageAll = stageAll,
-        onCommit = commitChanges,
-        onPush = pushChanges,
-        onFileToggle = toggleFile,
-        onResolveConflict = openConflict,
-        onAcceptOurs = acceptOurs,
-        onAcceptTheirs = acceptTheirs,
-        canPush = repository.hasRemoteOrigin,
-        pendingPushCommits = pendingPushCommits
+        commitMessage = uiState.commitMessage,
+        onCommitMessageChange = viewModel::setCommitMessage,
+        onStageAll = viewModel::stageAll,
+        onCommit = viewModel::commit,
+        onPush = viewModel::push,
+        onFileToggle = viewModel::toggleFile,
+        onResolveConflict = viewModel::openConflict,
+        onAcceptOurs = viewModel::acceptOurs,
+        onAcceptTheirs = viewModel::acceptTheirs,
+        canPush = uiState.canPush,
+        pendingPushCommits = uiState.pendingPushCommits
     )
 
-    conflictDetails?.let { details ->
-        if (showConflictDialog) {
-            MergeConflictDialog(
-                conflict = details,
-                isBusy = isProcessing,
-                onDismiss = {
-                    showConflictDialog = false
-                    conflictDetails = null
-                },
-                onApply = { resolvedContent ->
-                    guardLaunch {
-                        val result = gitRepository.resolveConflictWithContent(repository, details.path, resolvedContent)
-                        if (result.isSuccess) {
-                            showConflictDialog = false
-                            conflictDetails = null
-                            reloadChanges()
-                            snackbarHostState.showSnackbar(context.getString(R.string.changes_conflict_manual_success))
-                        } else {
-                            val fallback = context.getString(R.string.changes_conflict_resolve_failed)
-                            snackbarHostState.showSnackbar(result.exceptionOrNull()?.localizedMessage ?: fallback)
-                        }
-                    }
-                }
-            )
-        }
+    uiState.conflictDetails?.let { details ->
+        MergeConflictDialog(
+            conflict = details,
+            isBusy = uiState.isProcessing,
+            onDismiss = viewModel::dismissConflict,
+            onApply = viewModel::resolveConflictWithContent
+        )
     }
 }
 
