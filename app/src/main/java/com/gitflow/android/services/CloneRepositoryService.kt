@@ -20,6 +20,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.gitflow.android.R
 import com.gitflow.android.data.models.GitRemoteRepository
+import com.gitflow.android.data.models.GitResult
 import com.gitflow.android.data.repository.CloneProgress
 import com.gitflow.android.data.repository.CloneProgressCallback
 import com.gitflow.android.data.repository.CloneProgressTracker
@@ -154,19 +155,17 @@ class CloneRepositoryService : Service() {
             progressUpdates.cancelAndJoin()
             progressCallback = null
 
-            result.fold(
-                onSuccess = {
-                    CloneProgressTracker.markCompleted(cloneKey)
-                },
-                onFailure = { error ->
-                    val message = error.message
-                    if (message?.contains("cancel", ignoreCase = true) == true) {
+            when (result) {
+                is GitResult.Success -> CloneProgressTracker.markCompleted(cloneKey)
+                is GitResult.Failure -> {
+                    val message = result.message
+                    if (message.contains("cancel", ignoreCase = true)) {
                         CloneProgressTracker.markCancelled(cloneKey, message)
                     } else {
                         CloneProgressTracker.markFailed(cloneKey, message)
                     }
                 }
-            )
+            }
 
             val completionNotification = buildCompletionNotification(repoFullName, repoName, result, approximateSize)
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -179,7 +178,7 @@ class CloneRepositoryService : Service() {
     private fun buildCompletionNotification(
         repoFullName: String,
         repoName: String,
-        result: Result<com.gitflow.android.data.models.Repository>,
+        result: GitResult<com.gitflow.android.data.models.Repository>,
         approximateSize: Long?
     ): Notification {
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
@@ -187,8 +186,8 @@ class CloneRepositoryService : Service() {
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
 
-        result.fold(
-            onSuccess = {
+        when (result) {
+            is GitResult.Success -> {
                 val sizeText = approximateSize?.let { formatSizeForNotification(it) }
                 val contentText = if (sizeText != null) {
                     getString(R.string.notification_clone_completed_with_size, repoName, sizeText)
@@ -198,9 +197,9 @@ class CloneRepositoryService : Service() {
                 builder
                     .setContentTitle(getString(R.string.notification_clone_completed))
                     .setContentText(contentText)
-            },
-            onFailure = { error ->
-                val message = error.message ?: getString(R.string.notification_clone_failed_generic)
+            }
+            is GitResult.Failure -> {
+                val message = result.message.ifBlank { getString(R.string.notification_clone_failed_generic) }
                 if (message.contains("cancel", ignoreCase = true)) {
                     builder
                         .setContentTitle(getString(R.string.notification_clone_cancelled))
@@ -211,7 +210,7 @@ class CloneRepositoryService : Service() {
                         .setContentText(getString(R.string.notification_clone_failed_detail, repoFullName, message))
                 }
             }
-        )
+        }
 
         return builder.build()
     }

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.gitflow.android.data.models.*
+import com.gitflow.android.data.models.GitResult
 import com.gitflow.android.data.repository.IGitRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -113,17 +114,17 @@ class CommitDetailViewModel(
         if (_uiState.value.isRestoringFile) return
         _uiState.update { it.copy(isRestoringFile = true, contextMenuTargetPath = null) }
         viewModelScope.launch {
-            val success = try {
+            val result = try {
                 if (repository != null) {
                     gitRepository.restoreFileToCommit(commit, filePath, repository)
                 } else {
                     gitRepository.restoreFileToCommit(commit, filePath)
                 }
             } catch (e: Exception) {
-                false
+                GitResult.Failure.Generic(e.message ?: "")
             }
             _uiState.update { it.copy(isRestoringFile = false) }
-            onResult(success)
+            onResult(result is GitResult.Success)
         }
     }
 
@@ -131,17 +132,17 @@ class CommitDetailViewModel(
         if (_uiState.value.isRestoringFile) return
         _uiState.update { it.copy(isRestoringFile = true, contextMenuTargetPath = null) }
         viewModelScope.launch {
-            val success = try {
+            val result = try {
                 if (repository != null) {
                     gitRepository.restoreFileToParentCommit(commit, filePath, repository)
                 } else {
                     gitRepository.restoreFileToParentCommit(commit, filePath)
                 }
             } catch (e: Exception) {
-                false
+                GitResult.Failure.Generic(e.message ?: "")
             }
             _uiState.update { it.copy(isRestoringFile = false) }
-            onResult(success)
+            onResult(result is GitResult.Success)
         }
     }
 
