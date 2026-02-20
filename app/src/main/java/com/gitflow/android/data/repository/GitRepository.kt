@@ -4,38 +4,27 @@ import android.content.Context
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.*
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import org.eclipse.jgit.api.CheckoutCommand
-import org.eclipse.jgit.api.CherryPickResult
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import org.eclipse.jgit.api.Git
-import org.eclipse.jgit.api.MergeResult
-import org.eclipse.jgit.api.ResetCommand
-import org.eclipse.jgit.diff.DiffFormatter
-import org.eclipse.jgit.lib.Ref
+import org.eclipse.jgit.api.ListBranchCommand
 import org.eclipse.jgit.lib.BranchTrackingStatus
-import org.eclipse.jgit.lib.Repository as JGitRepository
-import org.eclipse.jgit.revwalk.RevCommit
-import org.eclipse.jgit.revwalk.RevWalk
-import org.eclipse.jgit.treewalk.CanonicalTreeParser
-import org.eclipse.jgit.treewalk.EmptyTreeIterator
-import org.eclipse.jgit.treewalk.FileTreeIterator
-import org.eclipse.jgit.treewalk.TreeWalk
-import org.eclipse.jgit.treewalk.filter.PathFilter
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.util.*
-import android.net.Uri
-import androidx.documentfile.provider.DocumentFile
-import org.eclipse.jgit.dircache.DirCacheIterator
 import org.eclipse.jgit.lib.ProgressMonitor
+import org.eclipse.jgit.lib.Ref
+import org.eclipse.jgit.revwalk.RevCommit
 import org.eclipse.jgit.transport.CredentialsProvider
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider
+import java.io.File
 import java.net.URI
+import java.util.*
+
+// ---------------------------------------------------------------------------
+// Clone progress tracking
+// ---------------------------------------------------------------------------
 
 data class CloneProgress(
     val stage: String = "",
@@ -57,7 +46,7 @@ class CloneProgressCallback(private val trackingKey: String? = null) : ProgressM
     private var completedWork = 0
     private var cancelled = false
     private var startTime = 0L
-    private val progressHistory = mutableListOf<Pair<Long, Int>>() // timestamp, completed work
+    private val progressHistory = mutableListOf<Pair<Long, Int>>()
 
     override fun start(totalTasks: Int) {
         totalWork = totalTasks
@@ -79,16 +68,9 @@ class CloneProgressCallback(private val trackingKey: String? = null) : ProgressM
 
     override fun update(completed: Int) {
         completedWork += completed
-
-        // Записываем прогресс для расчета времени
         val now = System.currentTimeMillis()
         progressHistory.add(Pair(now, completedWork))
-
-        // Оставляем только последние 10 записей для расчета средней скорости
-        if (progressHistory.size > 10) {
-            progressHistory.removeAt(0)
-        }
-
+        if (progressHistory.size > 10) progressHistory.removeAt(0)
         updateProgress()
     }
 
@@ -108,19 +90,13 @@ class CloneProgressCallback(private val trackingKey: String? = null) : ProgressM
 
     private fun addLog(message: String) {
         logs.add("[${System.currentTimeMillis() % 100000}] $message")
-        if (logs.size > 50) {
-            logs.removeAt(0)
-        }
+        if (logs.size > 50) logs.removeAt(0)
     }
 
     private fun updateProgress() {
-        val progressPercentage = if (totalWork > 0) {
+        val progressPercentage = if (totalWork > 0)
             (completedWork.toFloat() / totalWork.toFloat()).coerceIn(0f, 1f)
-        } else {
-            0f
-        }
-
-        val estimatedTime = calculateEstimatedTime()
+        else 0f
 
         val newProgress = CloneProgress(
             stage = currentStage,
@@ -128,7 +104,7 @@ class CloneProgressCallback(private val trackingKey: String? = null) : ProgressM
             total = totalWork,
             completed = completedWork,
             logs = logs.toList(),
-            estimatedTimeRemaining = estimatedTime,
+            estimatedTimeRemaining = calculateEstimatedTime(),
             isCancellable = !cancelled && totalWork > 0
         )
 
@@ -137,55 +113,40 @@ class CloneProgressCallback(private val trackingKey: String? = null) : ProgressM
     }
 
     private fun calculateEstimatedTime(): String {
-        if (totalWork <= 0 || completedWork <= 0 || progressHistory.size < 2) {
-            return "Calculating..."
-        }
-
+        if (totalWork <= 0 || completedWork <= 0 || progressHistory.size < 2) return "Calculating..."
         val currentTime = System.currentTimeMillis()
-        val elapsedTime = currentTime - startTime
-
-        // Используем данные за последние несколько секунд для более точного расчета
-        val recentHistory = progressHistory.filter {
-            currentTime - it.first <= 5000 // последние 5 секунд
-        }
-
-        if (recentHistory.size < 2) {
-            return "Calculating..."
-        }
-
+        val recentHistory = progressHistory.filter { currentTime - it.first <= 5000 }
+        if (recentHistory.size < 2) return "Calculating..."
         val firstEntry = recentHistory.first()
         val lastEntry = recentHistory.last()
-
         val timeSpan = lastEntry.first - firstEntry.first
         val workSpan = lastEntry.second - firstEntry.second
-
-        if (timeSpan <= 0 || workSpan <= 0) {
-            return "Calculating..."
-        }
-
+        if (timeSpan <= 0 || workSpan <= 0) return "Calculating..."
         val workRemaining = totalWork - completedWork
-        val averageSpeed = workSpan.toDouble() / timeSpan.toDouble() // work per millisecond
-        val estimatedTimeMs = (workRemaining / averageSpeed).toLong()
-
+        val estimatedTimeMs = (workRemaining / (workSpan.toDouble() / timeSpan.toDouble())).toLong()
         return formatTime(estimatedTimeMs)
     }
 
-    private fun formatTime(milliseconds: Long): String {
-        val seconds = milliseconds / 1000
+    private fun formatTime(ms: Long): String {
+        val s = ms / 1000
         return when {
-            seconds < 60 -> "${seconds}s"
-            seconds < 3600 -> "${seconds / 60}m ${seconds % 60}s"
-            else -> "${seconds / 3600}h ${(seconds % 3600) / 60}m"
+            s < 60 -> "${s}s"
+            s < 3600 -> "${s / 60}m ${s % 60}s"
+            else -> "${s / 3600}h ${(s % 3600) / 60}m"
         }
     }
 }
 
-class GitRepository(private val context: Context) : IGitRepository {
+// ---------------------------------------------------------------------------
+// Main repository class — delegates to extension files
+// ---------------------------------------------------------------------------
 
-    private val dataStore = RepositoryDataStore(context)
-    private val authManager by lazy { AuthManager(context) }
+class GitRepository(internal val context: Context) : IGitRepository {
 
-    // ---------- Public API ----------
+    internal val dataStore = RepositoryDataStore(context)
+    internal val authManager by lazy { AuthManager(context) }
+
+    // ---------- Simple inline overrides ----------
 
     override fun getRepositoriesFlow(): Flow<List<Repository>> = dataStore.repositories
 
@@ -193,1492 +154,71 @@ class GitRepository(private val context: Context) : IGitRepository {
         dataStore.repositories.first()
     }
 
-    override suspend fun addRepository(path: String): Result<Repository> = withContext(Dispatchers.IO) {
-        try {
-            val repoDir = if (path.startsWith("content://")) {
-                // Handle URI from Storage Access Framework
-                val uri = Uri.parse(path)
-                val documentFile = DocumentFile.fromTreeUri(context, uri)
-                if (documentFile == null || !documentFile.exists()) {
-                    return@withContext Result.failure(Exception("Cannot access directory"))
-                }
-                // For SAF URIs, we need a different approach
-                // This is a simplified implementation - in production you'd need more robust URI handling
-                return@withContext Result.failure(Exception("SAF URI support needs additional implementation"))
-            } else {
-                File(path)
-            }
-            
-            if (!repoDir.exists() || !File(repoDir, ".git").exists()) {
-                return@withContext Result.failure(Exception("Directory is not a Git repository: $path"))
-            }
-
-            val git = Git.open(repoDir)
-            val jgitRepo = git.repository
-
-            val name = repoDir.name
-            val currentBranch = jgitRepo.branch
-            val lastCommit = getLastCommitTime(git)
-
-            // Получаем информацию о ветках
-            val branches = getBranchesInternal(git)
-            val totalBranches = branches.size
-
-            // Проверяем наличие remote origin
-            val hasRemoteOrigin = git.remoteList().call().any { it.name == "origin" }
-
-            val (aheadCount, _) = calculateAheadBehind(git)
-
-            val repository = Repository(
-                id = UUID.randomUUID().toString(),
-                name = name,
-                path = path,
-                lastUpdated = lastCommit,
-                currentBranch = currentBranch,
-                totalBranches = totalBranches,
-                hasRemoteOrigin = hasRemoteOrigin,
-                pendingPushCommits = aheadCount
-            )
-
-            dataStore.addRepository(repository)
-            git.close()
-
-            Result.success(repository)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun createRepository(name: String, localPath: String): Result<Repository> = withContext(Dispatchers.IO) {
-        try {
-            val repoDir = File(localPath)
-            if (repoDir.exists()) {
-                return@withContext Result.failure(Exception("Directory already exists: ${repoDir.absolutePath}"))
-            }
-
-            // Создаем директорию для репозитория
-            repoDir.mkdirs()
-
-            // Инициализируем новый Git репозиторий
-            val git = Git.init()
-                .setDirectory(repoDir)
-                .call()
-
-            // Создаем начальный коммит с README файлом
-            val readmeFile = File(repoDir, "README.md")
-            readmeFile.writeText("# $name\n\nThis repository was created with GitFlow Android.")
-            
-            git.add().addFilepattern("README.md").call()
-            git.commit()
-                .setMessage("Initial commit")
-                .setAuthor("GitFlow Android", "gitflow@android.local")
-                .call()
-
-            val currentBranch = git.repository.branch
-            val lastCommit = getLastCommitTime(git)
-
-            // Получаем информацию о ветках
-            val branches = getBranchesInternal(git)
-            val totalBranches = branches.size
-            val (aheadCount, _) = calculateAheadBehind(git)
-
-            val repository = Repository(
-                id = UUID.randomUUID().toString(),
-                name = name,
-                path = repoDir.absolutePath,
-                lastUpdated = lastCommit,
-                currentBranch = currentBranch,
-                totalBranches = totalBranches,
-                hasRemoteOrigin = false,
-                pendingPushCommits = aheadCount
-            )
-
-            dataStore.addRepository(repository)
-            git.close()
-
-            Result.success(repository)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun cloneRepository(
-        url: String,
-        localPath: String,
-        customDestination: String?,
-        progressCallback: CloneProgressCallback?
-    ): Result<Repository> = withContext(Dispatchers.IO) {
-        try {
-            val targetDir = if (!customDestination.isNullOrEmpty()) {
-                File(customDestination)
-            } else {
-                File(localPath)
-            }
-            
-            if (targetDir.exists()) {
-                return@withContext Result.failure(Exception("Directory already exists: ${targetDir.absolutePath}"))
-            }
-
-            targetDir.parentFile?.mkdirs()
-
-            val cloneCommand = Git.cloneRepository()
-                .setURI(url)
-                .setDirectory(targetDir)
-
-            resolveCredentialsProvider(url)?.let {
-                cloneCommand.setCredentialsProvider(it)
-            }
-
-            progressCallback?.let {
-                cloneCommand.setProgressMonitor(it)
-            }
-
-            val git = try {
-                cloneCommand.call()
-            } catch (e: Exception) {
-                if (progressCallback?.isCancelled() == true) {
-                    if (targetDir.exists()) {
-                        targetDir.deleteRecursively()
-                    }
-                    return@withContext Result.failure(Exception("Clone cancelled by user"))
-                } else {
-                    throw e
-                }
-            }
-
-            val name = targetDir.name
-            val currentBranch = git.repository.branch
-            val lastCommit = getLastCommitTime(git)
-
-            // Получаем информацию о ветках
-            val branches = getBranchesInternal(git)
-            val totalBranches = branches.size
-
-            // Проверяем наличие remote origin (обычно есть после клонирования)
-            val hasRemoteOrigin = git.remoteList().call().any { it.name == "origin" }
-
-            val (aheadCount, _) = calculateAheadBehind(git)
-
-            val repository = Repository(
-                id = UUID.randomUUID().toString(),
-                name = name,
-                path = targetDir.absolutePath,
-                lastUpdated = lastCommit,
-                currentBranch = currentBranch,
-                totalBranches = totalBranches,
-                hasRemoteOrigin = hasRemoteOrigin,
-                pendingPushCommits = aheadCount
-            )
-
-            dataStore.addRepository(repository)
-            git.close()
-
-            Result.success(repository)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
     override suspend fun removeRepository(repositoryId: String) = withContext(Dispatchers.IO) {
         dataStore.removeRepository(repositoryId)
-    }
-
-    override suspend fun removeRepositoryWithFiles(repositoryId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            // Сначала получаем информацию о репозитории
-            val repositories = getRepositories()
-            val repository = repositories.find { it.id == repositoryId }
-                ?: return@withContext Result.failure(Exception("Repository not found"))
-
-            // Удаляем файлы репозитория
-            val repoDir = File(repository.path)
-            if (repoDir.exists()) {
-                val deleted = repoDir.deleteRecursively()
-                if (!deleted) {
-                    return@withContext Result.failure(Exception("Failed to delete repository files"))
-                }
-            }
-
-            // Удаляем из списка
-            dataStore.removeRepository(repositoryId)
-            
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
     }
 
     override suspend fun updateRepository(repository: Repository) = withContext(Dispatchers.IO) {
         dataStore.updateRepository(repository)
     }
 
-    override suspend fun refreshRepository(repository: Repository): Repository? = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: return@withContext null
-            git.use { g ->
-                val currentBranch = g.repository.branch
-                val lastCommit = getLastCommitTime(g)
+    override suspend fun getMergeConflict(repository: Repository, path: String): MergeConflict? =
+        withContext(Dispatchers.IO) { parseConflictFile(repository.path, path) }
 
-                // Получаем обновленную информацию о ветках
-                val branches = getBranchesInternal(g)
-                val totalBranches = branches.size
+    // ---------- Delegating overrides → extension files ----------
 
-                // Проверяем наличие remote origin
-                val hasRemoteOrigin = g.remoteList().call().any { it.name == "origin" }
+    override suspend fun addRepository(path: String): Result<Repository> = addRepositoryImpl(path)
+    override suspend fun createRepository(name: String, localPath: String): Result<Repository> = createRepositoryImpl(name, localPath)
+    override suspend fun cloneRepository(url: String, localPath: String, customDestination: String?, progressCallback: CloneProgressCallback?): Result<Repository> = cloneRepositoryImpl(url, localPath, customDestination, progressCallback)
+    override suspend fun removeRepositoryWithFiles(repositoryId: String): Result<Unit> = removeRepositoryWithFilesImpl(repositoryId)
+    override suspend fun refreshRepository(repository: Repository): Repository? = refreshRepositoryImpl(repository)
 
-                val (aheadCount, _) = calculateAheadBehind(g)
+    override suspend fun getCommits(repository: Repository, page: Int, pageSize: Int): List<Commit> = getCommitsImpl(repository, page, pageSize)
+    override suspend fun getCommitDiffs(commit: Commit, repository: Repository): List<FileDiff> = getCommitDiffsImpl(commit, repository)
+    override suspend fun getCommitDiffs(commit: Commit): List<FileDiff> = getCommitDiffsAutoImpl(commit)
 
-                val updatedRepository = repository.copy(
-                    currentBranch = currentBranch,
-                    lastUpdated = lastCommit,
-                    totalBranches = totalBranches,
-                    hasRemoteOrigin = hasRemoteOrigin,
-                    pendingPushCommits = aheadCount
-                )
+    override suspend fun getChangedFiles(repository: Repository): List<FileChange> = getChangedFilesImpl(repository)
+    override suspend fun stageFile(repository: Repository, file: FileChange): Result<Unit> = stageFileImpl(repository, file)
+    override suspend fun unstageFile(repository: Repository, filePath: String): Result<Unit> = unstageFileImpl(repository, filePath)
+    override suspend fun stageAll(repository: Repository): Result<Unit> = stageAllImpl(repository)
+    override suspend fun getMergeConflicts(repository: Repository): List<MergeConflict> = getMergeConflictsImpl(repository)
+    override suspend fun resolveConflict(repository: Repository, path: String, strategy: ConflictResolutionStrategy): Result<Unit> = resolveConflictImpl(repository, path, strategy)
+    override suspend fun resolveConflictWithContent(repository: Repository, path: String, resolvedContent: String): Result<Unit> = resolveConflictWithContentImpl(repository, path, resolvedContent)
+    override suspend fun commit(repository: Repository, message: String): Result<Unit> = commitImpl(repository, message)
 
-                updateRepository(updatedRepository)
-                updatedRepository
-            }
-        } catch (e: Exception) {
-            null
-        }
+    override suspend fun getBranches(repository: Repository): List<Branch> = getBranchesImpl(repository)
+    override suspend fun pull(repository: Repository): PullResult = pullImpl(repository)
+    override suspend fun push(repository: Repository): PushResult = pushImpl(repository)
+    override suspend fun hardResetToCommit(repository: Repository, commitHash: String): Result<Unit> = hardResetToCommitImpl(repository, commitHash)
+    override suspend fun createTag(repository: Repository, tagName: String, commitHash: String, force: Boolean): Result<Unit> = createTagImpl(repository, tagName, commitHash, force)
+    override suspend fun deleteTag(repository: Repository, tagName: String): Result<Unit> = deleteTagImpl(repository, tagName)
+    override suspend fun getTagsForCommit(repository: Repository, commitHash: String): List<String> = getTagsForCommitImpl(repository, commitHash)
+    override suspend fun cherryPickCommit(repository: Repository, commitHash: String): Result<Unit> = cherryPickCommitImpl(repository, commitHash)
+    override suspend fun mergeCommitIntoCurrentBranch(repository: Repository, commitHash: String): Result<Unit> = mergeCommitIntoCurrentBranchImpl(repository, commitHash)
+
+    override suspend fun getCommitFileTree(commit: Commit, repository: Repository): FileTreeNode = getCommitFileTreeImpl(commit, repository)
+    override suspend fun getCommitFileTree(commit: Commit): FileTreeNode = getCommitFileTreeAutoImpl(commit)
+    override suspend fun getFileContent(commit: Commit, filePath: String, repository: Repository): String? = getFileContentImpl(commit, filePath, repository)
+    override suspend fun getFileContent(commit: Commit, filePath: String): String? = getFileContentAutoImpl(commit, filePath)
+    override suspend fun getFileContentBytes(commit: Commit, filePath: String, repository: Repository): ByteArray? = getFileContentBytesImpl(commit, filePath, repository)
+    override suspend fun getFileContentBytes(commit: Commit, filePath: String): ByteArray? = getFileContentBytesAutoImpl(commit, filePath)
+    override suspend fun restoreFileToCommit(commit: Commit, filePath: String, repository: Repository): Boolean = restoreFileToCommitImpl(commit, filePath, repository)
+    override suspend fun restoreFileToCommit(commit: Commit, filePath: String): Boolean = restoreFileToCommitAutoImpl(commit, filePath)
+    override suspend fun restoreFileToParentCommit(commit: Commit, filePath: String, repository: Repository): Boolean = restoreFileToParentCommitImpl(commit, filePath, repository)
+    override suspend fun restoreFileToParentCommit(commit: Commit, filePath: String): Boolean = restoreFileToParentCommitAutoImpl(commit, filePath)
+    override suspend fun getFileHistory(commit: Commit, filePath: String, repository: Repository): List<Commit> = getFileHistoryImpl(commit, filePath, repository)
+    override suspend fun getFileHistory(commit: Commit, filePath: String): List<Commit> = getFileHistoryAutoImpl(commit, filePath)
+
+    // ---------- Shared internal helpers ----------
+
+    internal fun openRepository(path: String): Git? = try {
+        Git.open(File(path))
+    } catch (e: Exception) {
+        null
     }
 
-    override suspend fun getCommits(
-        repository: com.gitflow.android.data.models.Repository,
-        page: Int,
-        pageSize: Int
-    ): List<Commit> = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: return@withContext emptyList()
-            git.use { g ->
-                RevWalk(g.repository).use { revWalk ->
-                    // Устанавливаем топологическую сортировку
-                    revWalk.sort(org.eclipse.jgit.revwalk.RevSort.TOPO)
-
-                    // Получаем все ветки
-                    val branches = g.branchList().call()
-                    val remoteBranches = g.branchList().setListMode(org.eclipse.jgit.api.ListBranchCommand.ListMode.REMOTE).call()
-
-                    val allRefs = branches + remoteBranches
-                    val processedCommits = mutableSetOf<String>()
-
-                    // Создаем мапу коммит -> список веток, где он является HEAD
-                    val commitToBranchHeads = mutableMapOf<String, MutableList<String>>()
-
-                    // Сначала определяем HEAD коммиты для каждой ветки
-                    for (ref in allRefs) {
-                        try {
-                            val branchName = getBranchName(ref)
-                            val head = g.repository.resolve(ref.objectId.name)
-                            if (head != null) {
-                                commitToBranchHeads.getOrPut(head.name) { mutableListOf() }.add(branchName)
-                            }
-                        } catch (e: Exception) {
-                            continue
-                        }
-                    }
-
-                    // Добавляем все ветки как стартовые точки
-                    for (ref in allRefs) {
-                        try {
-                            val head = g.repository.resolve(ref.objectId.name)
-                            if (head != null) {
-                                revWalk.markStart(revWalk.parseCommit(head))
-                            }
-                        } catch (e: Exception) {
-                            continue
-                        }
-                    }
-
-                    // Строим карту тегов ОДИН РАЗ до цикла (оптимизация O(N) → O(1))
-                    val tagsByCommit = mutableMapOf<String, MutableList<String>>()
-                    try {
-                        g.tagList().call().forEach { tagRef ->
-                            val peeled = g.repository.refDatabase.peel(tagRef)
-                            val targetId = (peeled.peeledObjectId ?: tagRef.objectId).name
-                            tagsByCommit.getOrPut(targetId) { mutableListOf() }
-                                .add(tagRef.name.removePrefix("refs/tags/"))
-                        }
-                    } catch (_: Exception) {}
-
-                    // Проходим по коммитам в топологическом порядке с пагинацией
-                    val commits = mutableListOf<Commit>()
-                    val offset = page * pageSize
-                    var skipped = 0
-                    var loaded = 0
-
-                    for (commit in revWalk) {
-                        if (processedCommits.contains(commit.id.name)) continue
-                        processedCommits.add(commit.id.name)
-
-                        if (skipped < offset) { skipped++; continue }
-                        if (loaded >= pageSize) break
-                        loaded++
-
-                        val parents = commit.parents.map { it.id.name }
-                        val tags = tagsByCommit[commit.id.name] ?: emptyList()
-                        val branchHeads = commitToBranchHeads[commit.id.name] ?: emptyList()
-                        val isMergeCommit = commit.parentCount > 1
-                        val mainBranch = branchHeads.firstOrNull() ?: "unknown"
-
-                        commits.add(
-                            Commit(
-                                hash = commit.id.name,
-                                message = commit.shortMessage,
-                                description = commit.fullMessage.removePrefix(commit.shortMessage).trim(),
-                                author = commit.authorIdent.name,
-                                email = commit.authorIdent.emailAddress,
-                                timestamp = commit.authorIdent.`when`.time,
-                                parents = parents,
-                                branch = mainBranch,
-                                tags = tags,
-                                branchHeads = branchHeads,
-                                isMergeCommit = isMergeCommit
-                            )
-                        )
-                    }
-                    commits
-                }
-            }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    override suspend fun getChangedFiles(repository: com.gitflow.android.data.models.Repository): List<FileChange> = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: return@withContext emptyList()
-
-            git.use { gitInstance ->
-                val status = gitInstance.status().call()
-                val conflictPaths = status.conflicting.toSet()
-                val changes = mutableListOf<FileChange>()
-
-                fun diffFor(path: String, stage: ChangeStage): Pair<Int, Int> =
-                    getFileDiffInfo(gitInstance, path, stage)
-
-                fun conflictMeta(path: String): Pair<Boolean, Int> {
-                    if (!conflictPaths.contains(path)) {
-                        return false to 0
-                    }
-                    val sections = countConflictSections(repository.path, path)
-                    return true to sections
-                }
-
-                status.added.forEach { path ->
-                    if (conflictPaths.contains(path)) return@forEach
-                    val (additions, deletions) = diffFor(path, ChangeStage.STAGED)
-                    changes.add(
-                        FileChange(
-                            path = path,
-                            status = ChangeStatus.ADDED,
-                            stage = ChangeStage.STAGED,
-                            additions = additions,
-                            deletions = deletions
-                        )
-                    )
-                }
-
-                status.changed.forEach { path ->
-                    if (conflictPaths.contains(path)) return@forEach
-                    val (additions, deletions) = diffFor(path, ChangeStage.STAGED)
-                    changes.add(
-                        FileChange(
-                            path = path,
-                            status = ChangeStatus.MODIFIED,
-                            stage = ChangeStage.STAGED,
-                            additions = additions,
-                            deletions = deletions
-                        )
-                    )
-                }
-
-                status.removed.forEach { path ->
-                    if (conflictPaths.contains(path)) return@forEach
-                    val (additions, deletions) = diffFor(path, ChangeStage.STAGED)
-                    changes.add(
-                        FileChange(
-                            path = path,
-                            status = ChangeStatus.DELETED,
-                            stage = ChangeStage.STAGED,
-                            additions = additions,
-                            deletions = deletions
-                        )
-                    )
-                }
-
-                status.modified.forEach { path ->
-                    if (conflictPaths.contains(path)) return@forEach
-                    val (additions, deletions) = diffFor(path, ChangeStage.UNSTAGED)
-                    changes.add(
-                        FileChange(
-                            path = path,
-                            status = ChangeStatus.MODIFIED,
-                            stage = ChangeStage.UNSTAGED,
-                            additions = additions,
-                            deletions = deletions
-                        )
-                    )
-                }
-
-                status.missing.forEach { path ->
-                    if (conflictPaths.contains(path)) return@forEach
-                    val (additions, deletions) = diffFor(path, ChangeStage.UNSTAGED)
-                    changes.add(
-                        FileChange(
-                            path = path,
-                            status = ChangeStatus.DELETED,
-                            stage = ChangeStage.UNSTAGED,
-                            additions = additions,
-                            deletions = deletions
-                        )
-                    )
-                }
-
-                status.untracked.forEach { path ->
-                    if (conflictPaths.contains(path)) return@forEach
-                    val (additions, deletions) = diffFor(path, ChangeStage.UNSTAGED)
-                    changes.add(
-                        FileChange(
-                            path = path,
-                            status = ChangeStatus.UNTRACKED,
-                            stage = ChangeStage.UNSTAGED,
-                            additions = additions,
-                            deletions = deletions
-                        )
-                    )
-                }
-
-                status.conflicting.forEach { path ->
-                    val (additions, deletions) = diffFor(path, ChangeStage.UNSTAGED)
-                    val (hasConflicts, conflictCount) = conflictMeta(path)
-                    changes.add(
-                        FileChange(
-                            path = path,
-                            status = ChangeStatus.MODIFIED,
-                            stage = ChangeStage.UNSTAGED,
-                            additions = additions,
-                            deletions = deletions,
-                            hasConflicts = hasConflicts,
-                            conflictSections = conflictCount
-                        )
-                    )
-                }
-
-                changes.sortedWith(compareBy({ it.stage }, { it.path }))
-            }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    override suspend fun stageFile(repository: com.gitflow.android.data.models.Repository, file: FileChange): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
-            git.use { gitInstance ->
-                when (file.status) {
-                    ChangeStatus.DELETED -> {
-                        gitInstance.add()
-                            .setUpdate(true)
-                            .addFilepattern(file.path)
-                            .call()
-                    }
-                    else -> {
-                        gitInstance.add()
-                            .addFilepattern(file.path)
-                            .call()
-                    }
-                }
-            }
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun unstageFile(repository: com.gitflow.android.data.models.Repository, filePath: String): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
-            git.use { gitInstance ->
-                gitInstance.reset()
-                    .setMode(ResetCommand.ResetType.MIXED)
-                    .addPath(filePath)
-                    .call()
-            }
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun stageAll(repository: com.gitflow.android.data.models.Repository): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
-            git.use { gitInstance ->
-                gitInstance.add()
-                    .addFilepattern(".")
-                    .call()
-
-                gitInstance.add()
-                    .setUpdate(true)
-                    .addFilepattern(".")
-                    .call()
-            }
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun getMergeConflicts(repository: com.gitflow.android.data.models.Repository): List<MergeConflict> = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: return@withContext emptyList()
-            git.use { gitInstance ->
-                val status = gitInstance.status().call()
-                status.conflicting.mapNotNull { path ->
-                    parseConflictFile(repository.path, path)
-                }
-            }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    override suspend fun getMergeConflict(repository: com.gitflow.android.data.models.Repository, path: String): MergeConflict? =
-        withContext(Dispatchers.IO) {
-            parseConflictFile(repository.path, path)
-        }
-
-    override suspend fun resolveConflict(
-        repository: com.gitflow.android.data.models.Repository,
-        path: String,
-        strategy: ConflictResolutionStrategy
-    ): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
-            git.use { gitInstance ->
-                val stage = when (strategy) {
-                    ConflictResolutionStrategy.OURS -> CheckoutCommand.Stage.OURS
-                    ConflictResolutionStrategy.THEIRS -> CheckoutCommand.Stage.THEIRS
-                }
-                gitInstance.checkout()
-                    .setStage(stage)
-                    .addPath(path)
-                    .call()
-
-                gitInstance.add()
-                    .addFilepattern(path)
-                    .call()
-            }
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun resolveConflictWithContent(
-        repository: com.gitflow.android.data.models.Repository,
-        path: String,
-        resolvedContent: String
-    ): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            val file = File(repository.path, path)
-            if (!file.parentFile.exists()) {
-                file.parentFile?.mkdirs()
-            }
-            file.writeText(resolvedContent)
-
-            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
-            git.use { gitInstance ->
-                gitInstance.add()
-                    .addFilepattern(path)
-                    .call()
-            }
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun hardResetToCommit(
-        repository: com.gitflow.android.data.models.Repository,
-        commitHash: String
-    ): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
-            git.use { gitInstance ->
-                gitInstance.reset()
-                    .setRef(commitHash)
-                    .setMode(ResetCommand.ResetType.HARD)
-                    .call()
-            }
-            refreshRepository(repository)
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun createTag(
-        repository: com.gitflow.android.data.models.Repository,
-        tagName: String,
-        commitHash: String,
-        force: Boolean
-    ): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
-            git.use { gitInstance ->
-                val existing = gitInstance.tagList().call().any { it.name.removePrefix("refs/tags/") == tagName }
-                if (existing && !force) {
-                    throw IllegalStateException("Tag already exists")
-                }
-
-                val objectId = gitInstance.repository.resolve(commitHash)
-                    ?: throw IllegalArgumentException("Cannot resolve commit")
-                val revObject = RevWalk(gitInstance.repository).use { rw -> rw.parseAny(objectId) }
-
-                gitInstance.tag()
-                    .setName(tagName)
-                    .setObjectId(revObject)
-                    .setAnnotated(false)
-                    .setForceUpdate(force)
-                    .call()
-            }
-            refreshRepository(repository)
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun deleteTag(
-        repository: com.gitflow.android.data.models.Repository,
-        tagName: String
-    ): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
-            git.use { gitInstance ->
-                gitInstance.tagDelete()
-                    .setTags(tagName)
-                    .call()
-            }
-            refreshRepository(repository)
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun getTagsForCommit(
-        repository: com.gitflow.android.data.models.Repository,
-        commitHash: String
-    ): List<String> = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: return@withContext emptyList()
-            git.use { gitInstance ->
-                getTagsForCommit(gitInstance, commitHash)
-            }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    override suspend fun cherryPickCommit(
-        repository: com.gitflow.android.data.models.Repository,
-        commitHash: String
-    ): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
-            val outcome = git.use { gitInstance ->
-                val objectId = gitInstance.repository.resolve(commitHash)
-                    ?: throw IllegalArgumentException("Cannot resolve commit")
-
-                val result = gitInstance.cherryPick()
-                    .include(objectId)
-                    .call()
-
-                return@use when (result.status) {
-                    CherryPickResult.CherryPickStatus.OK -> {
-                        refreshRepository(repository)
-                        Result.success(Unit)
-                    }
-                    CherryPickResult.CherryPickStatus.CONFLICTING -> {
-                        val conflicts = result.failingPaths?.keys?.joinToString(", ") ?: "Conflicts detected"
-                        Result.failure(IllegalStateException("Cherry-pick conflict: $conflicts"))
-                    }
-                    else -> {
-                        Result.failure(IllegalStateException("Cherry-pick failed: ${result.status}"))
-                    }
-                }
-            }
-            outcome
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun mergeCommitIntoCurrentBranch(
-        repository: com.gitflow.android.data.models.Repository,
-        commitHash: String
-    ): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
-            val outcome = git.use { gitInstance ->
-                val objectId = gitInstance.repository.resolve(commitHash)
-                    ?: throw IllegalArgumentException("Cannot resolve commit")
-
-                val result = gitInstance.merge()
-                    .include(objectId)
-                    .setCommit(true)
-                    .call()
-
-                return@use when (result.mergeStatus) {
-                    MergeResult.MergeStatus.FAST_FORWARD,
-                    MergeResult.MergeStatus.ALREADY_UP_TO_DATE,
-                    MergeResult.MergeStatus.MERGED,
-                    MergeResult.MergeStatus.MERGED_NOT_COMMITTED -> {
-                        refreshRepository(repository)
-                        Result.success(Unit)
-                    }
-                    MergeResult.MergeStatus.CONFLICTING -> {
-                        val conflicts = result.conflicts?.keys?.joinToString(", ") ?: "Conflicts detected"
-                        Result.failure(IllegalStateException("Merge produced conflicts: $conflicts"))
-                    }
-                    else -> {
-                        Result.failure(IllegalStateException("Merge failed: ${result.mergeStatus}"))
-                    }
-                }
-            }
-            outcome
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun commit(repository: com.gitflow.android.data.models.Repository, message: String): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: throw IllegalStateException("Repository not found")
-            git.use { gitInstance ->
-                val status = gitInstance.status().call()
-                val hasStagedChanges = status.added.isNotEmpty() || status.changed.isNotEmpty() || status.removed.isNotEmpty()
-                if (!hasStagedChanges) {
-                    throw IllegalStateException("No staged changes")
-                }
-
-                val commitCommand = gitInstance.commit()
-                    .setMessage(message)
-
-                resolveCommitIdentity(gitInstance)?.let { (name, email) ->
-                    commitCommand.setAuthor(name, email)
-                    commitCommand.setCommitter(name, email)
-                }
-
-                commitCommand.call()
-            }
-
-            refreshRepository(repository)
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun getCommitDiffs(commit: Commit, repository: com.gitflow.android.data.models.Repository): List<FileDiff> = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: return@withContext emptyList()
-            git.use { g ->
-                val jgitRepository = g.repository
-                RevWalk(jgitRepository).use { revWalk ->
-                    val revCommit = revWalk.parseCommit(jgitRepository.resolve(commit.hash))
-                    val diffs = mutableListOf<FileDiff>()
-
-                    if (revCommit.parentCount > 0) {
-                        val parent = revWalk.parseCommit(revCommit.getParent(0).id)
-
-                        val oldTreeParser = CanonicalTreeParser()
-                        val newTreeParser = CanonicalTreeParser()
-
-                        jgitRepository.newObjectReader().use { reader ->
-                            oldTreeParser.reset(reader, parent.tree)
-                            newTreeParser.reset(reader, revCommit.tree)
-                        }
-
-                        val diffEntries = g.diff()
-                            .setOldTree(oldTreeParser)
-                            .setNewTree(newTreeParser)
-                            .call()
-
-                        for (diffEntry in diffEntries) {
-                            val outputStream = ByteArrayOutputStream()
-                            DiffFormatter(outputStream).use { formatter ->
-                                formatter.setRepository(jgitRepository)
-                                formatter.format(diffEntry)
-                            }
-                            diffs.add(parseDiffText(diffEntry, outputStream.toString()))
-                        }
-                    } else {
-                        // Первый коммит - показываем все файлы как добавленные
-                        TreeWalk(jgitRepository).use { treeWalk ->
-                            treeWalk.addTree(revCommit.tree)
-                            treeWalk.isRecursive = true
-
-                            while (treeWalk.next()) {
-                                val path = treeWalk.pathString
-                                val content = getFileContentFromCommit(jgitRepository, revCommit, path)
-                                val lines = content?.split('\n')?.size ?: 0
-
-                                diffs.add(
-                                    FileDiff(
-                                        path = path,
-                                        status = FileStatus.ADDED,
-                                        additions = lines,
-                                        deletions = 0,
-                                        hunks = listOf(
-                                            DiffHunk(
-                                                header = "@@ -0,0 +1,$lines @@",
-                                                oldStart = 0,
-                                                oldLines = 0,
-                                                newStart = 1,
-                                                newLines = lines,
-                                                lines = content?.split('\n')?.mapIndexed { index, line ->
-                                                    DiffLine(
-                                                        type = LineType.ADDED,
-                                                        content = line,
-                                                        lineNumber = index + 1,
-                                                        newLineNumber = index + 1
-                                                    )
-                                                } ?: emptyList()
-                                            )
-                                        )
-                                    )
-                                )
-                            }
-                        }
-                    }
-                    diffs
-                }
-            }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    override suspend fun getCommitDiffs(commit: Commit): List<FileDiff> = withContext(Dispatchers.IO) {
-        try {
-            // Находим репозиторий по коммиту
-            val repositories = getRepositories()
-            val repo = repositories.find { repository ->
-                try {
-                    openRepository(repository.path)?.use { git ->
-                        git.repository.resolve(commit.hash) != null
-                    } ?: false
-                } catch (e: Exception) {
-                    false
-                }
-            } ?: return@withContext emptyList()
-
-            val git = openRepository(repo.path) ?: return@withContext emptyList()
-            git.use { g ->
-                val jgitRepository = g.repository
-                RevWalk(jgitRepository).use { revWalk ->
-                    val revCommit = revWalk.parseCommit(jgitRepository.resolve(commit.hash))
-                    val diffs = mutableListOf<FileDiff>()
-
-                    if (revCommit.parentCount > 0) {
-                        val parent = revWalk.parseCommit(revCommit.getParent(0).id)
-
-                        val oldTreeParser = CanonicalTreeParser()
-                        val newTreeParser = CanonicalTreeParser()
-
-                        jgitRepository.newObjectReader().use { reader ->
-                            oldTreeParser.reset(reader, parent.tree)
-                            newTreeParser.reset(reader, revCommit.tree)
-                        }
-
-                        val diffEntries = g.diff()
-                            .setOldTree(oldTreeParser)
-                            .setNewTree(newTreeParser)
-                            .call()
-
-                        for (diffEntry in diffEntries) {
-                            val outputStream = ByteArrayOutputStream()
-                            DiffFormatter(outputStream).use { formatter ->
-                                formatter.setRepository(jgitRepository)
-                                formatter.format(diffEntry)
-                            }
-                            diffs.add(parseDiffText(diffEntry, outputStream.toString()))
-                        }
-                    } else {
-                        // Первый коммит - показываем все файлы как добавленные
-                        TreeWalk(jgitRepository).use { treeWalk ->
-                            treeWalk.addTree(revCommit.tree)
-                            treeWalk.isRecursive = true
-
-                            while (treeWalk.next()) {
-                                val path = treeWalk.pathString
-                                val content = getFileContentFromCommit(jgitRepository, revCommit, path)
-                                val lines = content?.split('\n')?.size ?: 0
-
-                                diffs.add(
-                                    FileDiff(
-                                        path = path,
-                                        status = FileStatus.ADDED,
-                                        additions = lines,
-                                        deletions = 0,
-                                        hunks = listOf(
-                                            DiffHunk(
-                                                header = "@@ -0,0 +1,$lines @@",
-                                                oldStart = 0,
-                                                oldLines = 0,
-                                                newStart = 1,
-                                                newLines = lines,
-                                                lines = content?.split('\n')?.mapIndexed { index, line ->
-                                                    DiffLine(
-                                                        type = LineType.ADDED,
-                                                        content = line,
-                                                        lineNumber = index + 1,
-                                                        newLineNumber = index + 1
-                                                    )
-                                                } ?: emptyList()
-                                            )
-                                        )
-                                    )
-                                )
-                            }
-                        }
-                    }
-                    diffs
-                }
-            }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    override suspend fun getBranches(repository: com.gitflow.android.data.models.Repository): List<Branch> = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: return@withContext emptyList()
-            git.use { g ->
-                getBranchesInternal(g)
-            }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    override suspend fun pull(repository: com.gitflow.android.data.models.Repository): PullResult = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: return@withContext PullResult(false, 0, listOf("Repository not found"))
-            git.use { g ->
-                val remoteConfig = g.repository.config
-                val remoteUrl = remoteConfig.getString("remote", "origin", "pushurl")
-                    ?: remoteConfig.getString("remote", "origin", "url")
-                val credentialsProvider = resolveCredentialsProvider(remoteUrl)
-
-                val pullCommand = g.pull()
-                credentialsProvider?.let { pullCommand.setCredentialsProvider(it) }
-
-                val result = pullCommand.call()
-                if (result.isSuccessful) {
-                    PullResult(true, 0, emptyList()) // TODO: Подсчитать количество новых коммитов
-                } else {
-                    PullResult(false, 0, listOf("Pull failed"))
-                }
-            }
-        } catch (e: Exception) {
-            PullResult(false, 0, listOf(e.message ?: "Unknown error"))
-        }
-    }
-
-    override suspend fun push(repository: com.gitflow.android.data.models.Repository): PushResult = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: return@withContext PushResult(false, 0, "Repository not found")
-            git.use { g ->
-                val remoteConfig = g.repository.config
-                val remoteUrl = remoteConfig.getString("remote", "origin", "pushurl")
-                    ?: remoteConfig.getString("remote", "origin", "url")
-                val credentialsProvider = resolveCredentialsProvider(remoteUrl)
-
-                val pushCommand = g.push()
-                credentialsProvider?.let { pushCommand.setCredentialsProvider(it) }
-
-                val result = pushCommand.call()
-                val pushSucceeded = result.any { it.messages.isEmpty() }
-                if (pushSucceeded) {
-                    refreshRepository(repository)
-                    PushResult(true, 0, "Push successful") // TODO: Подсчитать количество отправленных коммитов
-                } else {
-                    PushResult(false, 0, "Push failed")
-                }
-            }
-        } catch (e: Exception) {
-            PushResult(false, 0, e.message ?: "Unknown error")
-        }
-    }
-
-    override suspend fun getCommitFileTree(commit: Commit, repository: com.gitflow.android.data.models.Repository): FileTreeNode = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: return@withContext FileTreeNode("", "", FileTreeNodeType.DIRECTORY)
-            git.use { g ->
-                val jgitRepository = g.repository
-                RevWalk(jgitRepository).use { revWalk ->
-                    val revCommit = revWalk.parseCommit(jgitRepository.resolve(commit.hash))
-                    val files = mutableListOf<CommitFileInfo>()
-                    TreeWalk(jgitRepository).use { treeWalk ->
-                        treeWalk.addTree(revCommit.tree)
-                        treeWalk.isRecursive = true
-
-                        while (treeWalk.next()) {
-                            val path = treeWalk.pathString
-                            val objectId = treeWalk.getObjectId(0)
-                            val size = try {
-                                jgitRepository.newObjectReader().use { reader ->
-                                    reader.getObjectSize(objectId, org.eclipse.jgit.lib.Constants.OBJ_BLOB).toLong()
-                                }
-                            } catch (e: Exception) {
-                                0L
-                            }
-
-                            files.add(CommitFileInfo(path = path, size = size, lastModified = commit.timestamp))
-                        }
-                    }
-                    buildFileTree(files)
-                }
-            }
-        } catch (e: Exception) {
-            FileTreeNode("", "", FileTreeNodeType.DIRECTORY)
-        }
-    }
-
-    override suspend fun getCommitFileTree(commit: Commit): FileTreeNode = withContext(Dispatchers.IO) {
-        try {
-            // Находим репозиторий по коммиту
-            val repositories = getRepositories()
-            val repo = repositories.find { repository ->
-                try {
-                    openRepository(repository.path)?.use { git ->
-                        git.repository.resolve(commit.hash) != null
-                    } ?: false
-                } catch (e: Exception) {
-                    false
-                }
-            } ?: return@withContext FileTreeNode("", "", FileTreeNodeType.DIRECTORY)
-
-            val git = openRepository(repo.path) ?: return@withContext FileTreeNode("", "", FileTreeNodeType.DIRECTORY)
-            git.use { g ->
-                val jgitRepository = g.repository
-                RevWalk(jgitRepository).use { revWalk ->
-                    val revCommit = revWalk.parseCommit(jgitRepository.resolve(commit.hash))
-                    val files = mutableListOf<CommitFileInfo>()
-                    TreeWalk(jgitRepository).use { treeWalk ->
-                        treeWalk.addTree(revCommit.tree)
-                        treeWalk.isRecursive = true
-
-                        while (treeWalk.next()) {
-                            val path = treeWalk.pathString
-                            val objectId = treeWalk.getObjectId(0)
-                            val size = try {
-                                jgitRepository.newObjectReader().use { reader ->
-                                    reader.getObjectSize(objectId, org.eclipse.jgit.lib.Constants.OBJ_BLOB).toLong()
-                                }
-                            } catch (e: Exception) {
-                                0L
-                            }
-
-                            files.add(CommitFileInfo(path = path, size = size, lastModified = commit.timestamp))
-                        }
-                    }
-                    buildFileTree(files)
-                }
-            }
-        } catch (e: Exception) {
-            FileTreeNode("", "", FileTreeNodeType.DIRECTORY)
-        }
-    }
-
-    override suspend fun getFileContent(commit: Commit, filePath: String, repository: com.gitflow.android.data.models.Repository): String? = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: return@withContext null
-            git.use { g ->
-                val jgitRepository = g.repository
-                RevWalk(jgitRepository).use { revWalk ->
-                    val revCommit = revWalk.parseCommit(jgitRepository.resolve(commit.hash))
-                    getFileContentFromCommit(jgitRepository, revCommit, filePath)
-                }
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    override suspend fun getFileContent(commit: Commit, filePath: String): String? = withContext(Dispatchers.IO) {
-        try {
-            // Находим репозиторий по коммиту
-            val repositories = getRepositories()
-            val repo = repositories.find { repository ->
-                try {
-                    openRepository(repository.path)?.use { git ->
-                        git.repository.resolve(commit.hash) != null
-                    } ?: false
-                } catch (e: Exception) {
-                    false
-                }
-            } ?: return@withContext null
-
-            val git = openRepository(repo.path) ?: return@withContext null
-            git.use { g ->
-                val jgitRepository = g.repository
-                RevWalk(jgitRepository).use { revWalk ->
-                    val revCommit = revWalk.parseCommit(jgitRepository.resolve(commit.hash))
-                    getFileContentFromCommit(jgitRepository, revCommit, filePath)
-                }
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    override suspend fun getFileContentBytes(commit: Commit, filePath: String, repository: com.gitflow.android.data.models.Repository): ByteArray? = withContext(Dispatchers.IO) {
-        try {
-            val git = openRepository(repository.path) ?: return@withContext null
-            git.use { g ->
-                val jgitRepository = g.repository
-                RevWalk(jgitRepository).use { revWalk ->
-                    val revCommit = revWalk.parseCommit(jgitRepository.resolve(commit.hash))
-                    getFileBytesFromCommit(jgitRepository, revCommit, filePath)
-                }
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    override suspend fun getFileContentBytes(commit: Commit, filePath: String): ByteArray? = withContext(Dispatchers.IO) {
-        try {
-            val repositories = getRepositories()
-            val repo = repositories.find { repository ->
-                try {
-                    openRepository(repository.path)?.use { git ->
-                        git.repository.resolve(commit.hash) != null
-                    } ?: false
-                } catch (e: Exception) {
-                    false
-                }
-            } ?: return@withContext null
-
-            val git = openRepository(repo.path) ?: return@withContext null
-            git.use { g ->
-                val jgitRepository = g.repository
-                RevWalk(jgitRepository).use { revWalk ->
-                    val revCommit = revWalk.parseCommit(jgitRepository.resolve(commit.hash))
-                    getFileBytesFromCommit(jgitRepository, revCommit, filePath)
-                }
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    override suspend fun restoreFileToCommit(
-        commit: Commit,
-        filePath: String,
-        repository: com.gitflow.android.data.models.Repository
-    ): Boolean = withContext(Dispatchers.IO) {
-        restoreFileFromCommit(repository.path, commit.hash, filePath)
-    }
-
-    override suspend fun restoreFileToCommit(commit: Commit, filePath: String): Boolean {
-        val repository = findRepositoryContainingCommit(commit) ?: return false
-        return restoreFileToCommit(commit, filePath, repository)
-    }
-
-    override suspend fun restoreFileToParentCommit(
-        commit: Commit,
-        filePath: String,
-        repository: com.gitflow.android.data.models.Repository
-    ): Boolean = withContext(Dispatchers.IO) {
-        restoreFileFromParentCommit(repository.path, commit.hash, filePath)
-    }
-
-    override suspend fun restoreFileToParentCommit(commit: Commit, filePath: String): Boolean {
-        val repository = findRepositoryContainingCommit(commit) ?: return false
-        return restoreFileToParentCommit(commit, filePath, repository)
-    }
-
-    override suspend fun getFileHistory(
-        commit: Commit,
-        filePath: String,
-        repository: com.gitflow.android.data.models.Repository
-    ): List<Commit> = withContext(Dispatchers.IO) {
-        val git = openRepository(repository.path) ?: return@withContext emptyList()
-        try {
-            val jgitRepository = git.repository
-            val commitId = jgitRepository.resolve(commit.hash) ?: return@withContext emptyList()
-            val logCommand = git.log()
-                .add(commitId)
-                .addPath(filePath)
-
-            val commits = logCommand.call().map { revCommit ->
-                mapRevCommitToCommitModel(revCommit)
-            }
-            commits
-        } catch (e: Exception) {
-            emptyList()
-        } finally {
-            git.close()
-        }
-    }
-
-    override suspend fun getFileHistory(commit: Commit, filePath: String): List<Commit> {
-        val repository = findRepositoryContainingCommit(commit) ?: return emptyList()
-        return getFileHistory(commit, filePath, repository)
-    }
-
-    // ---------- Helper methods ----------
-
-    private suspend fun findRepositoryContainingCommit(commit: Commit): com.gitflow.android.data.models.Repository? {
-        val repositories = getRepositories()
-        return repositories.find { repository ->
-            try {
-                val git = openRepository(repository.path)
-                val hasCommit = git?.repository?.resolve(commit.hash) != null
-                git?.close()
-                hasCommit
-            } catch (e: Exception) {
-                false
-            }
-        }
-    }
-
-    private fun countConflictSections(repositoryPath: String, path: String): Int {
-        return parseConflictFile(repositoryPath, path)?.sections?.size ?: 0
-    }
-
-    private fun parseConflictFile(repositoryPath: String, path: String): MergeConflict? {
-        val file = File(repositoryPath, path)
-        if (!file.exists() || !file.isFile) {
-            return null
-        }
-
-        val lines = runCatching { file.readLines() }.getOrElse { return null }
-        if (lines.none { it.startsWith("<<<<<<<") }) {
-            return null
-        }
-
-        val sections = mutableListOf<MergeConflictSection>()
-        var index = 0
-
-        while (index < lines.size) {
-            val line = lines[index]
-            if (!line.startsWith("<<<<<<<")) {
-                index++
-                continue
-            }
-
-            val oursLabel = line.removePrefix("<<<<<<<").trim().ifBlank { "HEAD" }
-            val startLineIndex = index
-            index++
-
-            val oursContent = mutableListOf<String>()
-            val baseContent = mutableListOf<String>()
-            var theirsContent = mutableListOf<String>()
-            var baseLabel: String? = null
-
-            // Collect ours section until divider or base marker
-            while (index < lines.size && !lines[index].startsWith("=======") && !lines[index].startsWith("|||||||")) {
-                oursContent.add(lines[index])
-                index++
-            }
-
-            // Optional base section
-            if (index < lines.size && lines[index].startsWith("|||||||")) {
-                baseLabel = lines[index].removePrefix("|||||||").trim().ifBlank { "BASE" }
-                index++
-                while (index < lines.size && !lines[index].startsWith("=======")) {
-                    baseContent.add(lines[index])
-                    index++
-                }
-            }
-
-            if (index < lines.size && lines[index].startsWith("=======")) {
-                index++
-            }
-
-            val theirs = mutableListOf<String>()
-            while (index < lines.size && !lines[index].startsWith(">>>>>>>")) {
-                theirs.add(lines[index])
-                index++
-            }
-            theirsContent = theirs
-
-            val theirsLabel = if (index < lines.size && lines[index].startsWith(">>>>>>>")) {
-                lines[index].removePrefix(">>>>>>>").trim().ifBlank { "incoming" }
-            } else {
-                "incoming"
-            }
-
-            if (index < lines.size && lines[index].startsWith(">>>>>>>")) {
-                index++
-            }
-
-            sections.add(
-                MergeConflictSection(
-                    oursLabel = oursLabel,
-                    theirsLabel = theirsLabel,
-                    baseLabel = baseLabel,
-                    oursContent = oursContent.joinToString("\n"),
-                    theirsContent = theirsContent.joinToString("\n"),
-                    baseContent = if (baseContent.isEmpty()) null else baseContent.joinToString("\n"),
-                    startLineIndex = startLineIndex,
-                    endLineIndex = index
-                )
-            )
-        }
-
-        if (sections.isEmpty()) {
-            return null
-        }
-
-        val topOursLabel = sections.first().oursLabel
-        val topTheirsLabel = sections.first().theirsLabel
-        return MergeConflict(
-            path = path,
-            oursLabel = topOursLabel,
-            theirsLabel = topTheirsLabel,
-            sections = sections,
-            originalLines = lines
-        )
-    }
-
-    private fun restoreFileFromCommit(
-        repositoryPath: String,
-        sourceCommitHash: String,
-        filePath: String
-    ): Boolean {
-        val git = openRepository(repositoryPath) ?: return false
-        return try {
-            val repository = git.repository
-            val commitId = repository.resolve(sourceCommitHash) ?: return false
-            RevWalk(repository).use { revWalk ->
-                revWalk.parseCommit(commitId)
-            }
-            git.checkout()
-                .setStartPoint(sourceCommitHash)
-                .setForce(true)
-                .addPath(filePath)
-                .call()
-            true
-        } catch (e: Exception) {
-            false
-        } finally {
-            git.close()
-        }
-    }
-
-    private fun restoreFileFromParentCommit(
-        repositoryPath: String,
-        commitHash: String,
-        filePath: String
-    ): Boolean {
-        val git = openRepository(repositoryPath) ?: return false
-        return try {
-            val repository = git.repository
-            val commitId = repository.resolve(commitHash) ?: return false
-            val parentHash = RevWalk(repository).use { revWalk ->
-                val revCommit = revWalk.parseCommit(commitId)
-                revCommit.parents.firstOrNull()?.name
-            } ?: return false
-
-            git.checkout()
-                .setStartPoint(parentHash)
-                .setForce(true)
-                .addPath(filePath)
-                .call()
-            true
-        } catch (e: Exception) {
-            false
-        } finally {
-            git.close()
-        }
-    }
-
-    private fun mapRevCommitToCommitModel(revCommit: RevCommit): Commit {
-        val author = revCommit.authorIdent
-        return Commit(
-            hash = revCommit.name,
-            message = revCommit.shortMessage ?: revCommit.fullMessage,
-            author = author?.name ?: "Unknown",
-            email = author?.emailAddress ?: "",
-            timestamp = author?.`when`?.time ?: 0L,
-            parents = revCommit.parents.map { it.name },
-            description = revCommit.fullMessage,
-            isMergeCommit = revCommit.parentCount > 1
-        )
-    }
-
-    private fun getBranchesInternal(git: Git): List<Branch> {
-        return try {
-            val branches = mutableListOf<Branch>()
-
-            // Локальные ветки
-            val localBranches = git.branchList().call()
-            for (ref in localBranches) {
-                val branchName = ref.name.removePrefix("refs/heads/")
-                val lastCommitHash = ref.objectId.name
-                val trackingStatus = runCatching { BranchTrackingStatus.of(git.repository, ref.name) }.getOrNull()
-
-                branches.add(
-                    Branch(
-                        name = branchName,
-                        isLocal = true,
-                        lastCommitHash = lastCommitHash,
-                        ahead = trackingStatus?.aheadCount ?: 0,
-                        behind = trackingStatus?.behindCount ?: 0
-                    )
-                )
-            }
-
-            // Удаленные ветки
-            val remoteBranches = git.branchList()
-                .setListMode(org.eclipse.jgit.api.ListBranchCommand.ListMode.REMOTE)
-                .call()
-
-            for (ref in remoteBranches) {
-                val branchName = ref.name.removePrefix("refs/remotes/")
-                val lastCommitHash = ref.objectId.name
-
-                branches.add(
-                    Branch(
-                        name = branchName,
-                        isLocal = false,
-                        lastCommitHash = lastCommitHash,
-                        ahead = 0,
-                        behind = 0
-                    )
-                )
-            }
-
-            branches.sortedBy { it.name }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    private fun openRepository(path: String): Git? {
-        return try {
-            val repoDir = File(path)
-            Git.open(repoDir)
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    private fun resolveCredentialsProvider(remoteUrl: String?): CredentialsProvider? {
-        if (remoteUrl.isNullOrBlank()) {
-            return null
-        }
-
+    internal fun resolveCredentialsProvider(remoteUrl: String?): CredentialsProvider? {
+        if (remoteUrl.isNullOrBlank()) return null
         val sanitizedUrl = remoteUrl.trim()
         val parsedUri = runCatching { URI(sanitizedUrl) }.getOrNull()
 
@@ -1698,14 +238,13 @@ class GitRepository(private val context: Context) : IGitRepository {
         } ?: return null
 
         val token = authManager.getAccessToken(provider)?.takeIf { it.isNotBlank() } ?: return null
-
         return when (provider) {
             GitProvider.GITHUB -> UsernamePasswordCredentialsProvider(token, "")
             GitProvider.GITLAB -> UsernamePasswordCredentialsProvider("oauth2", token)
         }
     }
 
-    private fun resolveCommitIdentity(git: Git): Pair<String, String>? {
+    internal fun resolveCommitIdentity(git: Git): Pair<String, String>? {
         val config = git.repository.config
         val configuredName = config.getString("user", null, "name")
         val configuredEmail = config.getString("user", null, "email")
@@ -1728,10 +267,8 @@ class GitRepository(private val context: Context) : IGitRepository {
         val user = provider?.let { authManager.getCurrentUser(it) }
             ?: run {
                 for (candidate in listOf(GitProvider.GITHUB, GitProvider.GITLAB)) {
-                    val candidateUser = authManager.getCurrentUser(candidate)
-                    if (candidateUser != null) {
-                        return@run candidateUser
-                    }
+                    val u = authManager.getCurrentUser(candidate)
+                    if (u != null) return@run u
                 }
                 null
             }
@@ -1742,310 +279,73 @@ class GitRepository(private val context: Context) : IGitRepository {
                 GitProvider.GITHUB -> "${user.login}@users.noreply.github.com"
                 GitProvider.GITLAB -> "${user.login}@gitlab.com"
             }
-
-            if (name.isNotBlank() && email.isNotBlank()) {
-                return name to email
-            }
+            if (name.isNotBlank() && email.isNotBlank()) return name to email
         }
-
         return null
     }
 
-    private fun calculateAheadBehind(git: Git): Pair<Int, Int> {
+    internal fun getBranchesInternal(git: Git): List<Branch> {
         return try {
-            val repository = git.repository
-            val fullBranch = repository.fullBranch ?: return 0 to 0
-            val trackingStatus = BranchTrackingStatus.of(repository, fullBranch) ?: return 0 to 0
-            trackingStatus.aheadCount to trackingStatus.behindCount
-        } catch (e: Exception) {
-            0 to 0
-        }
-    }
+            val branches = mutableListOf<Branch>()
 
-    private fun getLastCommitTime(git: Git): Long {
-        return try {
-            val commits = git.log().setMaxCount(1).call()
-            commits.firstOrNull()?.authorIdent?.`when`?.time ?: System.currentTimeMillis()
-        } catch (e: Exception) {
-            System.currentTimeMillis()
-        }
-    }
+            for (ref in git.branchList().call()) {
+                val branchName = ref.name.removePrefix("refs/heads/")
+                val trackingStatus = runCatching { BranchTrackingStatus.of(git.repository, ref.name) }.getOrNull()
+                branches.add(Branch(
+                    name = branchName,
+                    isLocal = true,
+                    lastCommitHash = ref.objectId.name,
+                    ahead = trackingStatus?.aheadCount ?: 0,
+                    behind = trackingStatus?.behindCount ?: 0
+                ))
+            }
 
-    private fun getBranchName(ref: Ref): String {
-        return when {
-            ref.name.startsWith("refs/heads/") -> ref.name.removePrefix("refs/heads/")
-            ref.name.startsWith("refs/remotes/") -> ref.name.removePrefix("refs/remotes/")
-            else -> ref.name
-        }
-    }
+            for (ref in git.branchList().setListMode(ListBranchCommand.ListMode.REMOTE).call()) {
+                branches.add(Branch(
+                    name = ref.name.removePrefix("refs/remotes/"),
+                    isLocal = false,
+                    lastCommitHash = ref.objectId.name,
+                    ahead = 0,
+                    behind = 0
+                ))
+            }
 
-    private fun getTagsForCommit(git: Git, commitHash: String): List<String> {
-        return try {
-            val repository = git.repository
-            val targetCommit = repository.resolve(commitHash) ?: return emptyList()
-
-            git.tagList()
-                .call()
-                .mapNotNull { tagRef ->
-                    val peeled = repository.refDatabase.peel(tagRef)
-                    val targetId = peeled.peeledObjectId ?: tagRef.objectId
-                    if (targetId == targetCommit) {
-                        tagRef.name.removePrefix("refs/tags/")
-                    } else {
-                        null
-                    }
-                }
+            branches.sortedBy { it.name }
         } catch (e: Exception) {
             emptyList()
         }
     }
 
-    private fun getFileDiffInfo(git: Git, filePath: String, stage: ChangeStage): Pair<Int, Int> {
-        return try {
-            val repository = git.repository
-            val diffCommand = git.diff().setPathFilter(PathFilter.create(filePath))
-
-            when (stage) {
-                ChangeStage.STAGED -> {
-                    val oldTreeIterator = repository.newObjectReader().use { reader ->
-                        val headTreeId = repository.resolve("HEAD^{tree}")
-                        if (headTreeId != null) {
-                            CanonicalTreeParser().apply { reset(reader, headTreeId) }
-                        } else {
-                            EmptyTreeIterator()
-                        }
-                    }
-                    val dirCacheIterator = DirCacheIterator(repository.readDirCache())
-                    diffCommand.setOldTree(oldTreeIterator)
-                    diffCommand.setNewTree(dirCacheIterator)
-                }
-
-                ChangeStage.UNSTAGED -> {
-                    val dirCacheIterator = DirCacheIterator(repository.readDirCache())
-                    val workTreeIterator = FileTreeIterator(repository)
-                    diffCommand.setOldTree(dirCacheIterator)
-                    diffCommand.setNewTree(workTreeIterator)
-                }
-            }
-
-            val diffs = diffCommand.call()
-            if (diffs.isEmpty()) {
-                Pair(0, 0)
-            } else {
-                ByteArrayOutputStream().use { outputStream ->
-                    DiffFormatter(outputStream).use { formatter ->
-                        formatter.setRepository(repository)
-                        diffs.forEach { diff -> formatter.format(diff) }
-                    }
-                    parseDiffStats(outputStream.toString())
-                }
-            }
-        } catch (e: Exception) {
-            Pair(0, 0)
-        }
+    internal fun getLastCommitTime(git: Git): Long = try {
+        git.log().setMaxCount(1).call().firstOrNull()?.authorIdent?.`when`?.time
+            ?: System.currentTimeMillis()
+    } catch (e: Exception) {
+        System.currentTimeMillis()
     }
 
-    private fun parseDiffText(diffEntry: org.eclipse.jgit.diff.DiffEntry, diffText: String): FileDiff {
-        val lines = diffText.split('\n')
-        val hunks = mutableListOf<DiffHunk>()
-        var currentHunk: DiffHunk? = null
-        val hunkLines = mutableListOf<DiffLine>()
-
-        var additions = 0
-        var deletions = 0
-        var oldLineNum = 0
-        var newLineNum = 0
-
-        for (line in lines) {
-            when {
-                line.startsWith("@@") -> {
-                    // Сохраняем предыдущий hunk
-                    currentHunk?.let { hunk ->
-                        hunks.add(hunk.copy(lines = hunkLines.toList()))
-                        hunkLines.clear()
-                    }
-
-                    // Парсим новый hunk header
-                    val hunkInfo = parseHunkHeader(line)
-                    oldLineNum = hunkInfo.first
-                    newLineNum = hunkInfo.third
-                    currentHunk = DiffHunk(
-                        header = line,
-                        oldStart = hunkInfo.first,
-                        oldLines = hunkInfo.second,
-                        newStart = hunkInfo.third,
-                        newLines = hunkInfo.fourth,
-                        lines = emptyList()
-                    )
-                }
-                line.startsWith("+") && !line.startsWith("+++") -> {
-                    additions++
-                    hunkLines.add(DiffLine(
-                        type = LineType.ADDED,
-                        content = line.drop(1), // Убираем префикс +
-                        lineNumber = null,
-                        oldLineNumber = null,
-                        newLineNumber = newLineNum
-                    ))
-                    newLineNum++
-                }
-                line.startsWith("-") && !line.startsWith("---") -> {
-                    deletions++
-                    hunkLines.add(DiffLine(
-                        type = LineType.DELETED,
-                        content = line.drop(1), // Убираем префикс -
-                        lineNumber = null,
-                        oldLineNumber = oldLineNum,
-                        newLineNumber = null
-                    ))
-                    oldLineNum++
-                }
-                line.startsWith(" ") -> {
-                    hunkLines.add(DiffLine(
-                        type = LineType.CONTEXT,
-                        content = line.drop(1), // Убираем префикс пробела
-                        lineNumber = oldLineNum,
-                        oldLineNumber = oldLineNum,
-                        newLineNumber = newLineNum
-                    ))
-                    oldLineNum++
-                    newLineNum++
-                }
-            }
-        }
-
-        // Добавляем последний hunk
-        currentHunk?.let { hunk ->
-            hunks.add(hunk.copy(lines = hunkLines.toList()))
-        }
-
-        val status = when (diffEntry.changeType) {
-            org.eclipse.jgit.diff.DiffEntry.ChangeType.ADD -> FileStatus.ADDED
-            org.eclipse.jgit.diff.DiffEntry.ChangeType.DELETE -> FileStatus.DELETED
-            org.eclipse.jgit.diff.DiffEntry.ChangeType.MODIFY -> FileStatus.MODIFIED
-            org.eclipse.jgit.diff.DiffEntry.ChangeType.RENAME -> FileStatus.RENAMED
-            else -> FileStatus.MODIFIED
-        }
-
-        return FileDiff(
-            path = diffEntry.newPath ?: diffEntry.oldPath,
-            oldPath = if (diffEntry.oldPath != diffEntry.newPath) diffEntry.oldPath else null,
-            status = status,
-            additions = additions,
-            deletions = deletions,
-            hunks = hunks
-        )
+    internal fun calculateAheadBehind(git: Git): Pair<Int, Int> = try {
+        val fullBranch = git.repository.fullBranch ?: return 0 to 0
+        val trackingStatus = BranchTrackingStatus.of(git.repository, fullBranch) ?: return 0 to 0
+        trackingStatus.aheadCount to trackingStatus.behindCount
+    } catch (e: Exception) {
+        0 to 0
     }
 
-    private fun parseHunkHeader(header: String): Tuple4<Int, Int, Int, Int> {
-        // Формат: @@ -oldStart,oldLines +newStart,newLines @@
-        val regex = """@@ -(\d+),(\d+) \+(\d+),(\d+) @@""".toRegex()
-        val match = regex.find(header)
-
-        return if (match != null) {
-            val (oldStart, oldLines, newStart, newLines) = match.destructured
-            Tuple4(oldStart.toInt(), oldLines.toInt(), newStart.toInt(), newLines.toInt())
-        } else {
-            Tuple4(0, 0, 0, 0)
-        }
+    internal fun getBranchName(ref: Ref): String = when {
+        ref.name.startsWith("refs/heads/") -> ref.name.removePrefix("refs/heads/")
+        ref.name.startsWith("refs/remotes/") -> ref.name.removePrefix("refs/remotes/")
+        else -> ref.name
     }
 
-    private fun parseDiffStats(diffText: String): Pair<Int, Int> {
-        val lines = diffText.split('\n')
-        var additions = 0
-        var deletions = 0
-
-        for (line in lines) {
-            when {
-                line.startsWith("+") && !line.startsWith("+++") -> additions++
-                line.startsWith("-") && !line.startsWith("---") -> deletions++
-            }
+    internal fun getTagsForCommit(git: Git, commitHash: String): List<String> = try {
+        val repository = git.repository
+        val targetCommit = repository.resolve(commitHash) ?: return emptyList()
+        git.tagList().call().mapNotNull { tagRef ->
+            val peeled = repository.refDatabase.peel(tagRef)
+            val targetId = peeled.peeledObjectId ?: tagRef.objectId
+            if (targetId == targetCommit) tagRef.name.removePrefix("refs/tags/") else null
         }
-
-        return Pair(additions, deletions)
+    } catch (e: Exception) {
+        emptyList()
     }
-
-    private fun getFileContentFromCommit(repository: JGitRepository, commit: RevCommit, filePath: String): String? {
-        return getFileBytesFromCommit(repository, commit, filePath)?.let { bytes ->
-            String(bytes)
-        }
-    }
-
-    private fun getFileBytesFromCommit(repository: JGitRepository, commit: RevCommit, filePath: String): ByteArray? {
-        return try {
-            TreeWalk(repository).use { treeWalk ->
-                treeWalk.addTree(commit.tree)
-                treeWalk.isRecursive = true
-                treeWalk.filter = PathFilter.create(filePath)
-
-                if (treeWalk.next()) {
-                    val objectId = treeWalk.getObjectId(0)
-                    repository.newObjectReader().use { reader ->
-                        reader.open(objectId).bytes
-                    }
-                } else {
-                    null
-                }
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    private fun buildFileTree(files: List<CommitFileInfo>): FileTreeNode {
-        val root = mutableMapOf<String, Any>()
-
-        files.forEach { file ->
-            val parts = file.path.split("/")
-            var current = root
-
-            for (i in parts.indices) {
-                val part = parts[i]
-                if (i == parts.lastIndex) {
-                    // This is a file
-                    current[part] = file
-                } else {
-                    // This is a directory
-                    if (current[part] !is MutableMap<*, *>) {
-                        current[part] = mutableMapOf<String, Any>()
-                    }
-                    @Suppress("UNCHECKED_CAST")
-                    current = current[part] as MutableMap<String, Any>
-                }
-            }
-        }
-
-        return convertToFileTreeNode("", "", root)
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    private fun convertToFileTreeNode(name: String, path: String, node: Any): FileTreeNode {
-        return when (node) {
-            is CommitFileInfo -> FileTreeNode(
-                name = name,
-                path = path,
-                type = FileTreeNodeType.FILE,
-                size = node.size,
-                lastModified = node.lastModified
-            )
-            is Map<*, *> -> {
-                val children = (node as Map<String, Any>).map { (childName, childNode) ->
-                    val childPath = if (path.isEmpty()) childName else "$path/$childName"
-                    convertToFileTreeNode(childName, childPath, childNode)
-                }.sortedWith(compareBy<FileTreeNode> { it.type }.thenBy { it.name })
-
-                FileTreeNode(
-                    name = name,
-                    path = path,
-                    type = FileTreeNodeType.DIRECTORY,
-                    children = children
-                )
-            }
-            else -> throw IllegalArgumentException("Unknown node type: ${node::class}")
-        }
-    }
-
 }
-
-// Helper data class
-private data class Tuple4<T1, T2, T3, T4>(val first: T1, val second: T2, val third: T3, val fourth: T4)
