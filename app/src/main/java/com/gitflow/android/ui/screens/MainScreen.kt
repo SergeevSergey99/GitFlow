@@ -136,12 +136,14 @@ fun MainScreen(navController: NavController) {
     }
 
     // Git Operations Bottom Sheet
-    if (showOperationsSheet && selectedRepository != null) {
-        GitOperationsSheet(
-            repository = selectedRepository!!,
-            gitRepository = gitRepository,
-            onDismiss = { showOperationsSheet = false }
-        )
+    if (showOperationsSheet) {
+        selectedRepository?.let { repository ->
+            GitOperationsSheet(
+                repository = repository,
+                gitRepository = gitRepository,
+                onDismiss = { showOperationsSheet = false }
+            )
+        }
     }
 }
 

@@ -122,9 +122,10 @@ fun EnhancedGraphView(
     }
 
     LaunchedEffect(actionCommit) {
-        if (actionCommit != null) {
+        val currentActionCommit = actionCommit
+        if (currentActionCommit != null) {
             tagsLoading = true
-            commitTags = gitRepository.getTagsForCommit(repository, actionCommit!!.hash)
+            commitTags = gitRepository.getTagsForCommit(repository, currentActionCommit.hash)
             tagsLoading = false
         } else {
             commitTags = emptyList()
@@ -254,22 +255,24 @@ fun EnhancedGraphView(
         }
     }
 
-    if (showCommitDetail && selectedCommit != null) {
-        CommitDetailDialog(
-            commit = selectedCommit!!,
-            repository = repository,
-            gitRepository = gitRepository,
-            onDismiss = {
-                showCommitDetail = false
-                selectedCommit = null
-            }
-        )
+    if (showCommitDetail) {
+        selectedCommit?.let { commit ->
+            CommitDetailDialog(
+                commit = commit,
+                repository = repository,
+                gitRepository = gitRepository,
+                onDismiss = {
+                    showCommitDetail = false
+                    selectedCommit = null
+                }
+            )
+        }
     }
 
-    if (showActionsSheet && actionCommit != null) {
-        val commitForActions = actionCommit!!
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ModalBottomSheet(
+    if (showActionsSheet) {
+        actionCommit?.let { commitForActions ->
+            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            ModalBottomSheet(
             onDismissRequest = {
                 showActionsSheet = false
                 actionCommit = null
@@ -377,6 +380,7 @@ fun EnhancedGraphView(
                         pendingDialog = CommitActionDialog.Merge(commitForActions)
                     }
                 )
+            }
             }
         }
     }
@@ -1227,7 +1231,9 @@ private fun buildGraphData(commits: List<Commit>): GraphData {
             }
         }
 
-        while (activeLanes.isNotEmpty() && activeLanes.last() == null) activeLanes.removeLast()
+        while (activeLanes.isNotEmpty() && activeLanes.last() == null) {
+            activeLanes.removeAt(activeLanes.lastIndex)
+        }
 
         nodePositions[commit.hash] = NodePosition(lane = lane, row = row)
         connections[commit.hash] = conns

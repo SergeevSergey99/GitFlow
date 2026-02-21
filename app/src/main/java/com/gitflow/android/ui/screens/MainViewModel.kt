@@ -66,8 +66,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun updateSelectedRepositoryIfChanged(repositories: List<Repository>) {
         val selected = _selectedRepository.value ?: return
         val updated = repositories.find { it.id == selected.id }
-        if (updated != null && updated != selected) {
-            _selectedRepository.value = updated
+        when {
+            updated == null -> {
+                _selectedRepository.value = null
+                if (_selectedTab.value != 0) {
+                    _selectedTab.value = 0
+                }
+            }
+            updated != selected -> {
+                _selectedRepository.value = updated
+            }
         }
     }
 }

@@ -132,7 +132,7 @@ fun RemoteRepositoriesScreen(
                     }
                 } else if (errorMessage != null) {
                     ErrorMessage(
-                        message = errorMessage!!,
+                        message = errorMessage ?: "",
                         onRetry = { viewModel.refreshRepositories(authManager) }
                     )
                 } else if (repositories.isEmpty()) {

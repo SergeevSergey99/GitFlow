@@ -131,12 +131,13 @@ fun RepositoryListScreen(
         )
     }
 
-    if (uiState.showDeleteConfirmDialog && uiState.repositoryToDelete != null) {
+    val repositoryToDelete = uiState.repositoryToDelete
+    if (uiState.showDeleteConfirmDialog && repositoryToDelete != null) {
         DeleteRepositoryDialog(
-            repository = uiState.repositoryToDelete!!,
+            repository = repositoryToDelete,
             onDismiss = { repoViewModel.dismissDeleteConfirm() },
             onConfirm = { deleteFiles ->
-                repoViewModel.deleteRepository(uiState.repositoryToDelete!!, deleteFiles)
+                repoViewModel.deleteRepository(repositoryToDelete, deleteFiles)
             },
             errorMessage = uiState.deleteMessage
         )
