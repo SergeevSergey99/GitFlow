@@ -231,6 +231,9 @@
     <string name="repo_list_empty_title">No repositories yet</string>
     <string name="repo_list_empty_subtitle">Add your first repository to get started</string>
     <string name="repo_list_add_button">Add Repository</string>
+    <string name="repo_list_create_error">Failed to create repository</string>
+    <string name="repo_list_add_error">Failed to add repository</string>
+    <string name="repo_list_delete_error">Failed to delete repository</string>
 
     <!-- ChangesScreen -->
     <string name="changes_select_repo">Select a repository to view changes</string>

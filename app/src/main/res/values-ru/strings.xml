@@ -231,6 +231,9 @@
     <string name="repo_list_empty_title">Пока нет репозиториев</string>
     <string name="repo_list_empty_subtitle">Добавьте свой первый репозиторий для начала работы</string>
     <string name="repo_list_add_button">Добавить репозиторий</string>
+    <string name="repo_list_create_error">Не удалось создать репозиторий</string>
+    <string name="repo_list_add_error">Не удалось добавить репозиторий</string>
+    <string name="repo_list_delete_error">Не удалось удалить репозиторий</string>
 
     <!-- ChangesScreen -->
     <string name="changes_select_repo">Выберите репозиторий для просмотра изменений</string>

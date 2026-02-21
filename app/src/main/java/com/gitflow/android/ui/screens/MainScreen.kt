@@ -7,15 +7,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.gitflow.android.R
 import com.gitflow.android.data.models.Repository
-import com.gitflow.android.data.repository.GitRepository
 import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.ui.config.GraphConfig
 import com.gitflow.android.ui.components.CloneProgressOverlay
@@ -26,25 +25,19 @@ import com.gitflow.android.ui.screens.main.SettingsScreen
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(navController: NavController) {
-    var selectedTab by remember { mutableStateOf(0) }
-    val context = LocalContext.current
-    val gitRepository = remember { GitRepository(context) }
+    val viewModel: MainViewModel = viewModel()
 
-    // Используем Flow для автоматического обновления списка репозиториев
-    val repositories by gitRepository.getRepositoriesFlow().collectAsState(initial = emptyList())
+    val selectedTab by viewModel.selectedTab.collectAsState()
+    val selectedRepository by viewModel.selectedRepository.collectAsState()
+    val selectedGraphPreset by viewModel.selectedGraphPreset.collectAsState()
+    val repositories by viewModel.repositoriesFlow.collectAsState(initial = emptyList())
+    val gitRepository = viewModel.getGitRepository()
 
-    var selectedRepository by remember { mutableStateOf<Repository?>(null) }
     var showOperationsSheet by remember { mutableStateOf(false) }
-    var selectedGraphPreset by remember { mutableStateOf("Default") }
 
     // Обновляем выбранный репозиторий если он изменился в списке
-    LaunchedEffect(repositories, selectedRepository) {
-        selectedRepository?.let { selected ->
-            val updated = repositories.find { it.id == selected.id }
-            if (updated != null && updated != selected) {
-                selectedRepository = updated
-            }
-        }
+    LaunchedEffect(repositories) {
+        viewModel.updateSelectedRepositoryIfChanged(repositories)
     }
 
     Scaffold(
@@ -78,25 +71,25 @@ fun MainScreen(navController: NavController) {
                     icon = { Icon(Icons.Default.Folder, contentDescription = stringResource(R.string.main_screen_tab_repos)) },
                     label = { Text(stringResource(R.string.main_screen_tab_repos)) },
                     selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 }
+                    onClick = { viewModel.selectTab(0) }
                 )
                 NavigationBarItem(
                     icon = { Icon(Icons.Default.AccountTree, contentDescription = stringResource(R.string.main_screen_tab_graph)) },
                     label = { Text(stringResource(R.string.main_screen_tab_graph)) },
                     selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 }
+                    onClick = { viewModel.selectTab(1) }
                 )
                 NavigationBarItem(
                     icon = { Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.main_screen_tab_changes)) },
                     label = { Text(stringResource(R.string.main_screen_tab_changes)) },
                     selected = selectedTab == 2,
-                    onClick = { selectedTab = 2 }
+                    onClick = { viewModel.selectTab(2) }
                 )
                 NavigationBarItem(
                     icon = { Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.main_screen_tab_settings)) },
                     label = { Text(stringResource(R.string.main_screen_tab_settings)) },
                     selected = selectedTab == 3,
-                    onClick = { selectedTab = 3 }
+                    onClick = { viewModel.selectTab(3) }
                 )
             }
         }
@@ -110,14 +103,10 @@ fun MainScreen(navController: NavController) {
                 0 -> RepositoryListScreen(
                     repositories = repositories,
                     gitRepository = gitRepository,
-                    onRepositorySelected = {
-                        selectedRepository = it
-                        selectedTab = 1 // Switch to graph view
-                    },
+                    onRepositorySelected = { viewModel.selectRepository(it) },
                     navController = navController
                 )
                 1 -> {
-                    // Use the enhanced graph view with selected config
                     EnhancedGraphView(
                         repository = selectedRepository,
                         gitRepository = gitRepository,
@@ -130,7 +119,7 @@ fun MainScreen(navController: NavController) {
                 )
                 3 -> SettingsScreen(
                     selectedGraphPreset = selectedGraphPreset,
-                    onGraphPresetChanged = { selectedGraphPreset = it },
+                    onGraphPresetChanged = { viewModel.changeGraphPreset(it) },
                     navController = navController
                 )
             }
@@ -163,7 +152,6 @@ fun getGraphConfig(preset: String): GraphConfig {
     }
 }
 
-// Извлечем также GitOperationsSheet и EnhancedGraphView, если они еще в MainScreen
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GitOperationsSheet(

@@ -1,7 +1,6 @@
 package com.gitflow.android.ui.screens.main
 
 import android.Manifest
-import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -21,19 +20,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
-import com.gitflow.android.data.models.GitResult
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.ui.components.RepositoryCard
 import com.gitflow.android.ui.components.dialogs.AddRepositoryDialog
-import com.gitflow.android.data.settings.AppSettingsManager
 import com.gitflow.android.ui.components.dialogs.DeleteRepositoryDialog
-import com.gitflow.android.services.CloneRepositoryService
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 
 @Composable
 fun RepositoryListScreen(
@@ -42,55 +37,36 @@ fun RepositoryListScreen(
     onRepositorySelected: (Repository) -> Unit,
     navController: NavController
 ) {
-    var showAddDialog by remember { mutableStateOf(false) }
-    var isLoading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
-    var repositoryToDelete by remember { mutableStateOf<Repository?>(null) }
-    var deleteMessage by remember { mutableStateOf<String?>(null) }
-    data class PendingManualClone(val name: String, val url: String, val approximateSize: Long?)
-    var pendingManualClone by remember { mutableStateOf<PendingManualClone?>(null) }
-
-    val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val application = context.applicationContext as android.app.Application
+    val repoViewModel: RepositoryListViewModel = viewModel(
+        factory = RepositoryListViewModel.Factory(application, gitRepository)
+    )
+    val uiState by repoViewModel.uiState.collectAsState()
+
+    // AuthManager нужен только для clone URL-авторизации — не бизнес-логика, создаём здесь
     val authManager = remember { AuthManager(context) }
 
-    // Observe clone progress
+    // Pending clone — временное состояние UI для flow с разрешением уведомлений
+    data class PendingClone(val name: String, val url: String, val approximateSize: Long?)
+    var pendingClone by remember { mutableStateOf<PendingClone?>(null) }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        val pending = pendingManualClone
+        val pending = pendingClone
         if (granted && pending != null) {
-            isLoading = true
-            errorMessage = null
-            startManualClone(
-                scope = scope,
-                context = context,
-                authManager = authManager,
-                name = pending.name,
-                url = pending.url,
-                approximateSize = pending.approximateSize,
-                onSuccess = {
-                    showAddDialog = false
-                    isLoading = false
-                    errorMessage = null
-                },
-                onError = { message ->
-                    errorMessage = message
-                    isLoading = false
-                }
-            )
+            repoViewModel.startManualClone(context, authManager, pending.name, pending.url, pending.approximateSize)
         } else if (!granted) {
-            errorMessage = context.getString(R.string.notification_permission_required)
+            repoViewModel.setDialogError(context.getString(R.string.notification_permission_required))
         }
-        pendingManualClone = null
+        pendingClone = null
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
         if (repositories.isEmpty()) {
             EmptyRepositoryState(
-                onAddClick = { showAddDialog = true }
+                onAddClick = { repoViewModel.showAddDialog() }
             )
         } else {
             LazyColumn(
@@ -102,22 +78,19 @@ fun RepositoryListScreen(
                     RepositoryCard(
                         repository = repository,
                         onClick = { onRepositorySelected(repository) },
-                        onDelete = { repo, deleteFiles ->
-                            repositoryToDelete = repo
-                            showDeleteConfirmDialog = true
+                        onDelete = { repo, _ ->
+                            repoViewModel.showDeleteConfirm(repo)
                         }
                     )
                 }
-                // Добавляем пустое пространство снизу для видимости последней карточки
                 item {
                     Spacer(modifier = Modifier.height(40.dp))
                 }
             }
         }
 
-        // FAB
         FloatingActionButton(
-            onClick = { showAddDialog = true },
+            onClick = { repoViewModel.showAddDialog() },
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(16.dp)
@@ -126,130 +99,38 @@ fun RepositoryListScreen(
         }
     }
 
-    // Dialogs
-    if (showAddDialog) {
+    if (uiState.showAddDialog) {
         AddRepositoryDialog(
-            onDismiss = {
-                showAddDialog = false
-                errorMessage = null
-                isLoading = false
-            },
-            isLoading = isLoading,
-            errorMessage = errorMessage,
+            onDismiss = { repoViewModel.dismissAddDialog() },
+            isLoading = uiState.isLoading,
+            errorMessage = uiState.errorMessage,
             authManager = authManager,
             onAdd = { name, url, isClone, approximateSize ->
-                if (isClone && url.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                if (isClone && url.isNotEmpty() &&
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                     ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
                 ) {
-                    pendingManualClone = PendingManualClone(name, url, approximateSize)
+                    pendingClone = PendingClone(name, url, approximateSize)
                     notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 } else if (isClone && url.isNotEmpty()) {
-                    isLoading = true
-                    errorMessage = null
-                    startManualClone(scope, context, authManager, name, url, approximateSize,
-                        onSuccess = {
-                            showAddDialog = false
-                            isLoading = false
-                            errorMessage = null
-                        },
-                        onError = { message ->
-                            errorMessage = message
-                            isLoading = false
-                        }
-                    )
+                    repoViewModel.startManualClone(context, authManager, name, url, approximateSize)
                 } else {
-                    scope.launch {
-                        try {
-                            isLoading = true
-                            errorMessage = null
-
-                            // Creating new repository
-                            val baseDir = AppSettingsManager(context).getRepositoriesBaseDir(context)
-                            val localPath = "${baseDir.absolutePath}/$name"
-
-                            val result = gitRepository.createRepository(name, localPath)
-                            when (result) {
-                                is GitResult.Success -> {
-                                    showAddDialog = false
-                                    isLoading = false
-                                }
-                                is GitResult.Failure -> {
-                                    errorMessage = result.message.ifBlank { "Failed to create repository" }
-                                    isLoading = false
-                                }
-                            }
-                        } catch (e: Exception) {
-                            errorMessage = e.message ?: "Unknown error occurred"
-                            isLoading = false
-                        }
-                    }
+                    repoViewModel.createRepository(name)
                 }
             },
-            onAddLocal = { path ->
-                scope.launch {
-                    try {
-                        isLoading = true
-                        errorMessage = null
-
-                        val result = gitRepository.addRepository(path)
-                        when (result) {
-                            is GitResult.Success -> {
-                                showAddDialog = false
-                                isLoading = false
-                            }
-                            is GitResult.Failure -> {
-                                errorMessage = result.message.ifBlank { "Failed to add repository" }
-                                isLoading = false
-                            }
-                        }
-                    } catch (e: Exception) {
-                        errorMessage = e.message ?: "Unknown error occurred"
-                        isLoading = false
-                    }
-                }
-            },
-            onNavigateToRemote = {
-                navController.navigate("remote_repositories")
-            }
+            onAddLocal = { path -> repoViewModel.addRepository(path) },
+            onNavigateToRemote = { navController.navigate("remote_repositories") }
         )
     }
 
-    if (showDeleteConfirmDialog && repositoryToDelete != null) {
+    if (uiState.showDeleteConfirmDialog && uiState.repositoryToDelete != null) {
         DeleteRepositoryDialog(
-            repository = repositoryToDelete!!,
-            onDismiss = {
-                showDeleteConfirmDialog = false
-                repositoryToDelete = null
-                deleteMessage = null
-            },
+            repository = uiState.repositoryToDelete!!,
+            onDismiss = { repoViewModel.dismissDeleteConfirm() },
             onConfirm = { deleteFiles ->
-                scope.launch {
-                    try {
-                        val repo = repositoryToDelete!!
-                        if (deleteFiles) {
-                            val result = gitRepository.removeRepositoryWithFiles(repo.id)
-                            when (result) {
-                                is GitResult.Success -> {
-                                    showDeleteConfirmDialog = false
-                                    repositoryToDelete = null
-                                    deleteMessage = null
-                                }
-                                is GitResult.Failure -> {
-                                    deleteMessage = result.message.ifBlank { "Failed to delete repository" }
-                                }
-                            }
-                        } else {
-                            gitRepository.removeRepository(repo.id)
-                            showDeleteConfirmDialog = false
-                            repositoryToDelete = null
-                            deleteMessage = null
-                        }
-                    } catch (e: Exception) {
-                        deleteMessage = e.message ?: "Unknown error occurred"
-                    }
-                }
+                repoViewModel.deleteRepository(uiState.repositoryToDelete!!, deleteFiles)
             },
-            errorMessage = deleteMessage
+            errorMessage = uiState.deleteMessage
         )
     }
 }
@@ -290,50 +171,6 @@ private fun EmptyRepositoryState(
             Icon(Icons.Default.Add, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
             Text(stringResource(R.string.repo_list_add_button))
-        }
-    }
-}
-
-private fun startManualClone(
-    scope: CoroutineScope,
-    context: Context,
-    authManager: AuthManager,
-    name: String,
-    url: String,
-    approximateSize: Long?,
-    onSuccess: () -> Unit,
-    onError: (String) -> Unit
-) {
-    scope.launch {
-        try {
-            val baseDir = AppSettingsManager(context).getRepositoriesBaseDir(context)
-            val fallbackName = url.substringAfterLast('/').removeSuffix(".git")
-            val targetName = if (name.isBlank()) fallbackName else name
-            val targetPath = "${baseDir.absolutePath}/$targetName"
-
-            val resolvedSize = try {
-                approximateSize ?: authManager.getRepositoryApproximateSize(url)
-            } catch (e: Exception) {
-                null
-            }
-
-            val started = CloneRepositoryService.start(
-                context = context,
-                repoName = targetName,
-                repoFullName = url,
-                cloneUrl = url,
-                localPath = targetPath,
-                approximateSize = resolvedSize
-            )
-
-            if (!started) {
-                onError(context.getString(R.string.clone_wifi_only_error))
-                return@launch
-            }
-
-            onSuccess()
-        } catch (e: Exception) {
-            onError(e.message ?: "Unknown error occurred")
         }
     }
 }

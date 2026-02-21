@@ -210,11 +210,11 @@ class CloneRepositoryUseCase(
 }
 ```
 
-### 3.5 Нет ViewModel для основных экранов ✅ ЧАСТИЧНО РЕШЕНО
+### 3.5 Нет ViewModel для основных экранов ✅ РЕШЕНО
 - ~~**Серьёзность:** СРЕДНЯЯ~~
-- **✅ Решено:** `CommitDetailViewModel` + `ChangesViewModel` созданы. Состояние переживает ротацию.
-- `ChangesViewModel` использует `AndroidViewModel` для доступа к строковым ресурсам без утечки Context.
-- **Открытая задача:** `MainScreen` (список репозиториев наблюдает Flow ✓, но сам экран без ViewModel).
+- **✅ Решено:** `CommitDetailViewModel` + `ChangesViewModel` + `MainViewModel` + `RepositoryListViewModel` созданы. Всё состояние переживает ротацию.
+- `MainViewModel(application)` — владеет единым экземпляром `GitRepository`, хранит `selectedTab`/`selectedRepository`/`selectedGraphPreset` как StateFlow.
+- `RepositoryListViewModel(application, IGitRepository)` — git-операции (create/add/delete/clone), `isLoading`/`errorMessage`/диалоги — все в ViewModel.
 
 ### 3.6 Дублирование кода ✅ РЕШЕНО
 - ~~**Серьёзность:** СРЕДНЯЯ~~
@@ -482,10 +482,12 @@ GitRepository.kt:1289  - TODO: Подсчитать количество отп�
 
 ### Фаза 2: Архитектура и производительность ✅ ЗАВЕРШЕНА
 
-- [ ] Внедрить Hilt для DI (отложено — после ViewModels для всех экранов)
+- [ ] Внедрить Hilt для DI (отложено — запланировано в фазе 3+)
 - [x] Разделить `GitRepository` на 6 специализированных файлов
 - [x] `CommitDetailViewModel` — 18+ remember → ViewModel, rotation-safe
 - [x] `ChangesViewModel` — staging, commit, conflicts, push — rotation-safe
+- [x] `MainViewModel` — selectedTab/selectedRepository/selectedGraphPreset/gitRepository — rotation-safe
+- [x] `RepositoryListViewModel` — create/add/delete/clone операции, диалоги — rotation-safe
 - [x] Добавить пагинацию коммитов (`page`/`pageSize`, "Load more" UI)
 - [ ] LRU-кэш Git-объектов (отложено)
 - [x] Оптимизировать загрузку тегов (однократная Map до цикла, O(1))
