@@ -5,8 +5,6 @@ import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.models.StashEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.eclipse.jgit.revwalk.RevWalk
-
 internal suspend fun GitRepository.stashSaveImpl(
     repository: Repository,
     message: String
@@ -30,24 +28,21 @@ internal suspend fun GitRepository.stashListImpl(repository: Repository): List<S
             val git = openRepository(repository.path) ?: return@withContext emptyList()
             git.use { g ->
                 val stashes = g.stashList().call()
-                RevWalk(g.repository).use { rw ->
-                    stashes.mapIndexed { index, ref ->
-                        val commit = rw.parseCommit(ref.objectId)
-                        val fullMessage = commit.fullMessage.trim()
-                        // Format: "On <branch>: <message>" or "WIP on <branch>: <message>"
-                        val branchAndMsg = fullMessage.removePrefix("WIP on ").removePrefix("On ")
-                        val colonIdx = branchAndMsg.indexOf(':')
-                        val branch = if (colonIdx >= 0) branchAndMsg.substring(0, colonIdx).trim() else ""
-                        val msg = if (colonIdx >= 0) branchAndMsg.substring(colonIdx + 1).trim() else fullMessage
+                stashes.mapIndexed { index, revCommit ->
+                    val fullMessage = revCommit.fullMessage.trim()
+                    // Format: "On <branch>: <message>" or "WIP on <branch>: <message>"
+                    val branchAndMsg = fullMessage.removePrefix("WIP on ").removePrefix("On ")
+                    val colonIdx = branchAndMsg.indexOf(':')
+                    val branch = if (colonIdx >= 0) branchAndMsg.substring(0, colonIdx).trim() else ""
+                    val msg = if (colonIdx >= 0) branchAndMsg.substring(colonIdx + 1).trim() else fullMessage
 
-                        StashEntry(
-                            index = index,
-                            message = msg,
-                            branch = branch,
-                            timestamp = commit.committerIdent.`when`.time,
-                            objectId = ref.objectId.name
-                        )
-                    }
+                    StashEntry(
+                        index = index,
+                        message = msg,
+                        branch = branch,
+                        timestamp = revCommit.committerIdent.`when`.time,
+                        objectId = revCommit.name
+                    )
                 }
             }
         } catch (e: Exception) {

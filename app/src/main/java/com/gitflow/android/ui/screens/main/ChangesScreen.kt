@@ -8,9 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
-import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -76,19 +74,18 @@ fun ChangesScreen(
         uiState.changes.filter { it.stage == ChangeStage.UNSTAGED }
     }
 
-    val pullRefreshState = rememberPullToRefreshState()
-    if (pullRefreshState.isRefreshing) {
-        LaunchedEffect(Unit) {
-            viewModel.loadChanges()
-        }
-    }
+    var isManualRefreshing by remember { mutableStateOf(false) }
     LaunchedEffect(uiState.isLoading) {
-        if (!uiState.isLoading) pullRefreshState.endRefresh()
+        if (!uiState.isLoading) isManualRefreshing = false
     }
 
-    Box(modifier = Modifier
-        .fillMaxSize()
-        .nestedScroll(pullRefreshState.nestedScrollConnection)
+    PullToRefreshBox(
+        isRefreshing = isManualRefreshing,
+        onRefresh = {
+            isManualRefreshing = true
+            viewModel.loadChanges()
+        },
+        modifier = Modifier.fillMaxSize()
     ) {
         ChangesContent(
             isLoading = uiState.isLoading,
@@ -111,11 +108,6 @@ fun ChangesScreen(
             onAcceptTheirs = viewModel::acceptTheirs,
             canPush = uiState.canPush,
             pendingPushCommits = uiState.pendingPushCommits
-        )
-
-        PullToRefreshContainer(
-            state = pullRefreshState,
-            modifier = Modifier.align(Alignment.TopCenter)
         )
 
         // Push progress overlay

@@ -31,7 +31,6 @@ private class JGitProgressMonitor(
         callback(SyncProgress(currentTask, total, total))
     }
     override fun isCancelled(): Boolean = false
-    override fun showDuration(enabled: Boolean) {}
 }
 
 internal suspend fun GitRepository.getBranchesImpl(repository: Repository): List<Branch> = withContext(Dispatchers.IO) {
