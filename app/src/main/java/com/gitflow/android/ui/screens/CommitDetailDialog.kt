@@ -3,6 +3,8 @@ package com.gitflow.android.ui.screens
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import timber.log.Timber
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.webkit.MimeTypeMap
@@ -90,6 +92,52 @@ fun CommitDetailDialog(
 
     val normalizedPreviewFileNames = remember(previewFileNames) {
         previewFileNames.mapNotNull { normalizeFileNameToken(it) }.toSet()
+    }
+
+    var showChangedFilesTree by remember { mutableStateOf(false) }
+    var pendingRestoreConfirm by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
+
+    fun requestRestoreToCommit(fileName: String, filePath: String) {
+        pendingRestoreConfirm = Pair(fileName) {
+            viewModel.restoreFileToCommit(filePath) { success ->
+                Toast.makeText(
+                    context,
+                    if (success) context.getString(R.string.commit_detail_toast_restored_commit) else context.getString(R.string.commit_detail_toast_restore_failed),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    fun requestRestoreToParent(fileName: String, filePath: String) {
+        if (commit.parents.isEmpty()) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.commit_detail_toast_no_parent),
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        pendingRestoreConfirm = Pair(fileName) {
+            viewModel.restoreFileToParentCommit(filePath) { success ->
+                Toast.makeText(
+                    context,
+                    if (success) context.getString(R.string.commit_detail_toast_restored_parent) else context.getString(R.string.commit_detail_toast_restore_failed),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    fun requestViewHistory(fileName: String, filePath: String) {
+        viewModel.loadFileHistory(
+            FileTreeNode(
+                name = fileName,
+                path = filePath,
+                type = FileTreeNodeType.FILE
+            )
+        )
     }
 
     Dialog(
@@ -247,11 +295,29 @@ fun CommitDetailDialog(
                             }
                         }
                         else -> {
-                            FileListView(
+                            ChangedFilesView(
                                 fileDiffs = uiState.fileDiffs,
                                 selectedFile = uiState.selectedFile,
+                                showTree = showChangedFilesTree,
+                                hasParentCommit = commit.parents.isNotEmpty(),
+                                contextMenuTargetPath = uiState.contextMenuTargetPath,
+                                restoreInProgress = uiState.isRestoringFile,
                                 allowedExtensions = normalizedPreviewExtensions,
-                                allowedFileNames = normalizedPreviewFileNames
+                                allowedFileNames = normalizedPreviewFileNames,
+                                onToggleViewMode = { showChangedFilesTree = !showChangedFilesTree },
+                                onContextMenuTargetChange = { viewModel.setContextMenuTarget(it) },
+                                onRestoreFromCommit = { diff ->
+                                    viewModel.setContextMenuTarget(null)
+                                    requestRestoreToCommit(diff.path.substringAfterLast('/'), diff.path)
+                                },
+                                onRestoreFromParent = { diff ->
+                                    viewModel.setContextMenuTarget(null)
+                                    requestRestoreToParent(diff.path.substringAfterLast('/'), diff.path)
+                                },
+                                onViewHistory = { diff ->
+                                    viewModel.setContextMenuTarget(null)
+                                    requestViewHistory(diff.path.substringAfterLast('/'), diff.path)
+                                }
                             ) { file ->
                                 viewModel.selectFile(file)
                                 viewModel.selectTab(1)
@@ -299,10 +365,70 @@ fun CommitDetailDialog(
                         }
                     }
                     2 -> CommitInfoView(commit)
-                    3 -> FileTreeView(commit, repository, gitRepository, viewModel)
+                    3 -> FileTreeView(
+                        commit = commit,
+                        repository = repository,
+                        gitRepository = gitRepository,
+                        viewModel = viewModel,
+                        onRequestRestoreToCommit = ::requestRestoreToCommit,
+                        onRequestRestoreToParent = ::requestRestoreToParent,
+                        onRequestViewHistory = ::requestViewHistory
+                    )
                 }
             }
         }
+    }
+
+    pendingRestoreConfirm?.let { (fileName, action) ->
+        AlertDialog(
+            onDismissRequest = { pendingRestoreConfirm = null },
+            title = { Text(stringResource(R.string.commit_detail_restore_confirm_title)) },
+            text = {
+                Text(stringResource(R.string.commit_detail_restore_confirm_message, fileName))
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingRestoreConfirm = null
+                    action()
+                }) {
+                    Text(stringResource(R.string.commit_detail_restore_confirm_ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRestoreConfirm = null }) {
+                    Text(stringResource(R.string.commit_detail_restore_confirm_cancel))
+                }
+            }
+        )
+    }
+
+    uiState.historyDialogFile?.let { fileNode ->
+        FileHistoryDialog(
+            file = fileNode,
+            commit = commit,
+            history = uiState.fileHistory,
+            isLoading = uiState.isHistoryLoading,
+            error = uiState.historyError,
+            isDiffLoading = uiState.isHistoryDiffLoading,
+            selectedHistoryCommit = uiState.historyDiffCommit,
+            onDismiss = { viewModel.dismissHistory() },
+            onSelectCommit = { historyCommit ->
+                viewModel.loadHistoryDiff(historyCommit)
+            }
+        )
+    }
+
+    uiState.historyDiffCommit?.let { historyCommit ->
+        HistoryFileDiffDialog(
+            commit = historyCommit,
+            filePath = uiState.historyDialogFile?.path ?: uiState.historyDialogFile?.name ?: "",
+            fileDiff = uiState.historyDiff,
+            isLoading = uiState.isHistoryDiffLoading,
+            error = uiState.historyDiffError,
+            allowedExtensions = normalizedPreviewExtensions,
+            allowedFileNames = normalizedPreviewFileNames,
+            onDismiss = { viewModel.dismissHistoryDiff() }
+        )
     }
 }
 
@@ -615,11 +741,83 @@ fun DiffLineView(line: DiffLine, compact: Boolean = false) {
 }
 
 @Composable
+fun ChangedFilesView(
+    fileDiffs: List<FileDiff>,
+    selectedFile: FileDiff?,
+    showTree: Boolean,
+    hasParentCommit: Boolean,
+    contextMenuTargetPath: String?,
+    restoreInProgress: Boolean,
+    allowedExtensions: Set<String>,
+    allowedFileNames: Set<String>,
+    onToggleViewMode: () -> Unit,
+    onContextMenuTargetChange: (String?) -> Unit,
+    onRestoreFromCommit: (FileDiff) -> Unit,
+    onRestoreFromParent: (FileDiff) -> Unit,
+    onViewHistory: (FileDiff) -> Unit,
+    onFileSelected: (FileDiff) -> Unit
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (showTree) {
+            ChangedFilesTreeView(
+                fileDiffs = fileDiffs,
+                hasParentCommit = hasParentCommit,
+                contextMenuTargetPath = contextMenuTargetPath,
+                restoreInProgress = restoreInProgress,
+                onContextMenuTargetChange = onContextMenuTargetChange,
+                onRestoreFromCommit = onRestoreFromCommit,
+                onRestoreFromParent = onRestoreFromParent,
+                onViewHistory = onViewHistory,
+                onFileSelected = onFileSelected
+            )
+        } else {
+            FileListView(
+                fileDiffs = fileDiffs,
+                selectedFile = selectedFile,
+                hasParentCommit = hasParentCommit,
+                contextMenuTargetPath = contextMenuTargetPath,
+                restoreInProgress = restoreInProgress,
+                allowedExtensions = allowedExtensions,
+                allowedFileNames = allowedFileNames,
+                onContextMenuTargetChange = onContextMenuTargetChange,
+                onRestoreFromCommit = onRestoreFromCommit,
+                onRestoreFromParent = onRestoreFromParent,
+                onViewHistory = onViewHistory,
+                onFileSelected = onFileSelected
+            )
+        }
+
+        Surface(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 6.dp, end = 10.dp),
+            shape = RoundedCornerShape(12.dp),
+            tonalElevation = 2.dp
+        ) {
+            IconButton(onClick = onToggleViewMode) {
+                Icon(
+                    imageVector = if (showTree) Icons.Default.ViewList else Icons.Default.AccountTree,
+                    contentDescription = if (showTree) stringResource(R.string.commit_detail_tab_files) else stringResource(R.string.commit_detail_tab_file_tree),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun FileListView(
     fileDiffs: List<FileDiff>,
     selectedFile: FileDiff?,
+    hasParentCommit: Boolean,
+    contextMenuTargetPath: String?,
+    restoreInProgress: Boolean,
     allowedExtensions: Set<String>,
     allowedFileNames: Set<String>,
+    onContextMenuTargetChange: (String?) -> Unit,
+    onRestoreFromCommit: (FileDiff) -> Unit,
+    onRestoreFromParent: (FileDiff) -> Unit,
+    onViewHistory: (FileDiff) -> Unit,
     onFileSelected: (FileDiff) -> Unit
 ) {
     LazyColumn(
@@ -639,6 +837,13 @@ fun FileListView(
                 diff = diff,
                 isSelected = selectedFile == diff,
                 isPreviewSupported = isPreviewSupported,
+                hasParentCommit = hasParentCommit,
+                contextMenuTargetPath = contextMenuTargetPath,
+                restoreInProgress = restoreInProgress,
+                onContextMenuTargetChange = onContextMenuTargetChange,
+                onRestoreFromCommit = onRestoreFromCommit,
+                onRestoreFromParent = onRestoreFromParent,
+                onViewHistory = onViewHistory,
                 onClick = { onFileSelected(diff) }
             )
         }
@@ -646,16 +851,99 @@ fun FileListView(
 }
 
 @Composable
+fun ChangedFilesTreeView(
+    fileDiffs: List<FileDiff>,
+    hasParentCommit: Boolean,
+    contextMenuTargetPath: String?,
+    restoreInProgress: Boolean,
+    onContextMenuTargetChange: (String?) -> Unit,
+    onRestoreFromCommit: (FileDiff) -> Unit,
+    onRestoreFromParent: (FileDiff) -> Unit,
+    onViewHistory: (FileDiff) -> Unit,
+    onFileSelected: (FileDiff) -> Unit
+) {
+    val changedTree = remember(fileDiffs) {
+        collapseSingleChildDirectories(buildChangedFilesTree(fileDiffs), isRoot = true)
+    }
+    val diffByPath = remember(fileDiffs) { fileDiffs.associateBy { it.path } }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        items(changedTree.children) { node ->
+            FileTreeNodeItem(
+                node = node,
+                level = 0,
+                isFiltering = false,
+                hasParentCommit = hasParentCommit,
+                contextMenuTargetPath = contextMenuTargetPath,
+                restoreInProgress = restoreInProgress,
+                onFileClicked = { fileNode ->
+                    onContextMenuTargetChange(null)
+                    diffByPath[fileNode.path]?.let(onFileSelected)
+                },
+                onFileLongPress = { fileNode ->
+                    if (!restoreInProgress) {
+                        onContextMenuTargetChange(fileNode.path)
+                    }
+                },
+                onDismissContextMenu = { onContextMenuTargetChange(null) },
+                onRestoreFromCommit = { fileNode ->
+                    diffByPath[fileNode.path]?.let(onRestoreFromCommit)
+                },
+                onRestoreFromParent = { fileNode ->
+                    diffByPath[fileNode.path]?.let(onRestoreFromParent)
+                },
+                onViewHistory = { fileNode ->
+                    diffByPath[fileNode.path]?.let(onViewHistory)
+                },
+                fileTrailingIcon = { fileNode ->
+                    val status = diffByPath[fileNode.path]?.status
+                    if (status != null) {
+                        Icon(
+                            imageVector = fileStatusIcon(status),
+                            contentDescription = status.toLocalizedString(),
+                            modifier = Modifier.size(16.dp),
+                            tint = fileStatusColor(status)
+                        )
+                    }
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
 fun FileItem(
     diff: FileDiff,
     isSelected: Boolean,
     isPreviewSupported: Boolean,
+    hasParentCommit: Boolean,
+    contextMenuTargetPath: String?,
+    restoreInProgress: Boolean,
+    onContextMenuTargetChange: (String?) -> Unit,
+    onRestoreFromCommit: (FileDiff) -> Unit,
+    onRestoreFromParent: (FileDiff) -> Unit,
+    onViewHistory: (FileDiff) -> Unit,
     onClick: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() },
+            .combinedClickable(
+                onClick = {
+                    onContextMenuTargetChange(null)
+                    onClick()
+                },
+                onLongClick = {
+                    if (!restoreInProgress) {
+                        onContextMenuTargetChange(diff.path)
+                    }
+                }
+            ),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected)
                 MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
@@ -663,88 +951,231 @@ fun FileItem(
                 MaterialTheme.colorScheme.surface
         )
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = when (diff.status) {
-                    FileStatus.ADDED -> Icons.Default.AddCircle
-                    FileStatus.MODIFIED -> Icons.Default.Edit
-                    FileStatus.DELETED -> Icons.Default.RemoveCircle
-                    FileStatus.RENAMED -> Icons.Default.DriveFileRenameOutline
-                },
-                contentDescription = null,
-                tint = when (diff.status) {
-                    FileStatus.ADDED -> Color(0xFF4CAF50)
-                    FileStatus.MODIFIED -> Color(0xFFFF9800)
-                    FileStatus.DELETED -> Color(0xFFF44336)
-                    FileStatus.RENAMED -> Color(0xFF2196F3)
-                },
-                modifier = Modifier.size(24.dp)
-            )
+        Box {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = when (diff.status) {
+                        FileStatus.ADDED -> Icons.Default.AddCircle
+                        FileStatus.MODIFIED -> Icons.Default.Edit
+                        FileStatus.DELETED -> Icons.Default.RemoveCircle
+                        FileStatus.RENAMED -> Icons.Default.DriveFileRenameOutline
+                    },
+                    contentDescription = null,
+                    tint = when (diff.status) {
+                        FileStatus.ADDED -> Color(0xFF4CAF50)
+                        FileStatus.MODIFIED -> Color(0xFFFF9800)
+                        FileStatus.DELETED -> Color(0xFFF44336)
+                        FileStatus.RENAMED -> Color(0xFF2196F3)
+                    },
+                    modifier = Modifier.size(24.dp)
+                )
 
-            Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(12.dp))
 
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = diff.path,
-                        fontSize = 14.sp,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-
-                    if (!isPreviewSupported) {
-                        Icon(
-                            Icons.Default.VisibilityOff,
-                            contentDescription = stringResource(R.string.commit_detail_preview_not_available),
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                        )
-                    }
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = diff.status.toLocalizedString(),
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    if (diff.oldPath != null && diff.oldPath != diff.path) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Text(
-                            text = stringResource(R.string.commit_detail_from, diff.oldPath),
+                            text = diff.path,
+                            fontSize = 14.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+
+                        if (!isPreviewSupported) {
+                            Icon(
+                                Icons.Default.VisibilityOff,
+                                contentDescription = stringResource(R.string.commit_detail_preview_not_available),
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = diff.status.toLocalizedString(),
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+
+                        if (diff.oldPath != null && diff.oldPath != diff.path) {
+                            Text(
+                                text = stringResource(R.string.commit_detail_from, diff.oldPath),
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
+                }
+
+                Column(
+                    horizontalAlignment = Alignment.End
+                ) {
+                    Text(
+                        text = "+${diff.additions}",
+                        fontSize = 12.sp,
+                        color = Color(0xFF4CAF50)
+                    )
+                    Text(
+                        text = "-${diff.deletions}",
+                        fontSize = 12.sp,
+                        color = Color(0xFFF44336)
+                    )
                 }
             }
 
-            Column(
-                horizontalAlignment = Alignment.End
+            DropdownMenu(
+                expanded = contextMenuTargetPath == diff.path,
+                onDismissRequest = { onContextMenuTargetChange(null) }
             ) {
-                Text(
-                    text = "+${diff.additions}",
-                    fontSize = 12.sp,
-                    color = Color(0xFF4CAF50)
-                )
-                Text(
-                    text = "-${diff.deletions}",
-                    fontSize = 12.sp,
-                    color = Color(0xFFF44336)
+                FileActionsDropdownContent(
+                    fileName = diff.path.substringAfterLast('/'),
+                    filePath = diff.path,
+                    hasParentCommit = hasParentCommit,
+                    restoreInProgress = restoreInProgress,
+                    onDismissMenu = { onContextMenuTargetChange(null) },
+                    onRestoreFromCommit = { onRestoreFromCommit(diff) },
+                    onRestoreFromParent = { onRestoreFromParent(diff) },
+                    onViewHistory = { onViewHistory(diff) }
                 )
             }
         }
     }
+}
+
+@Composable
+private fun FileActionsDropdownContent(
+    fileName: String,
+    filePath: String,
+    hasParentCommit: Boolean,
+    restoreInProgress: Boolean,
+    onDismissMenu: () -> Unit,
+    onRestoreFromCommit: () -> Unit,
+    onRestoreFromParent: () -> Unit,
+    onViewHistory: () -> Unit
+) {
+    val context = LocalContext.current
+    val clipboard = remember(context) {
+        context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    }
+
+    DropdownMenuItem(
+        text = { Text(stringResource(R.string.commit_detail_menu_restore_commit)) },
+        enabled = !restoreInProgress,
+        onClick = {
+            onDismissMenu()
+            onRestoreFromCommit()
+        }
+    )
+    DropdownMenuItem(
+        text = { Text(stringResource(R.string.commit_detail_menu_restore_parent)) },
+        enabled = hasParentCommit && !restoreInProgress,
+        onClick = {
+            onDismissMenu()
+            onRestoreFromParent()
+        }
+    )
+    DropdownMenuItem(
+        text = { Text(stringResource(R.string.commit_detail_menu_view_history)) },
+        onClick = {
+            onDismissMenu()
+            onViewHistory()
+        }
+    )
+    DropdownMenuItem(
+        text = { Text(stringResource(R.string.commit_detail_menu_copy_file_name)) },
+        onClick = {
+            clipboard.setPrimaryClip(ClipData.newPlainText("file_name", fileName))
+            onDismissMenu()
+            Toast.makeText(
+                context,
+                context.getString(R.string.commit_detail_toast_copied_file_name),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    )
+    DropdownMenuItem(
+        text = { Text(stringResource(R.string.commit_detail_menu_copy_file_path)) },
+        onClick = {
+            clipboard.setPrimaryClip(ClipData.newPlainText("file_path", filePath))
+            onDismissMenu()
+            Toast.makeText(
+                context,
+                context.getString(R.string.commit_detail_toast_copied_file_path),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    )
+}
+
+private fun buildChangedFilesTree(fileDiffs: List<FileDiff>): FileTreeNode {
+    data class MutableNode(
+        val name: String,
+        val path: String,
+        val children: MutableMap<String, MutableNode> = linkedMapOf(),
+        var isFile: Boolean = false
+    )
+
+    val root = MutableNode(name = "", path = "")
+
+    fileDiffs.forEach { diff ->
+        val segments = diff.path.split('/').filter { it.isNotBlank() }
+        if (segments.isEmpty()) return@forEach
+
+        var current = root
+        val pathBuilder = StringBuilder()
+        segments.forEachIndexed { index, segment ->
+            if (pathBuilder.isNotEmpty()) pathBuilder.append('/')
+            pathBuilder.append(segment)
+            val currentPath = pathBuilder.toString()
+            val child = current.children.getOrPut(segment) {
+                MutableNode(name = segment, path = currentPath)
+            }
+            if (index == segments.lastIndex) {
+                child.isFile = true
+            }
+            current = child
+        }
+    }
+
+    fun toImmutable(node: MutableNode): FileTreeNode {
+        val type = if (node.isFile) FileTreeNodeType.FILE else FileTreeNodeType.DIRECTORY
+        val sortedChildren = node.children.values
+            .sortedWith(
+                compareBy<MutableNode> { it.isFile }
+                    .thenBy { it.name.lowercase(Locale.ROOT) }
+            )
+            .map(::toImmutable)
+
+        return FileTreeNode(
+            name = node.name,
+            path = node.path,
+            type = type,
+            children = sortedChildren
+        )
+    }
+
+    return FileTreeNode(
+        name = "changed",
+        path = "",
+        type = FileTreeNodeType.DIRECTORY,
+        children = root.children.values
+            .sortedWith(
+                compareBy<MutableNode> { it.isFile }
+                    .thenBy { it.name.lowercase(Locale.ROOT) }
+            )
+            .map(::toImmutable)
+    )
 }
 
 @Composable
@@ -1029,7 +1460,10 @@ fun FileTreeView(
     commit: Commit,
     repository: Repository?,
     gitRepository: IGitRepository,
-    viewModel: CommitDetailViewModel
+    viewModel: CommitDetailViewModel,
+    onRequestRestoreToCommit: (fileName: String, filePath: String) -> Unit,
+    onRequestRestoreToParent: (fileName: String, filePath: String) -> Unit,
+    onRequestViewHistory: (fileName: String, filePath: String) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -1037,8 +1471,6 @@ fun FileTreeView(
     var selectedFileForViewing by remember { mutableStateOf<FileTreeNode?>(null) }
     var pendingFileAction by remember { mutableStateOf<FileTreeNode?>(null) }
     var isExternalOpening by remember { mutableStateOf(false) }
-    // Pending restore — показываем диалог подтверждения перед деструктивной операцией
-    var pendingRestoreConfirm by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -1185,15 +1617,7 @@ fun FileTreeView(
                             onDismissContextMenu = { viewModel.setContextMenuTarget(null) },
                             onRestoreFromCommit = { fileNode ->
                                 viewModel.setContextMenuTarget(null)
-                                pendingRestoreConfirm = Pair(fileNode.name) {
-                                    viewModel.restoreFileToCommit(fileNode.path) { success ->
-                                        Toast.makeText(
-                                            context,
-                                            if (success) context.getString(R.string.commit_detail_toast_restored_commit) else context.getString(R.string.commit_detail_toast_restore_failed),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
-                                }
+                                onRequestRestoreToCommit(fileNode.name, fileNode.path)
                             },
                             onRestoreFromParent = { fileNode ->
                                 if (commit.parents.isEmpty()) {
@@ -1206,19 +1630,11 @@ fun FileTreeView(
                                     return@FileTreeNodeItem
                                 }
                                 viewModel.setContextMenuTarget(null)
-                                pendingRestoreConfirm = Pair(fileNode.name) {
-                                    viewModel.restoreFileToParentCommit(fileNode.path) { success ->
-                                        Toast.makeText(
-                                            context,
-                                            if (success) context.getString(R.string.commit_detail_toast_restored_parent) else context.getString(R.string.commit_detail_toast_restore_failed),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    }
-                                }
+                                onRequestRestoreToParent(fileNode.name, fileNode.path)
                             },
                             onViewHistory = { fileNode ->
                                 viewModel.setContextMenuTarget(null)
-                                viewModel.loadFileHistory(fileNode)
+                                onRequestViewHistory(fileNode.name, fileNode.path)
                             }
                         )
                     }
@@ -1254,29 +1670,6 @@ fun FileTreeView(
                 }
             }
         }
-    }
-
-    pendingRestoreConfirm?.let { (fileName, action) ->
-        AlertDialog(
-            onDismissRequest = { pendingRestoreConfirm = null },
-            title = { Text(stringResource(R.string.commit_detail_restore_confirm_title)) },
-            text = {
-                Text(stringResource(R.string.commit_detail_restore_confirm_message, fileName))
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    pendingRestoreConfirm = null
-                    action()
-                }) {
-                    Text(stringResource(R.string.commit_detail_restore_confirm_ok))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingRestoreConfirm = null }) {
-                    Text(stringResource(R.string.commit_detail_restore_confirm_cancel))
-                }
-            }
-        )
     }
 
     pendingFileAction?.let { file ->
@@ -1333,34 +1726,6 @@ fun FileTreeView(
         )
     }
 
-    uiState.historyDialogFile?.let { fileNode ->
-        FileHistoryDialog(
-            file = fileNode,
-            commit = commit,
-            history = uiState.fileHistory,
-            isLoading = uiState.isHistoryLoading,
-            error = uiState.historyError,
-            isDiffLoading = uiState.isHistoryDiffLoading,
-            selectedHistoryCommit = uiState.historyDiffCommit,
-            onDismiss = { viewModel.dismissHistory() },
-            onSelectCommit = { historyCommit ->
-                viewModel.loadHistoryDiff(historyCommit)
-            }
-        )
-    }
-
-    uiState.historyDiffCommit?.let { historyCommit ->
-        HistoryFileDiffDialog(
-            commit = historyCommit,
-            filePath = uiState.historyDialogFile?.path ?: uiState.historyDialogFile?.name ?: "",
-            fileDiff = uiState.historyDiff,
-            isLoading = uiState.isHistoryDiffLoading,
-            error = uiState.historyDiffError,
-            allowedExtensions = normalizedPreviewExtensions,
-            allowedFileNames = normalizedPreviewFileNames,
-            onDismiss = { viewModel.dismissHistoryDiff() }
-        )
-    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -1377,7 +1742,9 @@ fun FileTreeNodeItem(
     onDismissContextMenu: () -> Unit,
     onRestoreFromCommit: (FileTreeNode) -> Unit,
     onRestoreFromParent: (FileTreeNode) -> Unit,
-    onViewHistory: (FileTreeNode) -> Unit
+    onViewHistory: (FileTreeNode) -> Unit,
+    fileMetaContent: (@Composable (FileTreeNode) -> Unit)? = null,
+    fileTrailingIcon: (@Composable (FileTreeNode) -> Unit)? = null
 ) {
     var expanded by remember(isFiltering) { mutableStateOf(if (isFiltering) true else level < 2) } // Раскрыты первые 2 уровня по умолчанию
 
@@ -1457,6 +1824,8 @@ fun FileTreeNodeItem(
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        } else if (node.type == FileTreeNodeType.FILE) {
+                            fileMetaContent?.invoke(node)
                         } else if (node.type == FileTreeNodeType.DIRECTORY) {
                             val filesCount = countFiles(node)
                             Text(
@@ -1471,12 +1840,16 @@ fun FileTreeNodeItem(
                     }
 
                     if (node.type == FileTreeNodeType.FILE) {
-                        Icon(
-                            Icons.Default.Visibility,
-                            contentDescription = stringResource(R.string.commit_detail_file_tree_view_file),
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-                        )
+                        if (fileTrailingIcon != null) {
+                            fileTrailingIcon(node)
+                        } else {
+                            Icon(
+                                Icons.Default.Visibility,
+                                contentDescription = stringResource(R.string.commit_detail_file_tree_view_file),
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                            )
+                        }
                     }
                 }
 
@@ -1485,19 +1858,15 @@ fun FileTreeNodeItem(
                         expanded = contextMenuTargetPath == node.path,
                         onDismissRequest = onDismissContextMenu
                     ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.commit_detail_menu_restore_commit)) },
-                            enabled = !restoreInProgress,
-                            onClick = { onRestoreFromCommit(node) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.commit_detail_menu_restore_parent)) },
-                            enabled = hasParentCommit && !restoreInProgress,
-                            onClick = { onRestoreFromParent(node) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.commit_detail_menu_view_history)) },
-                            onClick = { onViewHistory(node) }
+                        FileActionsDropdownContent(
+                            fileName = node.name,
+                            filePath = node.path,
+                            hasParentCommit = hasParentCommit,
+                            restoreInProgress = restoreInProgress,
+                            onDismissMenu = onDismissContextMenu,
+                            onRestoreFromCommit = { onRestoreFromCommit(node) },
+                            onRestoreFromParent = { onRestoreFromParent(node) },
+                            onViewHistory = { onViewHistory(node) }
                         )
                     }
                 }
@@ -1519,11 +1888,27 @@ fun FileTreeNodeItem(
                     onDismissContextMenu = onDismissContextMenu,
                     onRestoreFromCommit = onRestoreFromCommit,
                     onRestoreFromParent = onRestoreFromParent,
-                    onViewHistory = onViewHistory
+                    onViewHistory = onViewHistory,
+                    fileMetaContent = fileMetaContent,
+                    fileTrailingIcon = fileTrailingIcon
                 )
             }
         }
     }
+}
+
+private fun fileStatusIcon(status: FileStatus): androidx.compose.ui.graphics.vector.ImageVector = when (status) {
+    FileStatus.ADDED -> Icons.Default.AddCircle
+    FileStatus.MODIFIED -> Icons.Default.Edit
+    FileStatus.DELETED -> Icons.Default.RemoveCircle
+    FileStatus.RENAMED -> Icons.Default.DriveFileRenameOutline
+}
+
+private fun fileStatusColor(status: FileStatus): Color = when (status) {
+    FileStatus.ADDED -> Color(0xFF4CAF50)
+    FileStatus.MODIFIED -> Color(0xFFFF9800)
+    FileStatus.DELETED -> Color(0xFFF44336)
+    FileStatus.RENAMED -> Color(0xFF2196F3)
 }
 
 @Composable

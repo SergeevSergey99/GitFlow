@@ -174,6 +174,8 @@
     <string name="commit_detail_menu_restore_commit">Restore to this commit</string>
     <string name="commit_detail_menu_restore_parent">Restore to previous commit</string>
     <string name="commit_detail_menu_view_history">View history</string>
+    <string name="commit_detail_menu_copy_file_name">Copy file name</string>
+    <string name="commit_detail_menu_copy_file_path">Copy file path</string>
     <string name="commit_detail_restore_confirm_title">Restore file?</string>
     <string name="commit_detail_restore_confirm_message">This will overwrite the current version of \"%1$s\" with the version from the selected commit. Unsaved changes will be lost.</string>
     <string name="commit_detail_restore_confirm_ok">Restore</string>
@@ -181,6 +183,8 @@
     <string name="commit_detail_toast_restored_commit">File restored to this commit</string>
     <string name="commit_detail_toast_restored_parent">File restored to previous commit</string>
     <string name="commit_detail_toast_restore_failed">Failed to restore file</string>
+    <string name="commit_detail_toast_copied_file_name">File name copied</string>
+    <string name="commit_detail_toast_copied_file_path">File path copied</string>
     <string name="commit_detail_toast_no_parent">No parent commit available</string>
     <string name="commit_detail_toast_load_failed">Failed to load file content</string>
     <string name="commit_detail_toast_open_failed">No application available to open this file</string>
