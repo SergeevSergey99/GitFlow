@@ -225,7 +225,7 @@ class GitRepository(internal val context: Context) : IGitRepository {
         null
     }
 
-    internal fun resolveCredentialsProvider(remoteUrl: String?): CredentialsProvider? {
+    internal suspend fun resolveCredentialsProvider(remoteUrl: String?): CredentialsProvider? {
         if (remoteUrl.isNullOrBlank()) return null
         val sanitizedUrl = remoteUrl.trim()
         val parsedUri = runCatching { URI(sanitizedUrl) }.getOrNull()
@@ -244,6 +244,11 @@ class GitRepository(internal val context: Context) : IGitRepository {
             host.contains("gitlab.com", ignoreCase = true) -> GitProvider.GITLAB
             else -> null
         } ?: return null
+
+        // Refresh GitLab token before use if it is expired or about to expire
+        if (provider == GitProvider.GITLAB) {
+            authManager.refreshGitLabTokenIfNeeded()
+        }
 
         val token = authManager.getAccessToken(provider)?.takeIf { it.isNotBlank() } ?: return null
         return when (provider) {

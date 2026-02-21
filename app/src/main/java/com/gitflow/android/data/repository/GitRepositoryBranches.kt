@@ -20,12 +20,14 @@ internal suspend fun GitRepository.getBranchesImpl(repository: Repository): List
 internal suspend fun GitRepository.pullImpl(repository: Repository): GitResult<Unit> = withContext(Dispatchers.IO) {
     try {
         val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
+        // Resolve credentials (and refresh GitLab token if needed) before entering the use block
+        val remoteUrl = git.repository.config.let {
+            it.getString("remote", "origin", "pushurl") ?: it.getString("remote", "origin", "url")
+        }
+        val credentials = resolveCredentialsProvider(remoteUrl)
         git.use { g ->
-            val remoteUrl = g.repository.config.let {
-                it.getString("remote", "origin", "pushurl") ?: it.getString("remote", "origin", "url")
-            }
             val pullCommand = g.pull()
-            resolveCredentialsProvider(remoteUrl)?.let { pullCommand.setCredentialsProvider(it) }
+            credentials?.let { pullCommand.setCredentialsProvider(it) }
             val result = pullCommand.call()
             if (result.isSuccessful) GitResult.Success(Unit)
             else GitResult.Failure.Generic("Pull failed")
@@ -38,12 +40,14 @@ internal suspend fun GitRepository.pullImpl(repository: Repository): GitResult<U
 internal suspend fun GitRepository.pushImpl(repository: Repository): GitResult<Unit> = withContext(Dispatchers.IO) {
     try {
         val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
+        // Resolve credentials (and refresh GitLab token if needed) before entering the use block
+        val remoteUrl = git.repository.config.let {
+            it.getString("remote", "origin", "pushurl") ?: it.getString("remote", "origin", "url")
+        }
+        val credentials = resolveCredentialsProvider(remoteUrl)
         git.use { g ->
-            val remoteUrl = g.repository.config.let {
-                it.getString("remote", "origin", "pushurl") ?: it.getString("remote", "origin", "url")
-            }
             val pushCommand = g.push()
-            resolveCredentialsProvider(remoteUrl)?.let { pushCommand.setCredentialsProvider(it) }
+            credentials?.let { pushCommand.setCredentialsProvider(it) }
             val result = pushCommand.call()
             if (result.any { it.messages.isEmpty() }) {
                 refreshRepository(repository)

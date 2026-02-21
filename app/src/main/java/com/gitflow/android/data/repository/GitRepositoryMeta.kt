@@ -110,11 +110,14 @@ internal suspend fun GitRepository.cloneRepositoryImpl(
 
         targetDir.parentFile?.mkdirs()
 
+        // Resolve credentials (and refresh GitLab token if needed) before starting the clone
+        val credentials = resolveCredentialsProvider(url)
+
         val cloneCommand = Git.cloneRepository()
             .setURI(url)
             .setDirectory(targetDir)
 
-        resolveCredentialsProvider(url)?.let { cloneCommand.setCredentialsProvider(it) }
+        credentials?.let { cloneCommand.setCredentialsProvider(it) }
         progressCallback?.let { cloneCommand.setProgressMonitor(it) }
 
         val git = try {

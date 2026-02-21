@@ -34,12 +34,11 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
-import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitUser
 import com.gitflow.android.data.settings.AppSettingsManager
 import com.gitflow.android.ui.components.dialogs.GraphPresetDialog
-import java.util.Locale
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
 fun SettingsScreen(
@@ -47,23 +46,14 @@ fun SettingsScreen(
     onGraphPresetChanged: (String) -> Unit,
     navController: NavController
 ) {
+    val viewModel: SettingsViewModel = viewModel()
+    val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    val authManager = remember { AuthManager(context) }
-    val settingsManager = remember { AppSettingsManager(context) }
-
-    // Получаем информацию о пользователях
-    val githubUser = authManager.getCurrentUser(GitProvider.GITHUB)
-    val gitlabUser = authManager.getCurrentUser(GitProvider.GITLAB)
-    val hasAnyAuth = githubUser != null || gitlabUser != null
+    val activity = context as? android.app.Activity
 
     var showGraphPresetDialog by remember { mutableStateOf(false) }
-    var wifiOnlyDownloads by remember { mutableStateOf(settingsManager.isWifiOnlyDownloadsEnabled()) }
-    var previewExtensions by remember { mutableStateOf(settingsManager.getPreviewExtensions().toList()) }
-    var previewFileNames by remember { mutableStateOf(settingsManager.getPreviewFileNames().toList()) }
-    var showPreviewSettings by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
-    var currentLanguage by remember { mutableStateOf(settingsManager.getLanguage()) }
-    var customStoragePath by remember { mutableStateOf(settingsManager.getCustomStorageUri()) }
+    var permissionRefreshKey by remember { mutableStateOf(0) }
 
     val folderPickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
@@ -73,18 +63,13 @@ fun SettingsScreen(
                 uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
-            settingsManager.setCustomStorageUri(uri.toString())
-            customStoragePath = uri.toString()
-            val baseDir = settingsManager.getRepositoriesBaseDir(context)
-            settingsManager.ensureNomediaFile(baseDir)
+            viewModel.onStorageFolderSelected(uri)
         }
     }
 
     val permissionRequirements = remember {
         PermissionRequirement.buildList(context.applicationContext)
     }
-
-    var permissionRefreshKey by remember { mutableStateOf(0) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -103,46 +88,31 @@ fun SettingsScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 permissionRefreshKey++
+                viewModel.refreshUsers()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Перезапуск Activity после смены языка
+    LaunchedEffect(uiState.recreateActivity) {
+        if (uiState.recreateActivity) {
+            viewModel.onRecreateConsumed()
+            activity?.recreate()
         }
     }
 
-    DisposableEffect(settingsManager) {
-        val listener = settingsManager.registerPreviewSettingsListener {
-            previewExtensions = settingsManager.getPreviewExtensions().toList()
-            previewFileNames = settingsManager.getPreviewFileNames().toList()
-        }
-        onDispose {
-            settingsManager.unregisterPreviewSettingsListener(listener)
-        }
-    }
-
-    if (showPreviewSettings) {
-        BackHandler(onBack = { showPreviewSettings = false })
+    if (uiState.showPreviewSettings) {
+        BackHandler(onBack = { viewModel.setShowPreviewSettings(false) })
         FilePreviewSettingsDetail(
-            extensions = previewExtensions,
-            fileNames = previewFileNames,
-            onAddExtension = { value ->
-                settingsManager.addPreviewExtension(value)
-                previewExtensions = settingsManager.getPreviewExtensions().toList()
-            },
-            onRemoveExtension = { value ->
-                settingsManager.removePreviewExtension(value)
-                previewExtensions = settingsManager.getPreviewExtensions().toList()
-            },
-            onAddFileName = { value ->
-                settingsManager.addPreviewFileName(value)
-                previewFileNames = settingsManager.getPreviewFileNames().toList()
-            },
-            onRemoveFileName = { value ->
-                settingsManager.removePreviewFileName(value)
-                previewFileNames = settingsManager.getPreviewFileNames().toList()
-            },
-            onBack = { showPreviewSettings = false }
+            extensions = uiState.previewExtensions,
+            fileNames = uiState.previewFileNames,
+            onAddExtension = viewModel::addPreviewExtension,
+            onRemoveExtension = viewModel::removePreviewExtension,
+            onAddFileName = viewModel::addPreviewFileName,
+            onRemoveFileName = viewModel::removePreviewFileName,
+            onBack = { viewModel.setShowPreviewSettings(false) }
         )
     } else {
         Column(
@@ -153,12 +123,10 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             AccountSection(
-                githubUser = githubUser,
-                gitlabUser = gitlabUser,
-                hasAnyAuth = hasAnyAuth,
-                onManageAccountsClick = {
-                    navController.navigate("auth")
-                }
+                githubUser = uiState.githubUser,
+                gitlabUser = uiState.gitlabUser,
+                hasAnyAuth = uiState.githubUser != null || uiState.gitlabUser != null,
+                onManageAccountsClick = { navController.navigate("auth") }
             )
 
             GraphSettingsSection(
@@ -167,22 +135,19 @@ fun SettingsScreen(
             )
 
             NetworkSettingsSection(
-                wifiOnlyDownloads = wifiOnlyDownloads,
-                onWifiOnlyChanged = { enabled ->
-                    wifiOnlyDownloads = enabled
-                    settingsManager.setWifiOnlyDownloadsEnabled(enabled)
-                }
+                wifiOnlyDownloads = uiState.wifiOnlyDownloads,
+                onWifiOnlyChanged = viewModel::setWifiOnlyDownloads
             )
 
             LanguageSettingsSection(
-                currentLanguage = currentLanguage,
+                currentLanguage = uiState.currentLanguage,
                 onLanguageClick = { showLanguageDialog = true }
             )
 
             FilePreviewSettingsEntry(
-                extensions = previewExtensions,
-                fileNames = previewFileNames,
-                onOpen = { showPreviewSettings = true }
+                extensions = uiState.previewExtensions,
+                fileNames = uiState.previewFileNames,
+                onOpen = { viewModel.setShowPreviewSettings(true) }
             )
 
             if (permissionRequirements.isNotEmpty()) {
@@ -197,13 +162,10 @@ fun SettingsScreen(
                         }
                     },
                     onOpenSettings = openSettings,
-                    customStoragePath = customStoragePath,
-                    settingsManager = settingsManager,
+                    customStoragePath = uiState.customStoragePath,
+                    repositoriesBaseDir = uiState.repositoriesBaseDir,
                     onChooseFolder = { folderPickerLauncher.launch(null) },
-                    onResetFolder = {
-                        settingsManager.setCustomStorageUri(null)
-                        customStoragePath = null
-                    }
+                    onResetFolder = viewModel::resetStoragePath
                 )
             }
 
@@ -211,7 +173,6 @@ fun SettingsScreen(
         }
     }
 
-    // Диалог выбора пресета графа
     if (showGraphPresetDialog) {
         GraphPresetDialog(
             currentPreset = selectedGraphPreset,
@@ -223,20 +184,12 @@ fun SettingsScreen(
         )
     }
 
-    // Диалог выбора языка
     if (showLanguageDialog) {
         LanguageDialog(
-            currentLanguage = currentLanguage,
+            currentLanguage = uiState.currentLanguage,
             onLanguageSelected = { language ->
-                val previousLanguage = currentLanguage
-                currentLanguage = language
-                settingsManager.setLanguage(language)
+                viewModel.setLanguage(language)
                 showLanguageDialog = false
-
-                // Если язык действительно изменился, перезапускаем Activity
-                if (previousLanguage != language) {
-                    (context as? android.app.Activity)?.recreate()
-                }
             },
             onDismiss = { showLanguageDialog = false }
         )
@@ -902,17 +855,12 @@ private fun NetworkSettingsSection(
 @Composable
 private fun StoragePathPicker(
     customStoragePath: String?,
-    settingsManager: AppSettingsManager,
-    context: Context,
+    repositoriesBaseDir: String?,
     onChooseFolder: () -> Unit,
     onReset: () -> Unit
 ) {
     val isConfigured = customStoragePath != null
-    val displayPath = if (isConfigured) {
-        settingsManager.getRepositoriesBaseDir(context).absolutePath
-    } else {
-        null
-    }
+    val displayPath = if (isConfigured) repositoriesBaseDir else null
 
     Surface(
         shape = MaterialTheme.shapes.medium,
@@ -992,7 +940,7 @@ private fun PermissionsSection(
     onRequest: (PermissionRequirement) -> Unit,
     onOpenSettings: (PermissionRequirement) -> Unit,
     customStoragePath: String?,
-    settingsManager: AppSettingsManager,
+    repositoriesBaseDir: String?,
     onChooseFolder: () -> Unit,
     onResetFolder: () -> Unit
 ) {
@@ -1031,8 +979,7 @@ private fun PermissionsSection(
                 if (requirement.id == "storage" && isGranted) {
                     StoragePathPicker(
                         customStoragePath = customStoragePath,
-                        settingsManager = settingsManager,
-                        context = context,
+                        repositoriesBaseDir = repositoriesBaseDir,
                         onChooseFolder = onChooseFolder,
                         onReset = onResetFolder
                     )
@@ -1044,8 +991,7 @@ private fun PermissionsSection(
             if (requirements.none { it.id == "storage" }) {
                 StoragePathPicker(
                     customStoragePath = customStoragePath,
-                    settingsManager = settingsManager,
-                    context = context,
+                    repositoriesBaseDir = repositoriesBaseDir,
                     onChooseFolder = onChooseFolder,
                     onReset = onResetFolder
                 )
