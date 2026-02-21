@@ -28,6 +28,7 @@ import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitRemoteRepository
 import com.gitflow.android.data.settings.AppSettingsManager
 import com.gitflow.android.ui.components.CloneProgressOverlay
+import timber.log.Timber
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -41,37 +42,14 @@ fun RemoteRepositoriesScreen(
     onRepositoryCloned: () -> Unit,
     viewModel: RemoteRepositoriesViewModel = viewModel()
 ) {
-    android.util.Log.d("RemoteRepositoriesScreen", "RemoteRepositoriesScreen началась")
-
     val context = LocalContext.current
-    android.util.Log.d("RemoteRepositoriesScreen", "Получен context")
-
-    val authManager = remember {
-        android.util.Log.d("RemoteRepositoriesScreen", "Создаем AuthManager")
-        try {
-            AuthManager(context)
-        } catch (e: Exception) {
-            android.util.Log.e("RemoteRepositoriesScreen", "Ошибка создания AuthManager: ${e.message}", e)
-            throw e
-        }
-    }
-
-    android.util.Log.d("RemoteRepositoriesScreen", "AuthManager создан, подписываемся на ViewModel")
+    val authManager = remember { AuthManager(context) }
 
     val repositories by viewModel.repositories.collectAsState()
-    android.util.Log.d("RemoteRepositoriesScreen", "repositories collectAsState готово")
-
     val isLoading by viewModel.isLoading.collectAsState()
-    android.util.Log.d("RemoteRepositoriesScreen", "isLoading collectAsState готово")
-
     val errorMessage by viewModel.errorMessage.collectAsState()
-    android.util.Log.d("RemoteRepositoriesScreen", "errorMessage collectAsState готово")
-
     val selectedProvider by viewModel.selectedProvider.collectAsState()
-    android.util.Log.d("RemoteRepositoriesScreen", "selectedProvider collectAsState готово")
-
     val isCloning by viewModel.isCloning.collectAsState()
-    android.util.Log.d("RemoteRepositoriesScreen", "isCloning collectAsState готово")
 
     data class PendingClone(val repository: GitRemoteRepository, val localPath: String)
     var pendingClone by remember { mutableStateOf<PendingClone?>(null) }
@@ -95,16 +73,12 @@ fun RemoteRepositoriesScreen(
     }
 
     LaunchedEffect(Unit) {
-        android.util.Log.d("RemoteRepositoriesScreen", "LaunchedEffect начался")
         try {
             viewModel.initializeRepositories(authManager)
-            android.util.Log.d("RemoteRepositoriesScreen", "initializeRepositories завершен")
         } catch (e: Exception) {
-            android.util.Log.e("RemoteRepositoriesScreen", "Ошибка в initializeRepositories: ${e.message}", e)
+            Timber.e(e, "Ошибка в initializeRepositories")
         }
     }
-
-    android.util.Log.d("RemoteRepositoriesScreen", "Начинаем рендеринг Scaffold")
 
     Scaffold(
         topBar = {
@@ -133,9 +107,6 @@ fun RemoteRepositoriesScreen(
             Column(
                 modifier = Modifier.fillMaxSize()
             ) {
-
-                android.util.Log.d("RemoteRepositoriesScreen", "Вызываем ProviderTabs с selectedProvider=$selectedProvider")
-
                 // Tabs для выбора провайдера
                 ProviderTabs(
                     selectedProvider = selectedProvider,
@@ -206,8 +177,6 @@ fun ProviderTabs(
     isGitHubAuthenticated: Boolean,
     isGitLabAuthenticated: Boolean
 ) {
-    android.util.Log.d("ProviderTabs", "Рендеринг ProviderTabs: selectedProvider=$selectedProvider, github=$isGitHubAuthenticated, gitlab=$isGitLabAuthenticated")
-
     TabRow(
         selectedTabIndex = when (selectedProvider) {
             GitProvider.GITHUB -> 0

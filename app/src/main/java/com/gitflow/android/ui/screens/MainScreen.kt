@@ -31,6 +31,7 @@ fun MainScreen(navController: NavController) {
     val selectedRepository by viewModel.selectedRepository.collectAsState()
     val selectedGraphPreset by viewModel.selectedGraphPreset.collectAsState()
     val repositories by viewModel.repositoriesFlow.collectAsState(initial = emptyList())
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
     val gitRepository = viewModel.getGitRepository()
 
     var showOperationsSheet by remember { mutableStateOf(false) }
@@ -104,6 +105,8 @@ fun MainScreen(navController: NavController) {
                     repositories = repositories,
                     gitRepository = gitRepository,
                     onRepositorySelected = { viewModel.selectRepository(it) },
+                    isRefreshing = isRefreshing,
+                    onRefresh = { viewModel.refreshRepositories() },
                     navController = navController
                 )
                 1 -> {

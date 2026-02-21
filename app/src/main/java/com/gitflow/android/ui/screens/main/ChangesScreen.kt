@@ -8,6 +8,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,9 +28,14 @@ import com.gitflow.android.data.models.FileChange
 import com.gitflow.android.data.models.MergeConflict
 import com.gitflow.android.data.models.MergeConflictSection
 import com.gitflow.android.data.models.Repository
+import com.gitflow.android.data.models.StashEntry
 import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.ui.components.FileChangeCard
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChangesScreen(
     repository: Repository?,
@@ -67,25 +75,48 @@ fun ChangesScreen(
         uiState.changes.filter { it.stage == ChangeStage.UNSTAGED }
     }
 
-    ChangesContent(
-        isLoading = uiState.isLoading,
-        isProcessing = uiState.isProcessing,
-        isConflictLoading = uiState.isConflictLoading,
-        snackbarHostState = snackbarHostState,
-        stagedFiles = stagedFiles,
-        unstagedFiles = unstagedFiles,
-        commitMessage = uiState.commitMessage,
-        onCommitMessageChange = viewModel::setCommitMessage,
-        onStageAll = viewModel::stageAll,
-        onCommit = viewModel::commit,
-        onPush = viewModel::push,
-        onFileToggle = viewModel::toggleFile,
-        onResolveConflict = viewModel::openConflict,
-        onAcceptOurs = viewModel::acceptOurs,
-        onAcceptTheirs = viewModel::acceptTheirs,
-        canPush = uiState.canPush,
-        pendingPushCommits = uiState.pendingPushCommits
-    )
+    val pullRefreshState = rememberPullToRefreshState()
+    if (pullRefreshState.isRefreshing) {
+        LaunchedEffect(Unit) {
+            viewModel.loadChanges()
+        }
+    }
+    LaunchedEffect(uiState.isLoading) {
+        if (!uiState.isLoading) pullRefreshState.endRefresh()
+    }
+
+    Box(modifier = Modifier
+        .fillMaxSize()
+        .nestedScroll(pullRefreshState.nestedScrollConnection)
+    ) {
+        ChangesContent(
+            isLoading = uiState.isLoading,
+            isProcessing = uiState.isProcessing,
+            isConflictLoading = uiState.isConflictLoading,
+            snackbarHostState = snackbarHostState,
+            stagedFiles = stagedFiles,
+            unstagedFiles = unstagedFiles,
+            commitMessage = uiState.commitMessage,
+            isAmendMode = uiState.isAmendMode,
+            onCommitMessageChange = viewModel::setCommitMessage,
+            onToggleAmend = viewModel::toggleAmendMode,
+            onStashOpen = viewModel::openStashDialog,
+            onStageAll = viewModel::stageAll,
+            onCommit = viewModel::commit,
+            onPush = viewModel::push,
+            onFileToggle = viewModel::toggleFile,
+            onResolveConflict = viewModel::openConflict,
+            onAcceptOurs = viewModel::acceptOurs,
+            onAcceptTheirs = viewModel::acceptTheirs,
+            canPush = uiState.canPush,
+            pendingPushCommits = uiState.pendingPushCommits
+        )
+
+        PullToRefreshContainer(
+            state = pullRefreshState,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
+    }
 
     uiState.conflictDetails?.let { details ->
         MergeConflictDialog(
@@ -93,6 +124,19 @@ fun ChangesScreen(
             isBusy = uiState.isProcessing,
             onDismiss = viewModel::dismissConflict,
             onApply = viewModel::resolveConflictWithContent
+        )
+    }
+
+    if (uiState.showStashDialog) {
+        StashDialog(
+            stashList = uiState.stashList,
+            isLoading = uiState.isStashLoading,
+            isBusy = uiState.isProcessing,
+            onDismiss = viewModel::dismissStashDialog,
+            onSave = viewModel::stashSave,
+            onApply = viewModel::stashApply,
+            onPop = viewModel::stashPop,
+            onDrop = viewModel::stashDrop
         )
     }
 }
@@ -106,7 +150,10 @@ private fun ChangesContent(
     stagedFiles: List<FileChange>,
     unstagedFiles: List<FileChange>,
     commitMessage: String,
+    isAmendMode: Boolean,
     onCommitMessageChange: (String) -> Unit,
+    onToggleAmend: () -> Unit,
+    onStashOpen: () -> Unit,
     onStageAll: () -> Unit,
     onCommit: () -> Unit,
     onPush: () -> Unit,
@@ -143,7 +190,10 @@ private fun ChangesContent(
 
                 CommitSection(
                     commitMessage = commitMessage,
+                    isAmendMode = isAmendMode,
                     onCommitMessageChange = onCommitMessageChange,
+                    onToggleAmend = onToggleAmend,
+                    onStashOpen = onStashOpen,
                     stagedFiles = stagedFiles,
                     unstagedFiles = unstagedFiles,
                     onStageAll = onStageAll,
@@ -172,7 +222,10 @@ private fun ChangesContent(
 @Composable
 private fun CommitSection(
     commitMessage: String,
+    isAmendMode: Boolean,
     onCommitMessageChange: (String) -> Unit,
+    onToggleAmend: () -> Unit,
+    onStashOpen: () -> Unit,
     stagedFiles: List<FileChange>,
     unstagedFiles: List<FileChange>,
     onStageAll: () -> Unit,
@@ -200,7 +253,23 @@ private fun CommitSection(
                 modifier = Modifier.fillMaxWidth(),
                 maxLines = 3
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = isAmendMode,
+                    onCheckedChange = { onToggleAmend() },
+                    enabled = !isBusy
+                )
+                Text(
+                    text = stringResource(R.string.changes_amend_last_commit),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isAmendMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -212,14 +281,25 @@ private fun CommitSection(
                 ) {
                     Text(stringResource(R.string.changes_stage_all))
                 }
+                OutlinedButton(
+                    onClick = onStashOpen,
+                    enabled = !isBusy
+                ) {
+                    Icon(Icons.Default.Archive, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(stringResource(R.string.changes_stash_button))
+                }
                 Button(
                     onClick = onCommit,
                     modifier = Modifier.weight(1f),
-                    enabled = stagedFiles.isNotEmpty() && commitMessage.isNotBlank() && !isBusy
+                    enabled = (isAmendMode || stagedFiles.isNotEmpty()) && commitMessage.isNotBlank() && !isBusy
                 ) {
                     Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(stringResource(R.string.changes_commit_button))
+                    Text(
+                        if (isAmendMode) stringResource(R.string.changes_amend_button)
+                        else stringResource(R.string.changes_commit_button)
+                    )
                 }
             }
 
@@ -579,6 +659,121 @@ private fun buildResolvedContent(conflict: MergeConflict, selections: List<Strin
     }
 
     return result.joinToString("\n")
+}
+
+@Composable
+private fun StashDialog(
+    stashList: List<StashEntry>,
+    isLoading: Boolean,
+    isBusy: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+    onApply: (Int) -> Unit,
+    onPop: (Int) -> Unit,
+    onDrop: (Int) -> Unit
+) {
+    var stashMessage by remember { mutableStateOf("") }
+    val dateFormat = remember { SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.changes_stash_title)) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Save new stash section
+                OutlinedTextField(
+                    value = stashMessage,
+                    onValueChange = { stashMessage = it },
+                    label = { Text(stringResource(R.string.changes_stash_message_hint)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    enabled = !isBusy
+                )
+                Button(
+                    onClick = {
+                        onSave(stashMessage)
+                        stashMessage = ""
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isBusy
+                ) {
+                    Icon(Icons.Default.Archive, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(stringResource(R.string.changes_stash_save_button))
+                }
+
+                HorizontalDivider()
+
+                // Stash list
+                if (isLoading) {
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                    }
+                } else if (stashList.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.changes_stash_empty),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        stashList.forEach { entry ->
+                            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text(
+                                        text = entry.message.ifBlank { "stash@{${entry.index}}" },
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = "${entry.branch} · ${dateFormat.format(Date(entry.timestamp))}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        OutlinedButton(
+                                            onClick = { onApply(entry.index) },
+                                            enabled = !isBusy,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(stringResource(R.string.changes_stash_apply))
+                                        }
+                                        OutlinedButton(
+                                            onClick = { onPop(entry.index) },
+                                            enabled = !isBusy,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(stringResource(R.string.changes_stash_pop))
+                                        }
+                                        OutlinedButton(
+                                            onClick = { onDrop(entry.index) },
+                                            enabled = !isBusy,
+                                            colors = ButtonDefaults.outlinedButtonColors(
+                                                contentColor = MaterialTheme.colorScheme.error
+                                            )
+                                        ) {
+                                            Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.changes_conflict_cancel))
+            }
+        }
+    )
 }
 
 @Composable

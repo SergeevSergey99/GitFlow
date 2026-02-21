@@ -203,6 +203,40 @@ internal suspend fun GitRepository.commitImpl(repository: Repository, message: S
 }
 
 // ---------------------------------------------------------------------------
+// Amend last commit
+// ---------------------------------------------------------------------------
+
+internal suspend fun GitRepository.amendLastCommitImpl(repository: Repository, message: String): GitResult<Unit> = withContext(Dispatchers.IO) {
+    try {
+        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
+        git.use { g ->
+            val commitCommand = g.commit().setAmend(true).setMessage(message)
+            resolveCommitIdentity(g)?.let { (name, email) ->
+                commitCommand.setAuthor(name, email)
+                commitCommand.setCommitter(name, email)
+            }
+            commitCommand.call()
+        }
+        refreshRepository(repository)
+        GitResult.Success(Unit)
+    } catch (e: Exception) {
+        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+    }
+}
+
+internal suspend fun GitRepository.getLastCommitMessageImpl(repository: Repository): String? = withContext(Dispatchers.IO) {
+    try {
+        val git = openRepository(repository.path) ?: return@withContext null
+        git.use { g ->
+            val head = g.repository.resolve("HEAD") ?: return@use null
+            g.repository.parseCommit(head).fullMessage
+        }
+    } catch (e: Exception) {
+        null
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Private helpers (file-local)
 // ---------------------------------------------------------------------------
 

@@ -3,6 +3,7 @@ package com.gitflow.android.data.auth
 import android.content.Context
 import java.io.IOException
 import java.util.Properties
+import timber.log.Timber
 
 object OAuthConfig {
     private var _githubClientId: String = ""
@@ -33,7 +34,7 @@ object OAuthConfig {
             _gitlabClientId = properties.getProperty("gitlab.client.id", "")
             _gitlabClientSecret = properties.getProperty("gitlab.client.secret", "")
         } catch (e: IOException) {
-            android.util.Log.w("OAuthConfig", "oauth.properties not found in assets: ${e.message}")
+            Timber.w( "oauth.properties not found in assets: ${e.message}")
             loadFromEnvironmentOrFile(context)
         }
     }
@@ -57,7 +58,7 @@ object OAuthConfig {
                 if (_gitlabClientId.isEmpty()) _gitlabClientId = properties.getProperty("gitlab.client.id", "")
                 if (_gitlabClientSecret.isEmpty()) _gitlabClientSecret = properties.getProperty("gitlab.client.secret", "")
             } catch (e: IOException) {
-                android.util.Log.w("OAuthConfig", "oauth.properties file not found: ${e.message}")
+                Timber.w( "oauth.properties file not found: ${e.message}")
             }
         }
     }

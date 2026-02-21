@@ -34,6 +34,8 @@ interface IGitRepository {
     suspend fun cherryPickCommit(repository: Repository, commitHash: String): GitResult<Unit>
     suspend fun mergeCommitIntoCurrentBranch(repository: Repository, commitHash: String): GitResult<Unit>
     suspend fun commit(repository: Repository, message: String): GitResult<Unit>
+    suspend fun amendLastCommit(repository: Repository, message: String): GitResult<Unit>
+    suspend fun getLastCommitMessage(repository: Repository): String?
     suspend fun getCommitDiffs(commit: Commit, repository: Repository): List<FileDiff>
     suspend fun getCommitDiffs(commit: Commit): List<FileDiff>
     suspend fun getBranches(repository: Repository): List<Branch>
@@ -51,4 +53,9 @@ interface IGitRepository {
     suspend fun restoreFileToParentCommit(commit: Commit, filePath: String): GitResult<Unit>
     suspend fun getFileHistory(commit: Commit, filePath: String, repository: Repository): List<Commit>
     suspend fun getFileHistory(commit: Commit, filePath: String): List<Commit>
+    suspend fun stashSave(repository: Repository, message: String = ""): GitResult<Unit>
+    suspend fun stashList(repository: Repository): List<StashEntry>
+    suspend fun stashApply(repository: Repository, stashIndex: Int): GitResult<Unit>
+    suspend fun stashPop(repository: Repository, stashIndex: Int): GitResult<Unit>
+    suspend fun stashDrop(repository: Repository, stashIndex: Int): GitResult<Unit>
 }

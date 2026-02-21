@@ -2,6 +2,7 @@ package com.gitflow.android.ui.screens
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.GitRepository
 import com.gitflow.android.data.repository.IGitRepository
@@ -9,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -27,6 +29,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedGraphPreset = MutableStateFlow("Default")
     val selectedGraphPreset: StateFlow<String> = _selectedGraphPreset.asStateFlow()
 
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
     fun selectTab(tab: Int) {
         _selectedTab.value = tab
     }
@@ -38,6 +43,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun changeGraphPreset(preset: String) {
         _selectedGraphPreset.value = preset
+    }
+
+    fun refreshRepositories() {
+        if (_isRefreshing.value) return
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            try {
+                val repos = gitRepository.getRepositories()
+                repos.forEach { repo ->
+                    val updated = gitRepository.refreshRepository(repo)
+                    if (updated != null) {
+                        gitRepository.updateRepository(updated)
+                    }
+                }
+            } finally {
+                _isRefreshing.value = false
+            }
+        }
     }
 
     fun updateSelectedRepositoryIfChanged(repositories: List<Repository>) {

@@ -20,6 +20,9 @@
     public static int e(...);
 }
 
+# ==================== Timber ====================
+-dontwarn org.jetbrains.annotations.**
+
 # ==================== JGit ====================
 -keep class org.eclipse.jgit.** { *; }
 -dontwarn org.eclipse.jgit.**

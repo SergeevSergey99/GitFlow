@@ -40,6 +40,15 @@ data class Branch(
 )
 
 @Serializable
+data class StashEntry(
+    val index: Int,
+    val message: String,
+    val branch: String,
+    val timestamp: Long,
+    val objectId: String
+)
+
+@Serializable
 data class FileChange(
     val path: String,
     val status: ChangeStatus,

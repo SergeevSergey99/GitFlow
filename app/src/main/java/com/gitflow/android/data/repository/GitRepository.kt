@@ -185,6 +185,8 @@ class GitRepository(internal val context: Context) : IGitRepository {
     override suspend fun resolveConflict(repository: Repository, path: String, strategy: ConflictResolutionStrategy): GitResult<Unit> = resolveConflictImpl(repository, path, strategy)
     override suspend fun resolveConflictWithContent(repository: Repository, path: String, resolvedContent: String): GitResult<Unit> = resolveConflictWithContentImpl(repository, path, resolvedContent)
     override suspend fun commit(repository: Repository, message: String): GitResult<Unit> = commitImpl(repository, message)
+    override suspend fun amendLastCommit(repository: Repository, message: String): GitResult<Unit> = amendLastCommitImpl(repository, message)
+    override suspend fun getLastCommitMessage(repository: Repository): String? = getLastCommitMessageImpl(repository)
 
     override suspend fun getBranches(repository: Repository): List<Branch> = getBranchesImpl(repository)
     override suspend fun pull(repository: Repository): GitResult<Unit> = pullImpl(repository)
@@ -208,6 +210,12 @@ class GitRepository(internal val context: Context) : IGitRepository {
     override suspend fun restoreFileToParentCommit(commit: Commit, filePath: String): GitResult<Unit> = restoreFileToParentCommitAutoImpl(commit, filePath)
     override suspend fun getFileHistory(commit: Commit, filePath: String, repository: Repository): List<Commit> = getFileHistoryImpl(commit, filePath, repository)
     override suspend fun getFileHistory(commit: Commit, filePath: String): List<Commit> = getFileHistoryAutoImpl(commit, filePath)
+
+    override suspend fun stashSave(repository: Repository, message: String): GitResult<Unit> = stashSaveImpl(repository, message)
+    override suspend fun stashList(repository: Repository): List<StashEntry> = stashListImpl(repository)
+    override suspend fun stashApply(repository: Repository, stashIndex: Int): GitResult<Unit> = stashApplyImpl(repository, stashIndex)
+    override suspend fun stashPop(repository: Repository, stashIndex: Int): GitResult<Unit> = stashPopImpl(repository, stashIndex)
+    override suspend fun stashDrop(repository: Repository, stashIndex: Int): GitResult<Unit> = stashDropImpl(repository, stashIndex)
 
     // ---------- Shared internal helpers ----------
 

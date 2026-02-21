@@ -2,6 +2,7 @@ package com.gitflow.android.ui.screens
 
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import timber.log.Timber
 import android.content.Context
 import android.content.Intent
 import android.webkit.MimeTypeMap
@@ -1036,6 +1037,8 @@ fun FileTreeView(
     var selectedFileForViewing by remember { mutableStateOf<FileTreeNode?>(null) }
     var pendingFileAction by remember { mutableStateOf<FileTreeNode?>(null) }
     var isExternalOpening by remember { mutableStateOf(false) }
+    // Pending restore — показываем диалог подтверждения перед деструктивной операцией
+    var pendingRestoreConfirm by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -1181,12 +1184,15 @@ fun FileTreeView(
                             },
                             onDismissContextMenu = { viewModel.setContextMenuTarget(null) },
                             onRestoreFromCommit = { fileNode ->
-                                viewModel.restoreFileToCommit(fileNode.path) { success ->
-                                    Toast.makeText(
-                                        context,
-                                        if (success) context.getString(R.string.commit_detail_toast_restored_commit) else context.getString(R.string.commit_detail_toast_restore_failed),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
+                                viewModel.setContextMenuTarget(null)
+                                pendingRestoreConfirm = Pair(fileNode.name) {
+                                    viewModel.restoreFileToCommit(fileNode.path) { success ->
+                                        Toast.makeText(
+                                            context,
+                                            if (success) context.getString(R.string.commit_detail_toast_restored_commit) else context.getString(R.string.commit_detail_toast_restore_failed),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
                                 }
                             },
                             onRestoreFromParent = { fileNode ->
@@ -1199,12 +1205,15 @@ fun FileTreeView(
                                     ).show()
                                     return@FileTreeNodeItem
                                 }
-                                viewModel.restoreFileToParentCommit(fileNode.path) { success ->
-                                    Toast.makeText(
-                                        context,
-                                        if (success) context.getString(R.string.commit_detail_toast_restored_parent) else context.getString(R.string.commit_detail_toast_restore_failed),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
+                                viewModel.setContextMenuTarget(null)
+                                pendingRestoreConfirm = Pair(fileNode.name) {
+                                    viewModel.restoreFileToParentCommit(fileNode.path) { success ->
+                                        Toast.makeText(
+                                            context,
+                                            if (success) context.getString(R.string.commit_detail_toast_restored_parent) else context.getString(R.string.commit_detail_toast_restore_failed),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
                                 }
                             },
                             onViewHistory = { fileNode ->
@@ -1245,6 +1254,29 @@ fun FileTreeView(
                 }
             }
         }
+    }
+
+    pendingRestoreConfirm?.let { (fileName, action) ->
+        AlertDialog(
+            onDismissRequest = { pendingRestoreConfirm = null },
+            title = { Text(stringResource(R.string.commit_detail_restore_confirm_title)) },
+            text = {
+                Text(stringResource(R.string.commit_detail_restore_confirm_message, fileName))
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingRestoreConfirm = null
+                    action()
+                }) {
+                    Text(stringResource(R.string.commit_detail_restore_confirm_ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRestoreConfirm = null }) {
+                    Text(stringResource(R.string.commit_detail_restore_confirm_cancel))
+                }
+            }
+        )
     }
 
     pendingFileAction?.let { file ->
@@ -1604,7 +1636,7 @@ fun FileViewerDialog(
                 gitRepository.getFileContent(commit, file.path)
             }
         } catch (e: Exception) {
-            android.util.Log.e("FileViewerDialog", "Failed to load file content", e)
+            Timber.e(e, "Failed to load file content")
             loadError = context.getString(R.string.commit_detail_viewer_load_error, e.message ?: "Unknown error")
         } finally {
             isLoading = false
@@ -1826,7 +1858,7 @@ fun SyntaxHighlightedFileContent(
         try {
             content.split('\n')
         } catch (e: Exception) {
-            android.util.Log.e("SyntaxHighlightedFileContent", "Failed to split content", e)
+            Timber.e(e, "Failed to split content")
             renderError = e.message ?: "Unknown error"
             emptyList()
         }
@@ -1846,7 +1878,7 @@ fun SyntaxHighlightedFileContent(
                 if (isCodeFile) buildHighlightedAnnotatedString(line, fileName) else AnnotatedString(line)
             }
         } catch (e: Exception) {
-            android.util.Log.e("SyntaxHighlightedFileContent", "Failed to highlight syntax", e)
+            Timber.e(e, "Failed to highlight syntax")
             renderError = e.message ?: "Unknown error"
             emptyList()
         }
@@ -1857,7 +1889,7 @@ fun SyntaxHighlightedFileContent(
                 textMeasurer.measure(annotatedLine, style = textStyle).size.width.toFloat()
             } ?: 0f
         } catch (e: Exception) {
-            android.util.Log.e("SyntaxHighlightedFileContent", "Failed to measure text", e)
+            Timber.e(e, "Failed to measure text")
             renderError = e.message ?: "Unknown error"
             0f
         }

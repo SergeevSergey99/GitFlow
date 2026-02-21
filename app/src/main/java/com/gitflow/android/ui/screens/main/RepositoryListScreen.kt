@@ -11,9 +11,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -30,11 +33,14 @@ import com.gitflow.android.ui.components.RepositoryCard
 import com.gitflow.android.ui.components.dialogs.AddRepositoryDialog
 import com.gitflow.android.ui.components.dialogs.DeleteRepositoryDialog
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RepositoryListScreen(
     repositories: List<Repository>,
     gitRepository: IGitRepository,
     onRepositorySelected: (Repository) -> Unit,
+    isRefreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
     navController: NavController
 ) {
     val context = LocalContext.current
@@ -46,6 +52,16 @@ fun RepositoryListScreen(
 
     // AuthManager нужен только для clone URL-авторизации — не бизнес-логика, создаём здесь
     val authManager = remember { AuthManager(context) }
+
+    val pullRefreshState = rememberPullToRefreshState()
+    if (pullRefreshState.isRefreshing) {
+        LaunchedEffect(Unit) {
+            onRefresh()
+        }
+    }
+    LaunchedEffect(isRefreshing) {
+        if (!isRefreshing) pullRefreshState.endRefresh()
+    }
 
     // Pending clone — временное состояние UI для flow с разрешением уведомлений
     data class PendingClone(val name: String, val url: String, val approximateSize: Long?)
@@ -63,7 +79,10 @@ fun RepositoryListScreen(
         pendingClone = null
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier
+        .fillMaxSize()
+        .nestedScroll(pullRefreshState.nestedScrollConnection)
+    ) {
         if (repositories.isEmpty()) {
             EmptyRepositoryState(
                 onAddClick = { repoViewModel.showAddDialog() }
@@ -88,6 +107,11 @@ fun RepositoryListScreen(
                 }
             }
         }
+
+        PullToRefreshContainer(
+            state = pullRefreshState,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
 
         FloatingActionButton(
             onClick = { repoViewModel.showAddDialog() },

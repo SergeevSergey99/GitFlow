@@ -11,6 +11,7 @@ import com.gitflow.android.data.models.FileChange
 import com.gitflow.android.data.models.GitResult
 import com.gitflow.android.data.models.MergeConflict
 import com.gitflow.android.data.models.Repository
+import com.gitflow.android.data.models.StashEntry
 import com.gitflow.android.data.repository.IGitRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,6 +25,10 @@ data class ChangesUiState(
     val isProcessing: Boolean = false,
     val isConflictLoading: Boolean = false,
     val commitMessage: String = "",
+    val isAmendMode: Boolean = false,
+    val showStashDialog: Boolean = false,
+    val stashList: List<StashEntry> = emptyList(),
+    val isStashLoading: Boolean = false,
     val conflictDetails: MergeConflict? = null,
     val canPush: Boolean = false,
     val pendingPushCommits: Int = 0,
@@ -120,6 +125,18 @@ class ChangesViewModel(
         _uiState.update { it.copy(commitMessage = text) }
     }
 
+    fun toggleAmendMode() {
+        val next = !_uiState.value.isAmendMode
+        if (next) {
+            viewModelScope.launch {
+                val lastMessage = gitRepository.getLastCommitMessage(repository) ?: ""
+                _uiState.update { it.copy(isAmendMode = true, commitMessage = lastMessage) }
+            }
+        } else {
+            _uiState.update { it.copy(isAmendMode = false, commitMessage = "") }
+        }
+    }
+
     fun stageAll() {
         guard {
             val result = gitRepository.stageAll(repository)
@@ -136,10 +153,15 @@ class ChangesViewModel(
             emit(str(R.string.changes_commit_message_empty))
             return
         }
+        val isAmend = _uiState.value.isAmendMode
         guard {
-            val result = gitRepository.commit(repository, message)
+            val result = if (isAmend) {
+                gitRepository.amendLastCommit(repository, message)
+            } else {
+                gitRepository.commit(repository, message)
+            }
             if (result is GitResult.Success) {
-                _uiState.update { it.copy(commitMessage = "") }
+                _uiState.update { it.copy(commitMessage = "", isAmendMode = false) }
                 reloadChanges()
                 emit(str(R.string.changes_commit_created))
             } else {
@@ -237,6 +259,72 @@ class ChangesViewModel(
 
     fun dismissConflict() {
         _uiState.update { it.copy(conflictDetails = null) }
+    }
+
+    fun openStashDialog() {
+        _uiState.update { it.copy(showStashDialog = true, isStashLoading = true) }
+        viewModelScope.launch {
+            val entries = gitRepository.stashList(repository)
+            _uiState.update { it.copy(stashList = entries, isStashLoading = false) }
+        }
+    }
+
+    fun dismissStashDialog() {
+        _uiState.update { it.copy(showStashDialog = false) }
+    }
+
+    fun stashSave(message: String) {
+        guard {
+            val result = gitRepository.stashSave(repository, message)
+            if (result is GitResult.Success) {
+                reloadChanges()
+                emit(str(R.string.changes_stash_saved))
+                // Reload stash list if dialog is open
+                val entries = gitRepository.stashList(repository)
+                _uiState.update { it.copy(stashList = entries) }
+            } else {
+                emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_stash_save_failed))
+            }
+        }
+    }
+
+    fun stashApply(stashIndex: Int) {
+        guard {
+            val result = gitRepository.stashApply(repository, stashIndex)
+            if (result is GitResult.Success) {
+                reloadChanges()
+                emit(str(R.string.changes_stash_applied))
+            } else {
+                emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_stash_apply_failed))
+            }
+        }
+    }
+
+    fun stashPop(stashIndex: Int) {
+        guard {
+            val result = gitRepository.stashPop(repository, stashIndex)
+            if (result is GitResult.Success) {
+                reloadChanges()
+                val entries = gitRepository.stashList(repository)
+                _uiState.update { it.copy(stashList = entries) }
+                emit(str(R.string.changes_stash_applied))
+            } else {
+                emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_stash_apply_failed))
+            }
+        }
+    }
+
+    fun stashDrop(stashIndex: Int) {
+        guard {
+            val result = gitRepository.stashDrop(repository, stashIndex)
+            if (result is GitResult.Success) {
+                val entries = gitRepository.stashList(repository)
+                _uiState.update { it.copy(stashList = entries) }
+                emit(str(R.string.changes_stash_dropped))
+            } else {
+                emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_stash_drop_failed))
+            }
+        }
     }
 
     fun clearMessage() {

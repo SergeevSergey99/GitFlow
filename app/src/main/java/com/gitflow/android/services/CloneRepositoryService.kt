@@ -34,6 +34,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -73,7 +74,7 @@ class CloneRepositoryService : Service() {
 
     private fun handleStartClone(intent: Intent) {
         if (cloneJob?.isActive == true) {
-            android.util.Log.w(TAG, "Клонирование уже выполняется, новый запрос проигнорирован")
+            Timber.w("Клонирование уже выполняется, новый запрос проигнорирован")
             return
         }
 
@@ -85,7 +86,7 @@ class CloneRepositoryService : Service() {
         val approximateSize = intent.getLongExtra(EXTRA_REPO_SIZE, -1L).takeIf { intent.hasExtra(EXTRA_REPO_SIZE) && it >= 0 }
 
         if (cloneUrl.isNullOrBlank() || localPath.isNullOrBlank() || repoName.isNullOrBlank() || repoFullName.isNullOrBlank()) {
-            android.util.Log.e(TAG, "Недостаточно данных для запуска клонирования")
+            Timber.e("Недостаточно данных для запуска клонирования")
             stopSelf()
             return
         }
@@ -120,7 +121,7 @@ class CloneRepositoryService : Service() {
         approximateSize: Long?
     ) {
         if (!hasNotificationPermission()) {
-            android.util.Log.w(TAG, "Нет разрешения POST_NOTIFICATIONS, завершаем сервис")
+            Timber.w("Нет разрешения POST_NOTIFICATIONS, завершаем сервис")
             stopSelf()
             return
         }
@@ -261,7 +262,7 @@ class CloneRepositoryService : Service() {
     }
 
     private fun handleCancelClone() {
-        android.util.Log.d(TAG, "Отмена операции клонирования по запросу пользователя")
+        Timber.d("Отмена операции клонирования по запросу пользователя")
         progressCallback?.cancel()
         currentCloneKey?.let { CloneProgressTracker.markCancelled(it) }
     }
@@ -290,15 +291,14 @@ class CloneRepositoryService : Service() {
             try {
                 notificationManager.notify(id, notification)
             } catch (security: SecurityException) {
-                android.util.Log.w(TAG, "Не удалось показать уведомление из-за SecurityException", security)
+                Timber.w(security, "Не удалось показать уведомление из-за SecurityException")
             }
         } else {
-            android.util.Log.w(TAG, "Пропускаем уведомление: нет разрешения POST_NOTIFICATIONS")
+            Timber.w("Пропускаем уведомление: нет разрешения POST_NOTIFICATIONS")
         }
     }
 
     companion object {
-        private const val TAG = "CloneRepoService"
         private const val ACTION_START_CLONE = "com.gitflow.android.action.START_CLONE"
         private const val ACTION_CANCEL_CLONE = "com.gitflow.android.action.CANCEL_CLONE"
         private const val EXTRA_CLONE_URL = "extra_clone_url"
