@@ -12,6 +12,7 @@ import com.gitflow.android.data.models.GitResult
 import com.gitflow.android.data.models.MergeConflict
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.models.StashEntry
+import com.gitflow.android.data.models.SyncProgress
 import com.gitflow.android.data.repository.IGitRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,6 +33,8 @@ data class ChangesUiState(
     val conflictDetails: MergeConflict? = null,
     val canPush: Boolean = false,
     val pendingPushCommits: Int = 0,
+    /** Non-null while push is in progress; null otherwise. */
+    val syncProgress: SyncProgress? = null,
     // Transient snackbar message — cleared after display
     val message: String? = null
 )
@@ -172,7 +175,10 @@ class ChangesViewModel(
 
     fun push() {
         guard {
-            val result = gitRepository.push(repository)
+            val result = gitRepository.pushWithProgress(repository) { progress ->
+                _uiState.value = _uiState.value.copy(syncProgress = progress)
+            }
+            _uiState.update { it.copy(syncProgress = null) }
             val msg = if (result is GitResult.Success) {
                 str(R.string.changes_push_successful)
             } else {

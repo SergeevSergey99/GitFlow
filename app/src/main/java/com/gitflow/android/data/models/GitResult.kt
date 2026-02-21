@@ -49,6 +49,23 @@ sealed class GitResult<out T> {
 }
 
 // ---------------------------------------------------------------------------
+// Progress reporting for long-running network operations (push/pull)
+// ---------------------------------------------------------------------------
+
+/**
+ * Progress snapshot for a JGit network operation (push or pull).
+ * [totalWork] == 0 means the total is unknown (indeterminate progress).
+ */
+data class SyncProgress(
+    val task: String,
+    val done: Int,
+    val totalWork: Int
+) {
+    /** 0..1 fraction, or null when progress is indeterminate. */
+    val fraction: Float? get() = if (totalWork > 0) done.toFloat() / totalWork else null
+}
+
+// ---------------------------------------------------------------------------
 // Convenience extensions
 // ---------------------------------------------------------------------------
 

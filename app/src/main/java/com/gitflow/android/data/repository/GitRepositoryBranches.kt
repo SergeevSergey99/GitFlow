@@ -6,7 +6,33 @@ import kotlinx.coroutines.withContext
 import org.eclipse.jgit.api.CherryPickResult
 import org.eclipse.jgit.api.MergeResult
 import org.eclipse.jgit.api.ResetCommand
+import org.eclipse.jgit.lib.ProgressMonitor
 import org.eclipse.jgit.revwalk.RevWalk
+
+private class JGitProgressMonitor(
+    private val callback: (SyncProgress) -> Unit
+) : ProgressMonitor {
+    private var currentTask = ""
+    private var total = 0
+    private var done = 0
+
+    override fun start(totalTasks: Int) {}
+    override fun beginTask(title: String?, totalWork: Int) {
+        currentTask = title ?: ""
+        total = totalWork
+        done = 0
+        callback(SyncProgress(currentTask, 0, total))
+    }
+    override fun update(completed: Int) {
+        done += completed
+        callback(SyncProgress(currentTask, done, total))
+    }
+    override fun endTask() {
+        callback(SyncProgress(currentTask, total, total))
+    }
+    override fun isCancelled(): Boolean = false
+    override fun showDuration(enabled: Boolean) {}
+}
 
 internal suspend fun GitRepository.getBranchesImpl(repository: Repository): List<Branch> = withContext(Dispatchers.IO) {
     try {
@@ -48,6 +74,33 @@ internal suspend fun GitRepository.pushImpl(repository: Repository): GitResult<U
         git.use { g ->
             val pushCommand = g.push()
             credentials?.let { pushCommand.setCredentialsProvider(it) }
+            val result = pushCommand.call()
+            if (result.any { it.messages.isEmpty() }) {
+                refreshRepository(repository)
+                GitResult.Success(Unit)
+            } else {
+                GitResult.Failure.Generic("Push failed")
+            }
+        }
+    } catch (e: Exception) {
+        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+    }
+}
+
+internal suspend fun GitRepository.pushWithProgressImpl(
+    repository: Repository,
+    onProgress: (SyncProgress) -> Unit
+): GitResult<Unit> = withContext(Dispatchers.IO) {
+    try {
+        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
+        val remoteUrl = git.repository.config.let {
+            it.getString("remote", "origin", "pushurl") ?: it.getString("remote", "origin", "url")
+        }
+        val credentials = resolveCredentialsProvider(remoteUrl)
+        git.use { g ->
+            val pushCommand = g.push()
+            credentials?.let { pushCommand.setCredentialsProvider(it) }
+            pushCommand.setProgressMonitor(JGitProgressMonitor(onProgress))
             val result = pushCommand.call()
             if (result.any { it.messages.isEmpty() }) {
                 refreshRepository(repository)

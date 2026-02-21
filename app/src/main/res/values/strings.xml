@@ -271,6 +271,7 @@
     <string name="changes_commit_failed">Commit failed</string>
     <string name="changes_push_successful">Push successful</string>
     <string name="changes_push_failed">Push failed</string>
+    <string name="push_progress_pushing">Pushing…</string>
     <string name="changes_unable_to_stage">Unable to stage all changes</string>
     <string name="changes_unable_to_stage_file">Unable to stage file</string>
     <string name="changes_unable_to_unstage_file">Unable to unstage file</string>
@@ -387,6 +388,9 @@
     <string name="graph_select_repo">Select a repository to view commits</string>
     <string name="graph_no_commits">No commits found in this repository</string>
     <string name="graph_load_more_commits">Load more commits</string>
+    <string name="graph_search_hint">Search by message, author or hash…</string>
+    <string name="graph_search_empty">No matching commits</string>
+    <string name="graph_search_results">%1$d matches</string>
     <string name="graph_merge_commit">Merge commit</string>
     <string name="graph_from_badge">from %1$s</string>
     <string name="graph_from_badge_branch">from %1$s • %2$s</string>

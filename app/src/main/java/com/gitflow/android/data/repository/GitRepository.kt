@@ -191,6 +191,7 @@ class GitRepository(internal val context: Context) : IGitRepository {
     override suspend fun getBranches(repository: Repository): List<Branch> = getBranchesImpl(repository)
     override suspend fun pull(repository: Repository): GitResult<Unit> = pullImpl(repository)
     override suspend fun push(repository: Repository): GitResult<Unit> = pushImpl(repository)
+    override suspend fun pushWithProgress(repository: Repository, onProgress: (SyncProgress) -> Unit): GitResult<Unit> = pushWithProgressImpl(repository, onProgress)
     override suspend fun hardResetToCommit(repository: Repository, commitHash: String): GitResult<Unit> = hardResetToCommitImpl(repository, commitHash)
     override suspend fun createTag(repository: Repository, tagName: String, commitHash: String, force: Boolean): GitResult<Unit> = createTagImpl(repository, tagName, commitHash, force)
     override suspend fun deleteTag(repository: Repository, tagName: String): GitResult<Unit> = deleteTagImpl(repository, tagName)

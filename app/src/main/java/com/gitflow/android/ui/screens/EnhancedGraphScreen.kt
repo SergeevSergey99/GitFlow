@@ -13,8 +13,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.LabelOff
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.MergeType
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -178,39 +180,75 @@ fun EnhancedGraphView(
 
     val graphData = remember(commits) { buildGraphData(commits) }
 
-    Box(Modifier.fillMaxSize()) {
-        if (isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredCommits = remember(commits, searchQuery) {
+        if (searchQuery.isBlank()) emptyList()
+        else {
+            val q = searchQuery.trim().lowercase()
+            commits.filter { c ->
+                c.message.lowercase().contains(q) ||
+                    c.author.lowercase().contains(q) ||
+                    c.hash.startsWith(q, ignoreCase = true)
             }
-        } else if (commits.isEmpty()) {
-            EmptyStateMessage(stringResource(R.string.graph_no_commits))
-        } else {
-            GraphCanvas(
-                graphData = graphData,
-                config = config,
-                hasMoreCommits = hasMoreCommits && !isLoading,
-                onLoadMore = { currentPageSize += 50 },
-                onCommitClick = { commit ->
-                    selectedCommit = commit
-                    showCommitDetail = true
-                },
-                onCommitLongPress = { commit ->
-                    actionCommit = commit
-                    showActionsSheet = true
-                }
+        }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        // Search bar — always visible when commits are loaded
+        if (!isLoading && commits.isNotEmpty()) {
+            CommitSearchBar(
+                query = searchQuery,
+                onQueryChange = { searchQuery = it },
+                resultCount = if (searchQuery.isNotBlank()) filteredCommits.size else null
             )
         }
 
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(16.dp)
-        )
+        Box(Modifier.weight(1f)) {
+            if (isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            } else if (commits.isEmpty()) {
+                EmptyStateMessage(stringResource(R.string.graph_no_commits))
+            } else if (searchQuery.isNotBlank()) {
+                SearchResultsList(
+                    commits = filteredCommits,
+                    onCommitClick = { commit ->
+                        selectedCommit = commit
+                        showCommitDetail = true
+                    },
+                    onCommitLongPress = { commit ->
+                        actionCommit = commit
+                        showActionsSheet = true
+                    }
+                )
+            } else {
+                GraphCanvas(
+                    graphData = graphData,
+                    config = config,
+                    hasMoreCommits = hasMoreCommits && !isLoading,
+                    onLoadMore = { currentPageSize += 50 },
+                    onCommitClick = { commit ->
+                        selectedCommit = commit
+                        showCommitDetail = true
+                    },
+                    onCommitLongPress = { commit ->
+                        actionCommit = commit
+                        showActionsSheet = true
+                    }
+                )
+            }
+
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(16.dp)
+            )
+        }
     }
 
     if (showCommitDetail && selectedCommit != null) {
@@ -574,6 +612,132 @@ fun EnhancedGraphView(
         }
 
         null -> Unit
+    }
+}
+
+/* ============================ Search ============================ */
+
+@Composable
+private fun CommitSearchBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    resultCount: Int?
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        OutlinedTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text(stringResource(R.string.graph_search_hint)) },
+            leadingIcon = {
+                Icon(Icons.Default.Search, contentDescription = null)
+            },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    IconButton(onClick = { onQueryChange("") }) {
+                        Icon(Icons.Default.Close, contentDescription = null)
+                    }
+                }
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(24.dp)
+        )
+        if (resultCount != null) {
+            Text(
+                text = stringResource(R.string.graph_search_results, resultCount),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp, top = 2.dp)
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SearchResultsList(
+    commits: List<Commit>,
+    onCommitClick: (Commit) -> Unit,
+    onCommitLongPress: (Commit) -> Unit
+) {
+    if (commits.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                stringResource(R.string.graph_search_empty),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        return
+    }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        items(commits, key = { it.hash }) { commit ->
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .combinedClickable(
+                        onClick = { onCommitClick(commit) },
+                        onLongClick = { onCommitLongPress(commit) }
+                    ),
+                shape = RoundedCornerShape(8.dp),
+                tonalElevation = 1.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Hash badge
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Text(
+                            text = commit.hash.take(7),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = commit.message,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = commit.author,
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            Text(
+                                text = timeAgo(commit.timestamp),
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        item { Spacer(Modifier.height(24.dp)) }
     }
 }
 

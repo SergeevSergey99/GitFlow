@@ -271,6 +271,7 @@
     <string name="changes_commit_failed">Не удалось создать коммит</string>
     <string name="changes_push_successful">Push выполнен успешно</string>
     <string name="changes_push_failed">Ошибка push</string>
+    <string name="push_progress_pushing">Отправка…</string>
     <string name="changes_unable_to_stage">Не удалось добавить все изменения</string>
     <string name="changes_unable_to_stage_file">Не удалось добавить файл</string>
     <string name="changes_unable_to_unstage_file">Не удалось убрать файл из индекса</string>
@@ -387,6 +388,9 @@
     <string name="graph_select_repo">Выберите репозиторий для просмотра коммитов</string>
     <string name="graph_no_commits">Коммиты не найдены в этом репозитории</string>
     <string name="graph_load_more_commits">Загрузить ещё коммиты</string>
+    <string name="graph_search_hint">Поиск по сообщению, автору или хешу…</string>
+    <string name="graph_search_empty">Совпадений не найдено</string>
+    <string name="graph_search_results">%1$d совпадений</string>
     <string name="graph_merge_commit">Merge-коммит</string>
     <string name="graph_from_badge">из %1$s</string>
     <string name="graph_from_badge_branch">из %1$s • %2$s</string>

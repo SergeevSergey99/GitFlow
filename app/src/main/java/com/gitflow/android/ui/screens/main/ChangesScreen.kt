@@ -29,6 +29,7 @@ import com.gitflow.android.data.models.MergeConflict
 import com.gitflow.android.data.models.MergeConflictSection
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.models.StashEntry
+import com.gitflow.android.data.models.SyncProgress
 import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.ui.components.FileChangeCard
 import java.text.SimpleDateFormat
@@ -116,6 +117,14 @@ fun ChangesScreen(
             state = pullRefreshState,
             modifier = Modifier.align(Alignment.TopCenter)
         )
+
+        // Push progress overlay
+        uiState.syncProgress?.let { progress ->
+            SyncProgressBanner(
+                progress = progress,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
     }
 
     uiState.conflictDetails?.let { details ->
@@ -774,6 +783,50 @@ private fun StashDialog(
             }
         }
     )
+}
+
+@Composable
+private fun SyncProgressBanner(
+    progress: SyncProgress,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        tonalElevation = 8.dp,
+        shadowElevation = 4.dp
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = progress.task.ifBlank { stringResource(R.string.push_progress_pushing) },
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1
+                )
+                val fraction = progress.fraction
+                if (fraction != null && progress.totalWork > 0) {
+                    Text(
+                        text = "${progress.done} / ${progress.totalWork}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            val fraction = progress.fraction
+            if (fraction != null) {
+                LinearProgressIndicator(
+                    progress = { fraction },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            } else {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+        }
+    }
 }
 
 @Composable

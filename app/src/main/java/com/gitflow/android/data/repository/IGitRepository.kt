@@ -41,6 +41,7 @@ interface IGitRepository {
     suspend fun getBranches(repository: Repository): List<Branch>
     suspend fun pull(repository: Repository): GitResult<Unit>
     suspend fun push(repository: Repository): GitResult<Unit>
+    suspend fun pushWithProgress(repository: Repository, onProgress: (SyncProgress) -> Unit): GitResult<Unit>
     suspend fun getCommitFileTree(commit: Commit, repository: Repository): FileTreeNode
     suspend fun getCommitFileTree(commit: Commit): FileTreeNode
     suspend fun getFileContent(commit: Commit, filePath: String, repository: Repository): String?
