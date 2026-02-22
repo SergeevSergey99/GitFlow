@@ -3,8 +3,6 @@ package com.gitflow.android.ui.screens.main
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
@@ -149,12 +147,4 @@ class RepositoryListViewModel(
         }
     }
 
-    class Factory(
-        private val application: Application,
-        private val gitRepository: IGitRepository
-    ) : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            RepositoryListViewModel(application, gitRepository) as T
-    }
 }

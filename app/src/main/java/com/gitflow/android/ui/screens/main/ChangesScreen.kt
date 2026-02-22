@@ -29,7 +29,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.lifecycle.viewmodel.compose.viewModel
+import org.koin.androidx.compose.koinViewModel
+import org.koin.core.parameter.parametersOf
 import com.gitflow.android.R
 import com.gitflow.android.data.models.ChangeStatus
 import com.gitflow.android.data.models.ChangeStage
@@ -62,11 +63,10 @@ fun ChangesScreen(
         return
     }
 
-    val application = LocalContext.current.applicationContext as android.app.Application
     val context = LocalContext.current
-    val viewModel: ChangesViewModel = viewModel(
+    val viewModel: ChangesViewModel = koinViewModel(
         key = repository.id,
-        factory = ChangesViewModelFactory(application, gitRepository, repository)
+        parameters = { parametersOf(repository) }
     )
     val uiState by viewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()

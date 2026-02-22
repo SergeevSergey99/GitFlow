@@ -29,10 +29,11 @@ data class SettingsUiState(
     val recreateActivity: Boolean = false
 )
 
-class SettingsViewModel(application: Application) : AndroidViewModel(application) {
-
-    private val authManager = AuthManager(application)
-    private val settingsManager = AppSettingsManager(application)
+class SettingsViewModel(
+    application: Application,
+    private val authManager: AuthManager,
+    private val settingsManager: AppSettingsManager
+) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()

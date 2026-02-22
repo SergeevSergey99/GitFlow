@@ -1,7 +1,6 @@
 package com.gitflow.android.ui.screens
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.gitflow.android.data.models.*
 import com.gitflow.android.data.models.GitResult
@@ -206,12 +205,3 @@ class CommitDetailViewModel(
     }
 }
 
-class CommitDetailViewModelFactory(
-    private val gitRepository: IGitRepository,
-    private val commit: Commit,
-    private val repository: Repository?
-) : ViewModelProvider.Factory {
-    @Suppress("UNCHECKED_CAST")
-    override fun <T : ViewModel> create(modelClass: Class<T>): T =
-        CommitDetailViewModel(gitRepository, commit, repository) as T
-}

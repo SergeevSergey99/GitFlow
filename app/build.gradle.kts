@@ -112,6 +112,11 @@ dependencies {
     // Encrypted SharedPreferences
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
+    // Koin DI
+    implementation(platform("io.insert-koin:koin-bom:4.0.0"))
+    implementation("io.insert-koin:koin-android")
+    implementation("io.insert-koin:koin-androidx-compose")
+
     // Logging
     implementation("com.jakewharton.timber:timber:5.0.1")
 

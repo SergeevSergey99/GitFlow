@@ -50,7 +50,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import androidx.compose.ui.res.stringResource
-import androidx.lifecycle.viewmodel.compose.viewModel
+import org.koin.androidx.compose.koinInject
+import org.koin.androidx.compose.koinViewModel
+import org.koin.core.parameter.parametersOf
 import com.gitflow.android.R
 import com.gitflow.android.ui.components.StartEllipsizedText
 import com.gitflow.android.data.models.*
@@ -75,14 +77,14 @@ fun CommitDetailDialog(
     gitRepository: IGitRepository,
     onDismiss: () -> Unit
 ) {
-    val viewModel: CommitDetailViewModel = viewModel(
+    val viewModel: CommitDetailViewModel = koinViewModel(
         key = commit.hash,
-        factory = CommitDetailViewModelFactory(gitRepository, commit, repository)
+        parameters = { parametersOf(commit, repository) }
     )
     val uiState by viewModel.uiState.collectAsState()
 
     val context = LocalContext.current
-    val settingsManager = remember { AppSettingsManager(context) }
+    val settingsManager: AppSettingsManager = koinInject()
     var previewExtensions by remember { mutableStateOf(settingsManager.getPreviewExtensions()) }
     var previewFileNames by remember { mutableStateOf(settingsManager.getPreviewFileNames()) }
 
@@ -1588,7 +1590,7 @@ fun FileTreeView(
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val settingsManager = remember { AppSettingsManager(context) }
+    val settingsManager: AppSettingsManager = koinInject()
     var previewExtensions by remember { mutableStateOf(settingsManager.getPreviewExtensions()) }
     var previewFileNames by remember { mutableStateOf(settingsManager.getPreviewFileNames()) }
 

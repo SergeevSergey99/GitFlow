@@ -141,10 +141,12 @@ class CloneProgressCallback(private val trackingKey: String? = null) : ProgressM
 // Main repository class — delegates to extension files
 // ---------------------------------------------------------------------------
 
-class GitRepository(internal val context: Context) : IGitRepository {
+class GitRepository(
+    internal val context: Context,
+    internal val authManager: AuthManager
+) : IGitRepository {
 
     internal val dataStore = RepositoryDataStore(context)
-    internal val authManager by lazy { AuthManager(context) }
 
     // ---------- Simple inline overrides ----------
 

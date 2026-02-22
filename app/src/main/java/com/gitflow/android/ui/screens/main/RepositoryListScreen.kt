@@ -21,7 +21,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.viewmodel.compose.viewModel
+import org.koin.androidx.compose.koinInject
+import org.koin.androidx.compose.koinViewModel
 import androidx.navigation.NavController
 import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
@@ -42,14 +43,10 @@ fun RepositoryListScreen(
     navController: NavController
 ) {
     val context = LocalContext.current
-    val application = context.applicationContext as android.app.Application
-    val repoViewModel: RepositoryListViewModel = viewModel(
-        factory = RepositoryListViewModel.Factory(application, gitRepository)
-    )
+    val repoViewModel: RepositoryListViewModel = koinViewModel()
     val uiState by repoViewModel.uiState.collectAsState()
 
-    // AuthManager нужен только для clone URL-авторизации — не бизнес-логика, создаём здесь
-    val authManager = remember { AuthManager(context) }
+    val authManager: AuthManager = koinInject()
 
     // Pending clone — временное состояние UI для flow с разрешением уведомлений
     data class PendingClone(val name: String, val url: String, val approximateSize: Long?)

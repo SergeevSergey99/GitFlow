@@ -38,7 +38,7 @@ import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitUser
 import com.gitflow.android.data.settings.AppSettingsManager
 import com.gitflow.android.ui.components.dialogs.GraphPresetDialog
-import androidx.lifecycle.viewmodel.compose.viewModel
+import org.koin.androidx.compose.koinViewModel
 
 @Composable
 fun SettingsScreen(
@@ -46,7 +46,7 @@ fun SettingsScreen(
     onGraphPresetChanged: (String) -> Unit,
     navController: NavController
 ) {
-    val viewModel: SettingsViewModel = viewModel()
+    val viewModel: SettingsViewModel = koinViewModel()
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val activity = context as? android.app.Activity

@@ -1,6 +1,5 @@
 package com.gitflow.android.ui.components.dialogs
 
-import android.app.Application
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,31 +11,28 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.lifecycle.viewmodel.compose.viewModel
+import org.koin.androidx.compose.koinViewModel
+import org.koin.core.parameter.parametersOf
 import com.gitflow.android.R
 import com.gitflow.android.data.models.Branch
 import com.gitflow.android.data.models.Repository
-import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.ui.screens.main.BranchesViewModel
 
 @Composable
 fun BranchManagementDialog(
     repository: Repository,
-    gitRepository: IGitRepository,
     currentBranch: String,
     onDismiss: () -> Unit,
     onBranchChanged: () -> Unit
 ) {
-    val application = LocalContext.current.applicationContext as Application
-    val viewModel: BranchesViewModel = viewModel(
+    val viewModel: BranchesViewModel = koinViewModel(
         key = "branches_${repository.id}",
-        factory = BranchesViewModel.Factory(application, repository, gitRepository)
+        parameters = { parametersOf(repository) }
     )
     val uiState by viewModel.uiState.collectAsState()
 

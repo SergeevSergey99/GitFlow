@@ -95,5 +95,12 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 
+# ==================== Koin ====================
+-keep class org.koin.** { *; }
+-keep class com.gitflow.android.di.** { *; }
+-keepclassmembers class * extends androidx.lifecycle.ViewModel {
+    <init>(...);
+}
+
 # ==================== AndroidX Security Crypto ====================
 -keep class androidx.security.crypto.** { *; }

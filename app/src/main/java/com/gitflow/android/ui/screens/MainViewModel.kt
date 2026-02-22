@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.gitflow.android.data.models.Repository
-import com.gitflow.android.data.repository.GitRepository
 import com.gitflow.android.data.repository.IGitRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,9 +11,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class MainViewModel(application: Application) : AndroidViewModel(application) {
-
-    private val gitRepository: IGitRepository = GitRepository(application)
+class MainViewModel(
+    application: Application,
+    private val gitRepository: IGitRepository
+) : AndroidViewModel(application) {
 
     fun getGitRepository(): IGitRepository = gitRepository
 

@@ -2,7 +2,6 @@ package com.gitflow.android.ui.screens.main
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.gitflow.android.data.models.Branch
 import com.gitflow.android.data.models.GitResult
@@ -120,14 +119,4 @@ class BranchesViewModel(
         return true
     }
 
-    class Factory(
-        private val application: Application,
-        private val repository: Repository,
-        private val gitRepository: IGitRepository
-    ) : ViewModelProvider.Factory {
-        @Suppress("UNCHECKED_CAST")
-        override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-            return BranchesViewModel(application, repository, gitRepository) as T
-        }
-    }
 }

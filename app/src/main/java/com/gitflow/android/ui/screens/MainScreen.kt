@@ -11,7 +11,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import org.koin.androidx.compose.koinViewModel
 import androidx.navigation.NavController
 import com.gitflow.android.R
 import com.gitflow.android.data.models.Repository
@@ -26,7 +26,7 @@ import com.gitflow.android.ui.screens.main.SettingsScreen
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(navController: NavController) {
-    val viewModel: MainViewModel = viewModel()
+    val viewModel: MainViewModel = koinViewModel()
 
     val selectedTab by viewModel.selectedTab.collectAsState()
     val selectedRepository by viewModel.selectedRepository.collectAsState()
@@ -162,7 +162,6 @@ fun MainScreen(navController: NavController) {
         selectedRepository?.let { repo ->
             BranchManagementDialog(
                 repository = repo,
-                gitRepository = gitRepository,
                 currentBranch = repo.currentBranch,
                 onDismiss = { showBranchDialog = false },
                 onBranchChanged = {

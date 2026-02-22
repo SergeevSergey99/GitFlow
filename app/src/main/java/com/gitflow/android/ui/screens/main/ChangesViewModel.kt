@@ -2,7 +2,6 @@ package com.gitflow.android.ui.screens.main
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.gitflow.android.R
 import com.gitflow.android.data.models.ChangeStage
@@ -449,12 +448,3 @@ class ChangesViewModel(
     }
 }
 
-class ChangesViewModelFactory(
-    private val application: Application,
-    private val gitRepository: IGitRepository,
-    private val repository: Repository
-) : ViewModelProvider.Factory {
-    @Suppress("UNCHECKED_CAST")
-    override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T =
-        ChangesViewModel(application, gitRepository, repository) as T
-}
