@@ -23,6 +23,14 @@ class AppSettingsManager(context: Context) {
         preferences.edit().putBoolean(KEY_WIFI_ONLY_DOWNLOADS, enabled).apply()
     }
 
+    fun isCommitFilesTreeViewEnabled(): Boolean {
+        return preferences.getBoolean(KEY_COMMIT_FILES_TREE_VIEW, false)
+    }
+
+    fun setCommitFilesTreeViewEnabled(enabled: Boolean) {
+        preferences.edit().putBoolean(KEY_COMMIT_FILES_TREE_VIEW, enabled).apply()
+    }
+
     fun getPreviewExtensions(): Set<String> {
         val stored = preferences.getStringSet(KEY_PREVIEW_EXTENSIONS, null)
         return if (stored.isNullOrEmpty()) {
@@ -172,6 +180,7 @@ class AppSettingsManager(context: Context) {
     companion object {
         private const val PREF_NAME = "app_settings"
         private const val KEY_WIFI_ONLY_DOWNLOADS = "wifi_only_downloads_enabled"
+        private const val KEY_COMMIT_FILES_TREE_VIEW = "commit_files_tree_view_enabled"
         internal const val KEY_PREVIEW_EXTENSIONS = "preview_extensions"
         internal const val KEY_PREVIEW_FILE_NAMES = "preview_file_names"
         private const val KEY_LANGUAGE = "app_language"

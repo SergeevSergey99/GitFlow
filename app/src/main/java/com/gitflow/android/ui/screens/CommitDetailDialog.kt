@@ -18,9 +18,18 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -94,7 +103,7 @@ fun CommitDetailDialog(
         previewFileNames.mapNotNull { normalizeFileNameToken(it) }.toSet()
     }
 
-    var showChangedFilesTree by remember { mutableStateOf(false) }
+    var showChangedFilesTree by remember { mutableStateOf(settingsManager.isCommitFilesTreeViewEnabled()) }
     var pendingRestoreConfirm by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
 
     fun requestRestoreToCommit(fileName: String, filePath: String) {
@@ -304,7 +313,11 @@ fun CommitDetailDialog(
                                 restoreInProgress = uiState.isRestoringFile,
                                 allowedExtensions = normalizedPreviewExtensions,
                                 allowedFileNames = normalizedPreviewFileNames,
-                                onToggleViewMode = { showChangedFilesTree = !showChangedFilesTree },
+                                onToggleViewMode = {
+                                    val next = !showChangedFilesTree
+                                    showChangedFilesTree = next
+                                    settingsManager.setCommitFilesTreeViewEnabled(next)
+                                },
                                 onContextMenuTargetChange = { viewModel.setContextMenuTarget(it) },
                                 onRestoreFromCommit = { diff ->
                                     viewModel.setContextMenuTarget(null)
@@ -757,48 +770,130 @@ fun ChangedFilesView(
     onViewHistory: (FileDiff) -> Unit,
     onFileSelected: (FileDiff) -> Unit
 ) {
+    val density = LocalDensity.current
+    val maxRevealPx = with(density) { 28.dp.toPx() }
+    var revealOffsetPx by remember { mutableFloatStateOf(0f) }
+    var isDraggingPeek by remember { mutableStateOf(false) }
+    val animatedRevealOffsetPx by animateFloatAsState(
+        targetValue = revealOffsetPx,
+        animationSpec = if (isDraggingPeek) snap() else tween(durationMillis = 220),
+        label = "changed_files_peek_return"
+    )
+
+    val listState = rememberLazyListState()
+    val treeState = rememberLazyListState()
+    val canPullDown = if (showTree) {
+        treeState.firstVisibleItemIndex == 0 && treeState.firstVisibleItemScrollOffset == 0
+    } else {
+        listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+    }
+
+    LaunchedEffect(showTree) {
+        isDraggingPeek = false
+        revealOffsetPx = 0f
+    }
+
+    val peekNestedScroll = remember(showTree, canPullDown) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source != NestedScrollSource.Drag) return Offset.Zero
+
+                val dy = available.y
+                if (dy > 0f && canPullDown) {
+                    isDraggingPeek = true
+                    val prev = revealOffsetPx
+                    revealOffsetPx = (prev + dy * 0.6f).coerceIn(0f, maxRevealPx)
+                    return Offset(0f, revealOffsetPx - prev)
+                }
+
+                if (dy < 0f && revealOffsetPx > 0f) {
+                    isDraggingPeek = true
+                    val prev = revealOffsetPx
+                    revealOffsetPx = (prev + dy).coerceAtLeast(0f)
+                    return Offset(0f, revealOffsetPx - prev)
+                }
+
+                return Offset.Zero
+            }
+
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                if (source != NestedScrollSource.Drag) return Offset.Zero
+                if (available.y < 0f && revealOffsetPx > 0f) {
+                    isDraggingPeek = true
+                    val prev = revealOffsetPx
+                    revealOffsetPx = (prev + available.y).coerceAtLeast(0f)
+                    return Offset(0f, revealOffsetPx - prev)
+                }
+                return Offset.Zero
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                isDraggingPeek = false
+                revealOffsetPx = 0f
+                return Velocity.Zero
+            }
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
-        if (showTree) {
-            ChangedFilesTreeView(
-                fileDiffs = fileDiffs,
-                hasParentCommit = hasParentCommit,
-                contextMenuTargetPath = contextMenuTargetPath,
-                restoreInProgress = restoreInProgress,
-                onContextMenuTargetChange = onContextMenuTargetChange,
-                onRestoreFromCommit = onRestoreFromCommit,
-                onRestoreFromParent = onRestoreFromParent,
-                onViewHistory = onViewHistory,
-                onFileSelected = onFileSelected
-            )
-        } else {
-            FileListView(
-                fileDiffs = fileDiffs,
-                selectedFile = selectedFile,
-                hasParentCommit = hasParentCommit,
-                contextMenuTargetPath = contextMenuTargetPath,
-                restoreInProgress = restoreInProgress,
-                allowedExtensions = allowedExtensions,
-                allowedFileNames = allowedFileNames,
-                onContextMenuTargetChange = onContextMenuTargetChange,
-                onRestoreFromCommit = onRestoreFromCommit,
-                onRestoreFromParent = onRestoreFromParent,
-                onViewHistory = onViewHistory,
-                onFileSelected = onFileSelected
-            )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .nestedScroll(peekNestedScroll)
+                .graphicsLayer { translationY = animatedRevealOffsetPx }
+        ) {
+            if (showTree) {
+                ChangedFilesTreeView(
+                    fileDiffs = fileDiffs,
+                    hasParentCommit = hasParentCommit,
+                    contextMenuTargetPath = contextMenuTargetPath,
+                    restoreInProgress = restoreInProgress,
+                    onContextMenuTargetChange = onContextMenuTargetChange,
+                    onRestoreFromCommit = onRestoreFromCommit,
+                    onRestoreFromParent = onRestoreFromParent,
+                    onViewHistory = onViewHistory,
+                    onFileSelected = onFileSelected,
+                    listState = treeState
+                )
+            } else {
+                FileListView(
+                    fileDiffs = fileDiffs,
+                    selectedFile = selectedFile,
+                    hasParentCommit = hasParentCommit,
+                    contextMenuTargetPath = contextMenuTargetPath,
+                    restoreInProgress = restoreInProgress,
+                    allowedExtensions = allowedExtensions,
+                    allowedFileNames = allowedFileNames,
+                    onContextMenuTargetChange = onContextMenuTargetChange,
+                    onRestoreFromCommit = onRestoreFromCommit,
+                    onRestoreFromParent = onRestoreFromParent,
+                    onViewHistory = onViewHistory,
+                    onFileSelected = onFileSelected,
+                    listState = listState
+                )
+            }
         }
 
         Surface(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = 6.dp, end = 10.dp),
+                .padding(top = 4.dp, end = 8.dp),
             shape = RoundedCornerShape(12.dp),
             tonalElevation = 2.dp
         ) {
-            IconButton(onClick = onToggleViewMode) {
+            IconButton(
+                onClick = onToggleViewMode,
+                modifier = Modifier.size(32.dp)
+            ) {
                 Icon(
                     imageVector = if (showTree) Icons.Default.ViewList else Icons.Default.AccountTree,
                     contentDescription = if (showTree) stringResource(R.string.commit_detail_tab_files) else stringResource(R.string.commit_detail_tab_file_tree),
-                    tint = MaterialTheme.colorScheme.primary
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }
@@ -818,9 +913,11 @@ fun FileListView(
     onRestoreFromCommit: (FileDiff) -> Unit,
     onRestoreFromParent: (FileDiff) -> Unit,
     onViewHistory: (FileDiff) -> Unit,
-    onFileSelected: (FileDiff) -> Unit
+    onFileSelected: (FileDiff) -> Unit,
+    listState: LazyListState
 ) {
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -860,7 +957,8 @@ fun ChangedFilesTreeView(
     onRestoreFromCommit: (FileDiff) -> Unit,
     onRestoreFromParent: (FileDiff) -> Unit,
     onViewHistory: (FileDiff) -> Unit,
-    onFileSelected: (FileDiff) -> Unit
+    onFileSelected: (FileDiff) -> Unit,
+    listState: LazyListState
 ) {
     val changedTree = remember(fileDiffs) {
         collapseSingleChildDirectories(buildChangedFilesTree(fileDiffs), isRoot = true)
@@ -868,6 +966,7 @@ fun ChangedFilesTreeView(
     val diffByPath = remember(fileDiffs) { fileDiffs.associateBy { it.path } }
 
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
