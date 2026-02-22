@@ -1,555 +1,81 @@
-# GitFlowAndroid - Анализ проекта
-
-> **Дата анализа:** 2026-02-16 | **Последнее обновление:** 2026-02-22 (сессия 3)
-> **Ветка:** master
-> **Версия:** 1.0.0 (pre-release)
-
----
-
-## Содержание
-
-1. [Обзор проекта](#1-обзор-проекта)
-2. [Критические проблемы безопасности](#2-критические-проблемы-безопасности)
-3. [Архитектурные проблемы](#3-архитектурные-проблемы)
-4. [Проблемы производительности](#4-проблемы-производительности)
-5. [Качество кода](#5-качество-кода)
-6. [Конфигурация сборки](#6-конфигурация-сборки)
-7. [Тестирование](#7-тестирование)
-8. [UI/UX проблемы](#8-uiux-проблемы)
-9. [Отсутствующие возможности](#9-отсутствующие-возможности)
-10. [Дорожная карта улучшений](#10-дорожная-карта-улучшений)
-
----
-
-## 1. Обзор проекта
-
-**GitFlowAndroid** - Android Git-клиент с OAuth авторизацией (GitHub/GitLab), визуализацией коммитов, фоновым клонированием и полным набором Git-операций.
-
-| Параметр | Значение |
-|----------|----------|
-| Язык | Kotlin 1.9.0 |
-| UI | Jetpack Compose (Material 3) |
-| Архитектура | MVVM (без чистой архитектуры) |
-| Git-библиотека | JGit 5.13.3 |
-| Min SDK | 26 (Android 8.0) |
-| Target SDK | 34 (Android 14) |
-| Файлов .kt | ~30 |
-| Общий объём кода | ~10,000+ строк |
-
-### Текущие возможности
-- Создание/открытие/клонирование/удаление репозиториев
-- OAuth авторизация GitHub и GitLab
-- Stage/unstage/commit/pull/push/fetch
-- Merge, cherry-pick, rebase
-- Создание/удаление веток и тегов
-- Визуализация графа коммитов
-- Просмотр diff с hunks
-- Фоновое клонирование с уведомлениями
-- Разрешение конфликтов слияния
-- Локализация (EN/RU)
-
----
-
-## 2. Критические проблемы безопасности
-
-### 2.1 Хранение токенов в открытом SharedPreferences
-- **Файл:** `AuthManager.kt:16`
-- **Серьёзность:** КРИТИЧЕСКАЯ
-- **Описание:** OAuth-токены хранятся в plain-text SharedPreferences. На rooted-устройствах или при backup-атаках токены легко извлекаются.
-
-```kotlin
-// Текущий код (НЕБЕЗОПАСНО):
-private val preferences: SharedPreferences =
-    context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-
-// Исправление:
-private val preferences = EncryptedSharedPreferences.create(
-    "auth_prefs_encrypted",
-    MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
-    context,
-    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-)
-```
-
-### 2.2 Логирование токенов и секретов
-- **Файл:** `AuthManager.kt:146-148, 434`
-- **Серьёзность:** КРИТИЧЕСКАЯ
-- **Описание:** Access-токены логируются в logcat, доступный другим приложениям.
-
-```kotlin
-// НЕДОПУСТИМО (AuthManager.kt:146):
-android.util.Log.d("AuthManager", "Access Token: ${token.accessToken}")
-android.util.Log.d("AuthManager", "Token Type: ${token.tokenType}")
-
-// Также (AuthManager.kt:434):
-android.util.Log.d("AuthManager", "Токен найден: ${token.accessToken.take(7)}...")
-```
-
-**Рекомендация:** Удалить ВСЕ логирование секретов. Использовать Timber с кастомным Tree, который strip-ает в release-сборках.
-
-### 2.3 Токены встраиваются в URL
-- **Файл:** `AuthManager.kt:440-444`
-- **Серьёзность:** ВЫСОКАЯ
-- **Описание:** При клонировании токен вставляется прямо в URL (`https://TOKEN@github.com/...`), который затем логируется.
-
-```kotlin
-// Текущий код (AuthManager.kt:440):
-repository.cloneUrl.replace("https://", "https://${token.accessToken}@")
-
-// Лог (AuthManager.kt:447):
-android.util.Log.d("AuthManager", "Итоговый clone URL: $cloneUrl") // Полный токен в логе!
-```
-
-**Рекомендация:** Использовать `CredentialsProvider` в JGit вместо встраивания токена в URL. В `GitRepository.kt:355-363` этот подход уже частично реализован - нужно использовать его повсеместно.
-
-### 2.4 Отсутствие PKCE в OAuth
-- **Файл:** `AuthManager.kt:89-103`
-- **Серьёзность:** ВЫСОКАЯ
-- **Описание:** OAuth-поток не использует PKCE (Proof Key for Code Exchange). Мобильные приложения уязвимы к перехвату authorization code.
-
-**Рекомендация:** Добавить генерацию `code_verifier` и `code_challenge` при формировании auth URL, передавать `code_verifier` при обмене кода на токен.
-
-### 2.5 Client Secret в APK
-- **Файл:** `OAuthConfig.kt:40-43`, `oauth.properties`
-- **Серьёзность:** ВЫСОКАЯ
-- **Описание:** Client secrets хранятся в assets APK и могут быть извлечены декомпиляцией.
-
-**Рекомендации:**
-- Для GitHub: использовать Device Flow (не требует client_secret)
-- Для GitLab: использовать backend-прокси для обмена кодов
-- Минимум: задокументировать риск, не давать приложению прав выше необходимых
-
-### 2.6 Небезопасный WebView
-- **Файл:** `OAuthActivity.kt:152-157`
-- **Серьёзность:** СРЕДНЯЯ
-- **Описание:** JavaScript включён без ограничения доменов. Нет валидации URL.
-
-```kotlin
-// Текущий код:
-settings.apply {
-    javaScriptEnabled = true
-    domStorageEnabled = true
-}
-```
-
-**Рекомендация:** Валидировать `authUrl` перед загрузкой (только `github.com` и `gitlab.com`). Использовать Chrome Custom Tabs вместо встроенного WebView.
-
-### 2.7 Force Unwrap (!!) в обработке OAuth-ответов
-- **Файл:** `AuthManager.kt:138, 170, 208, 222`
-- **Серьёзность:** СРЕДНЯЯ
-- **Описание:** Использование `!!` (force unwrap) при разборе OAuth-ответов может вызвать crash при unexpected null.
-
-```kotlin
-// Пример (AuthManager.kt:138):
-val oauthResponse = tokenResponse.body()!!  // Crash при null body
-```
-
----
-
-## 3. Архитектурные проблемы
-
-### 3.1 Отсутствие Dependency Injection
-- **Файлы:** `SettingsScreen.kt` — все зависимости теперь в `SettingsViewModel` ✅
-- **Серьёзность:** ВЫСОКАЯ
-- **Описание:** Большинство зависимостей перенесено в ViewModels. Остались `remember { }` в `SettingsScreen`.
-
-```kotlin
-// SettingsScreen.kt - ещё не перенесено:
-val authManager = remember { AuthManager(context) }
-val settingsManager = remember { AppSettingsManager(context) }
-```
-
-**✅ Частично решено:** `MainViewModel` владеет единым `GitRepository`. `RepositoryListViewModel` и `ChangesViewModel` получают зависимости через Factory.
-
-**Рекомендация:** Внедрить Hilt (или Koin):
-```kotlin
-@HiltViewModel
-class MainViewModel @Inject constructor(
-    private val gitRepository: GitRepository
-) : ViewModel()
-```
-
-### 3.2 God-классы
-| Файл | Строк (было) | Строк (сейчас) | Статус |
-|------|-------------|----------------|--------|
-| `CommitDetailDialog.kt` | **2895** | **2895** | ⏳ Логика → CommitDetailViewModel ✅ |
-| `GitRepository.kt` | **2199** | **~250** | ✅ Разбит на 6 файлов |
-| `SettingsScreen.kt` | **1125** | **1125** | Открытая задача |
-| `AuthManager.kt` | **~600** | **~600** | Открытая задача |
-
-**✅ `GitRepository.kt` разбит:**
-- `GitRepository.kt` — ~250 строк: скелет класса + override-делегаты + shared helpers
-- `GitRepositoryMeta.kt` — addRepository, createRepository, clone, removeWithFiles, refresh
-- `GitRepositoryIndex.kt` — getChangedFiles, staging, commit, merge conflicts
-- `GitRepositoryBranches.kt` — branches, pull, push, tags, cherry-pick, merge
-- `GitRepositoryCommits.kt` — getCommits (paginated), getCommitDiffs
-- `GitRepositoryFiles.kt` — fileTree, fileContent, restore, fileHistory
-
-**✅ `CommitDetailDialog.kt`:** `CommitDetailViewModel` создан, 18+ `remember { mutableStateOf }` перенесены.
-
-### 3.3 Отсутствие интерфейсов/абстракций ✅ РЕШЕНО
-- ~~**Серьёзность:** ВЫСОКАЯ~~
-- Создан `IGitRepository` с 42 методами. `GitRepository : IGitRepository`.
-- Все UI-файлы используют тип `IGitRepository`, не конкретный класс.
-- Единственный экземпляр создаётся в `MainScreen` и передаётся вниз.
-- Появилась возможность подмены для тестирования (mock/fake).
-
-### 3.4 Отсутствие доменного слоя
-- **Серьёзность:** СРЕДНЯЯ
-- **Описание:** ViewModels/Composables напрямую вызывают Repository. Бизнес-логика размазана по слоям.
-
-**Рекомендация:** Добавить Use Cases:
-```kotlin
-class CloneRepositoryUseCase(
-    private val gitRepository: GitRepository,
-    private val networkChecker: NetworkChecker
-) {
-    suspend operator fun invoke(params: CloneParams): Result<Repository>
-}
-```
-
-### 3.5 Нет ViewModel для основных экранов ✅ РЕШЕНО
-- ~~**Серьёзность:** СРЕДНЯЯ~~
-- **✅ Решено:** `CommitDetailViewModel` + `ChangesViewModel` + `MainViewModel` + `RepositoryListViewModel` созданы. Всё состояние переживает ротацию.
-- `MainViewModel(application)` — владеет единым экземпляром `GitRepository`, хранит `selectedTab`/`selectedRepository`/`selectedGraphPreset` как StateFlow.
-- `RepositoryListViewModel(application, IGitRepository)` — git-операции (create/add/delete/clone), `isLoading`/`errorMessage`/диалоги — все в ViewModel.
-
-### 3.6 Дублирование кода ✅ РЕШЕНО
-- ~~**Серьёзность:** СРЕДНЯЯ~~
-- При разбивке GitRepository все auto-find overloads (`getCommitDiffs(commit)`, `getFileContent(commit, path)` и др.) теперь однострочные делегаты к primary overload. Логика поиска репозитория вынесена в `findRepositoryForCommit()`.
-
----
-
-## 4. Проблемы производительности
-
-### 4.1 Загрузка всех коммитов без пагинации ✅ РЕШЕНО
-- ~~**Серьёзность:** КРИТИЧЕСКАЯ~~
-- `getCommits(repository, page: Int = 0, pageSize: Int = 50)` — пагинация через offset/limit в RevWalk-цикле.
-- EnhancedGraphScreen показывает кнопку "Load more" когда `commits.size >= pageSize`.
-- `currentPageSize` сбрасывается при смене репозитория.
-
-### 4.2 Повторное открытие репозитория
-- **Файл:** `GitRepository.kt` (множество мест)
-- **Серьёзность:** ВЫСОКАЯ
-- **Описание:** Каждый вызов метода вызывает `openRepository()` заново. Нет кэширования `Git` объектов.
-
-```kotlin
-// Паттерн, повторяющийся ~30 раз:
-val git = openRepository(repository.path) ?: return ...
-// ... использование ...
-git.close()
-```
-
-**Рекомендация:** Создать пул/кэш Git-объектов с LRU-политикой.
-
-### 4.3 Поиск репозитория для коммита (brute force)
-- **Файл:** `GitRepository.kt:1109-1133, 1445-1458, 1496-1508, 1585-1597`
-- **Серьёзность:** СРЕДНЯЯ
-- **Описание:** Метод `findRepositoryContainingCommit` перебирает ВСЕ репозитории, открывая каждый, чтобы найти нужный коммит. При 20+ репозиториях это ощутимо тормозит.
-
-### 4.4 Теги считываются для каждого коммита ✅ РЕШЕНО
-- ~~**Серьёзность:** СРЕДНЯЯ~~
-- В `getCommitsImpl()` теги загружаются один раз через `tagList().call()` и хранятся в `tagsByCommit: Map<String, List<String>>`. Поиск тегов для коммита — O(1) вместо O(N * T).
-
-### 4.5 Отсутствие кэширования
-- **Серьёзность:** СРЕДНЯЯ
-- **Описание:** Нет кэша для: данных коммитов, diff'ов, результатов API-запросов, информации о репозиториях.
-
-**Рекомендация:** Внедрить Room для кэширования часто используемых данных.
-
-### 4.6 Утечки ресурсов ✅ РЕШЕНО
-- ~~**Серьёзность:** СРЕДНЯЯ~~
-- Все `RevWalk`, `TreeWalk`, `DiffFormatter`, `Git` объекты обёрнуты в `.use {}`.
-- `PullResult`/`PushResult` удалены — `pull()` и `push()` возвращают `GitResult<Unit>`.
-
----
-
-## 5. Качество кода
-
-### 5.1 Избыточное логирование ✅ РЕШЕНО
-- ~~**Всего:** 179 вызовов `android.util.Log` в 8 файлах~~
-- **Текущее состояние:** 0 вызовов `android.util.Log` в проекте.
-- Заменены на Timber во всех файлах. `Timber.DebugTree` подключается только в DEBUG-сборках (в `GitFlowApplication.onCreate`). В release — логи не выводятся и не содержат секретов.
-- Verbose lifecycle-логи из `RemoteRepositoriesScreen.kt` удалены полностью.
-
-**Рекомендация на будущее:** настроить release-Tree для продакшен-логирования (Crashlytics и т.д.)
-
-### 5.2 Незавершённые TODO
-```
-MainScreen.kt:179      - TODO: Implement GitOperationsSheet
-CommitDetailDialog.kt:1814 - TODO: Добавить копирование в буфер обмена
-GitRepository.kt:1262  - TODO: Подсчитать количество новых коммитов (pull)
-GitRepository.kt:1289  - TODO: Подсчитать количество отправленных коммитов (push)
-```
-
-### 5.3 Закомментированный код
-- **Файл:** `MainScreen.kt:70-73` - закомментированный IconButton для operations
-```kotlin
-/*IconButton(onClick = { showOperationsSheet = true }) {
-    Icon(Icons.Default.MoreVert, ...)
-}*/
-```
-
-### 5.4 Несогласованная обработка ошибок ✅ РЕШЕНО
-- ~~**Описание:** Использовался микс подходов: `Result<T>`, null, emptyList(), Boolean~~
-- Введён `sealed class GitResult<out T>` в `data/models/GitResult.kt`:
-  - `GitResult.Success<T>(data: T)`
-  - `GitResult.Failure.Generic(message, cause?)`
-  - `GitResult.Failure.Conflict(message, paths)` — для cherry-pick/merge конфликтов
-  - `GitResult.Failure.NoStagedChanges` — для commit без staged файлов
-  - `GitResult.Failure.TagAlreadyExists(tagName)` — для createTag
-  - `GitResult.Failure.Cancelled(message)` — для clone cancellation
-- Все методы с `Result<T>`, `PullResult`, `PushResult`, `Boolean` переведены на `GitResult<T>`.
-- `PullResult` и `PushResult` удалены из Models.kt.
-- UI-слой использует `when (result) { is GitResult.Success → ; is GitResult.Failure → }`.
-
-### 5.5 Магические строки
-- Хардкод URL'ов (`"https://github.com/"`, `"https://gitlab.com/"`)
-- Хардкод ключей SharedPreferences
-- Хардкод имён notification-каналов
-- Хардкод автора коммита (`"GitFlow Android"`, `"gitflow@android.local"`)
-
-### 5.6 ProGuard - пустые правила
-- **Файл:** `proguard-rules.pro`
-- **Описание:** Файл содержит только стандартные комментарии и одну строку `keepattributes`. Отсутствуют необходимые правила для:
-  - JGit (reflection, service loader)
-  - Retrofit (models, API interfaces)
-  - Gson (data classes)
-  - Kotlin serialization
-
----
-
-## 6. Конфигурация сборки
-
-### 6.1 Минификация отключена
-- **Файл:** `app/build.gradle.kts:26`
-- `isMinifyEnabled = false` для release-сборки
-- Без минификации APK значительно больше, а код не обфусцирован
-
-### 6.2 Зависимости ✅ ОБНОВЛЕНО
-
-| Зависимость | Было | Стало | Примечание |
-|-------------|------|-------|------------|
-| Kotlin | 1.9.20 | **2.3.10** | K2 compiler; добавлен plugin.compose |
-| Compose BOM | 2023.10.01 | **2026.01.01** | Material3 1.4, Compose 1.10 |
-| Core KTX | 1.12.0 | **1.17.0** | Требует KGP 2.0+ |
-| Lifecycle | 2.7.0 | **2.8.7** | runtime-ktx + viewmodel-compose |
-| Activity Compose | 1.8.2 | **1.10.1** | |
-| AppCompat | 1.6.1 | **1.7.1** | |
-| Navigation | 2.7.6 | **2.8.5** | 2.9.x существует, но консервативно |
-| Coroutines | 1.7.3 | **1.10.2** | |
-| DataStore | 1.0.0 | **1.1.2** | + KMP поддержка |
-| Serialization JSON | 1.6.0 | **1.8.0** | Kotlin 2.3 compatible |
-| Retrofit | 2.9.0 | **2.11.0** | ⚠️ 3.0 не обновлён (breaking: suspend return types, OkHttp 5) |
-| Browser | 1.7.0 | **1.8.0** | |
-| test.ext:junit | 1.1.5 | **1.2.1** | |
-| espresso-core | 3.5.1 | **3.6.1** | |
-| compileSdk / targetSdk | 34 | **35** | Android 15 |
-| JGit | 5.13.3 | 5.13.3 | ⚠️ 6.x/7.x: Path.of() требует API 30+, реальные Android git-клиенты остаются на 5.x |
-| OkHttp | 4.12.0 | 4.12.0 | 5.0 stable, но нужен Retrofit 3.0 |
-| Security-crypto | 1.1.0-alpha06 | 1.1.0-alpha06 | Нет стабильного релиза |
-| AGP | 8.13.2 | 8.13.2 | ⚠️ 9.0.1 существует (breaking), отдельная задача |
-
-### 6.3 Java target ✅ РЕШЕНО
-- `jvmTarget = "11"` и `JavaVersion.VERSION_11` установлены
-
-### 6.4 Отсутствует signing config
-- Нет конфигурации подписи для release-сборки
-- Нет разделения debug/release OAuth credentials
-
-### 6.5 Нет CI/CD
-- Отсутствует `.github/workflows/`
-- Нет автоматической сборки и тестирования
-
----
-
-## 7. Тестирование
-
-### 7.1 Текущее покрытие
-- **Unit-тесты:** 1 файл, 3 теста (`CommitDetailDialogTest.kt`)
-- **Android-тесты:** 0 файлов
-- **UI-тесты:** 0 файлов
-- **Покрытие:** ~0.1%
-
-### 7.2 Что необходимо покрыть тестами
-
-**Приоритет 1 (критично):**
-- `AuthManager` - OAuth flow, хранение/получение токенов
-- `GitRepository` - все Git-операции
-- `RepositoryDataStore` - персистентность данных
-
-**Приоритет 2 (важно):**
-- ViewModels - управление состоянием
-- `OAuthConfig` - загрузка конфигурации
-- `CloneProgressCallback` - расчёт прогресса
-
-**Приоритет 3 (желательно):**
-- UI-тесты основных экранов (Compose Testing)
-- Интеграционные тесты OAuth-флоу
-- E2E тесты: клонирование -> коммит -> push
-
----
-
-## 8. UI/UX проблемы
-
-### 8.1 GitOperationsSheet - заглушка
-- **Файл:** `MainScreen.kt:172-195`
-- Кнопка операций закомментирована (строки 70-73), а сам sheet содержит только placeholder-текст
-
-### 8.2 Нет pull-to-refresh ✅ РЕШЕНО
-- ~~Экран списка репозиториев не поддерживает жест обновления~~
-- ~~Экран изменений не обновляется автоматически~~
-- `RepositoryListScreen` и `ChangesScreen` используют `PullToRefreshContainer` (Material3 experimental). Обновление вызывает `refreshRepositories()` / `loadChanges()`.
-
-### 8.3 Нет индикатора загрузки при push/pull ✅ РЕШЕНО
-- `SyncProgress(task, done, total)` в `GitResult.kt`; `JGitProgressMonitor` в `GitRepositoryBranches.kt`
-- `pushWithProgress(repo, onProgress)` в `IGitRepository` + реализации
-- `ChangesUiState.syncProgress: SyncProgress?` — баннер `SyncProgressBanner` внизу экрана пока идёт push
-- Детерминированный прогресс (LinearProgressIndicator с fraction) или индетерминированный (totalWork == 0)
-
-### 8.4 Отсутствие аватаров пользователей
-- `GitUser.avatarUrl` не используется для отображения (нет Coil/Glide)
-- Вместо аватара - иконки Material Icons
-
-### 8.5 Нет подтверждения опасных операций ✅ РЕШЕНО
-- `hardResetToCommit` — AlertDialog с подтверждением ✅
-- Удаление тега — AlertDialog с подтверждением ✅
-- Восстановление файла до версии коммита — AlertDialog с подтверждением ✅
-- Force push без предупреждения — ещё не реализован в приложении
-
-### 8.6 Нет офлайн-индикатора
-- Приложение не показывает состояние сети
-- Push/pull молча падают без сети
-
-### 8.7 WebView не уничтожается
-- **Файл:** `OAuthActivity.kt`
-- WebView создаётся в `AndroidView` factory, но не уничтожается при закрытии Activity -> потенциальная утечка памяти
-
----
-
-## 9. Отсутствующие возможности
-
-### 9.1 Высокий приоритет
-
-| Функция | Описание |
-|---------|----------|
-| ~~**Git Stash**~~ | ~~Сохранение/восстановление незавершённых изменений~~ ✅ Реализовано |
-| ~~**Поиск коммитов**~~ | ~~Поиск по сообщению, автору, дате~~ ✅ Реализовано |
-| **Blame View** | Просмотр автора каждой строки файла |
-| **SSH-ключи** | Генерация и управление SSH-ключами для Git |
-| ~~**Token Refresh**~~ | ~~Обновление истёкших GitLab-токенов~~ ✅ Реализовано |
-| **SAF-поддержка** | Полноценная работа с Storage Access Framework (сейчас - заглушка, `GitRepository.kt:215`) |
-
-### 9.2 Средний приоритет
-
-| Функция | Описание |
-|---------|----------|
-| **Bitbucket** | Поддержка третьего крупного Git-хостинга |
-| **Мульти-аккаунт** | Несколько аккаунтов одного провайдера |
-| **Interactive Rebase** | Визуальный интерактивный rebase |
-| **Git LFS** | Поддержка больших файлов |
-| **Submodules** | Работа с подмодулями |
-| ~~**Commit Amend**~~ | ~~Редактирование последнего коммита~~ ✅ Реализовано |
-| **Diff - word-level** | Подсветка изменений на уровне слов |
-| **Undo/Redo** | Отмена последней Git-операции |
-
-### 9.3 Низкий приоритет (Nice to Have)
-
-| Функция | Описание |
-|---------|----------|
-| **Биометрическая защита** | Защита приложения отпечатком/лицом |
-| **Виджеты** | Виджет с статусом репозитория |
-| **Deep Links** | Открытие репозитория по ссылке |
-| **Gitignore Templates** | Шаблоны .gitignore при создании репозитория |
-| **Syntax Highlighting** | Подсветка синтаксиса в diff-просмотрщике |
-| **GPG Signing** | Подписание коммитов |
-| **Patch Apply** | Применение .patch файлов |
-| **Custom Themes** | Пользовательские цветовые схемы |
-
----
-
-## 10. Дорожная карта улучшений
-
-### Фаза 1: Безопасность и стабильность ✅ ЗАВЕРШЕНА
-
-- [x] Заменить SharedPreferences на EncryptedSharedPreferences
-- [x] Удалить/скрыть критические логи с токенами (частично)
-- [x] Заменить встраивание токенов в URL на CredentialsProvider
-- [x] Добавить PKCE в OAuth-поток
-- [x] Добавить валидацию URL в WebView / Chrome Custom Tabs
-- [x] Исправить force unwrap (`!!`) на безопасные вызовы
-- [x] Добавить ProGuard-правила для JGit, Retrofit, Gson
-- [x] Включить `isMinifyEnabled = true` для release
-
-### Фаза 2: Архитектура и производительность ✅ ЗАВЕРШЕНА
-
-- [ ] Внедрить Hilt для DI (отложено — запланировано в фазе 3+)
-- [x] Разделить `GitRepository` на 6 специализированных файлов
-- [x] `CommitDetailViewModel` — 18+ remember → ViewModel, rotation-safe
-- [x] `ChangesViewModel` — staging, commit, conflicts, push — rotation-safe
-- [x] `MainViewModel` — selectedTab/selectedRepository/selectedGraphPreset/gitRepository — rotation-safe
-- [x] `RepositoryListViewModel` — create/add/delete/clone операции, диалоги — rotation-safe
-- [x] Добавить пагинацию коммитов (`page`/`pageSize`, "Load more" UI)
-- [ ] LRU-кэш Git-объектов (отложено)
-- [x] Оптимизировать загрузку тегов (однократная Map до цикла, O(1))
-- [x] Исправить утечки ресурсов (`.use {}` для всех JGit-объектов)
-- [x] `IGitRepository` — интерфейс, единый экземпляр
-- [x] Стандартизировать обработку ошибок (`sealed class GitResult<T>`)
-
-### Фаза 3: Тестирование и CI/CD
-
-- [ ] Добавить unit-тесты для AuthManager (теперь testable через IGitRepository)
-- [ ] Добавить unit-тесты для Git-операций (mock IGitRepository)
-- [ ] Добавить UI-тесты для основных экранов
-- [ ] Настроить GitHub Actions CI/CD
-- [ ] Добавить линтеры (detekt, ktlint)
-- [ ] Добавить leak canary для debug-сборок
-
-### Фаза 4: Функциональные улучшения
-
-- [x] Git Stash (stash/pop/apply/drop)
-- [x] Pull-to-refresh на экранах
-- [x] Подтверждение опасных операций (hardReset, deleteTag, restoreFile)
-- [x] Commit Amend (checkbox + загрузка сообщения последнего коммита)
-- [x] Поиск и фильтрация коммитов (CommitSearchBar + SearchResultsList в EnhancedGraphScreen)
-- [ ] Blame View
-- [x] Token refresh для GitLab (автообновление в resolveCredentialsProvider)
-- [ ] Поддержка SSH-ключей
-- [x] Индикатор прогресса для push (SyncProgressBanner, JGitProgressMonitor)
-
-### Фаза 5: Полировка
-
-- [ ] Загрузка аватаров пользователей (Coil)
-- [ ] Syntax highlighting в diff
-- [x] Обновление зависимостей (Kotlin 2.1.0, Compose BOM 2024.12.01, SDK 35, +12 библиотек)
-- [ ] Подписание release-сборки
-- [ ] Подготовка к публикации в Google Play
-
----
-
-## Статистика проекта
-
-```
-Файлов Kotlin:               ~46 (было ~30; +IGitRepository, +GitResult, +GitRepository*6, +ViewModels*5, +GitRepositoryStash, +SettingsViewModel)
-Общий объём кода:            ~11,500 строк
-Вызовов android.util.Log:   0 (было 179; заменены на Timber)
-Тестов:                      3 (не изменилось)
-TODO/FIXME:                  4 (не изменилось)
-Файлов без интерфейсов:      Нет (IGitRepository покрывает все Git-операции)
-Dependency Injection:        Нет (запланировано Hilt)
-CI/CD:                       Нет
-ProGuard-правила:            Полные (JGit, Retrofit, Gson, Serialization)
-Минификация release:         Включена
-Самый большой файл:          CommitDetailDialog.kt (~2895 строк) — данные в ViewModel
-GitRepository.kt:            ~250 строк (было 2199; разбит на 7 файлов включая Stash)
-GitResult<T>:                5 типов ошибок (Generic, Conflict, NoStagedChanges, TagAlreadyExists, Cancelled)
-SyncProgress:                прогресс push в реальном времени (task/done/total/fraction)
-IGitRepository:              48 методов (добавлены amend + stash x5 + pushWithProgress)
-Pull-to-refresh:             RepositoryListScreen + ChangesScreen
-Stash:                       save/apply/pop/drop + StashDialog UI
-Commit Amend:                checkbox в ChangesScreen, загрузка сообщения последнего коммита
-Поиск коммитов:              CommitSearchBar + SearchResultsList в EnhancedGraphScreen
-Push-прогресс:               SyncProgressBanner (детерминированный/индетерминированный)
-SettingsViewModel:           все настройки rotation-safe, lifecycle-aware refreshUsers
-```
+# GitFlowAndroid — актуальный анализ проекта
+
+> Обновлено: 2026-02-22
+
+## 1) Текущее состояние
+
+`GitFlowAndroid` — Android Git-клиент на Kotlin/Compose с поддержкой OAuth (GitHub/GitLab), локальных/remote операций и просмотром commit/file diff.
+
+### Актуальный стек
+- Kotlin: `2.3.10`
+- AGP: `8.13.2`
+- Compile SDK / Target SDK / Min SDK: `36 / 35 / 26`
+- Compose BOM: `2026.01.01`
+- JGit: `5.13.3.202401111512-r`
+- Coroutines: `1.10.2`
+- DataStore Preferences: `1.1.2`
+
+### Архитектура (фактически)
+- MVVM + `StateFlow`
+- Единый контракт `IGitRepository`
+- Реализация разбита по модулям:
+  - `GitRepositoryMeta.kt`
+  - `GitRepositoryIndex.kt`
+  - `GitRepositoryBranches.kt`
+  - `GitRepositoryCommits.kt`
+  - `GitRepositoryFiles.kt`
+  - `GitRepositoryStash.kt`
+
+## 2) Что уже исправлено относительно ранних ревизий
+
+- Падение при выборе активного репозитория (Android API несовместимый вызов `removeLast()` на `List`) устранено.
+- Staging/unstaging в Changes: исправлена ошибка reset (`The combination of arguments <paths>...`).
+- В `ChangesScreen` добавлены:
+  - сворачиваемая панель commit/fetch/pull;
+  - tree/list режимы для изменённых файлов;
+  - массовое переключение stage по папке в tree-режиме;
+  - long-press actions (история, копирование имени/пути, reset changes);
+  - открытие diff по клику на файл;
+  - полноэкранный diff dialog.
+- В `CommitDetailDialog` улучшены path-truncation/действия по long-press/режимы отображения.
+- Fetch/Pull/Push UX и счётчики подтянуты в UI.
+
+## 3) Критические проблемы (ещё актуальны)
+
+### Безопасность
+1. **WebView OAuth всё ещё с `javaScriptEnabled = true`** и без жёсткого allowlist-перехвата доменов в рантайме.
+2. **Client secrets в клиенте** (модель угрозы сохраняется; APK можно декомпилировать).
+3. Нужна единая ревизия логирования в auth/network на предмет утечек чувствительных данных.
+
+### Архитектура и поддерживаемость
+1. `CommitDetailDialog.kt` и `ChangesScreen.kt` остаются перегруженными по UI-логике.
+2. Часть UI state по-прежнему локально в composable, не в ViewModel (не везде нужно, но есть перегруз).
+3. Отсутствует полноценный DI-контейнер (Hilt/Koin).
+
+### Качество и стабильность
+1. Нет стабильного набора unit/UI тестов для regression-critical сценариев (stage/unstage/diff/history).
+2. Нет CI-пайплайна для обязательного compile/lint/test перед merge.
+3. В репозитории может отсутствовать `gradlew` в отдельных локальных состояниях — это мешает воспроизводимой проверке.
+
+## 4) Приоритетный план работ
+
+### P0 (в ближайшие сессии)
+- Добавить smoke/regression тесты для:
+  - stage/unstage (single + batch);
+  - discard/reset changes;
+  - open diff + open history.
+- Закрыть WebView OAuth hardening (allowlist host/scheme, блок редиректов вне провайдера).
+- Финализировать UX tree/list в Changes (если нужны мелкие доработки).
+
+### P1
+- Вынести крупные блоки из `ChangesScreen` и `CommitDetailDialog` в отдельные компоненты + ViewModel-слой.
+- Ввести DI (минимально — для repository/auth/settings).
+- Добавить CI: `assembleDebug`, `compileDebugKotlin`, базовые тесты.
+
+### P2
+- Докрутить производительность на больших репозиториях (кэширование diff/истории, lazy-подгрузка где нужно).
+- Подготовить релизные quality gates (crash-free, ANR, логирование, proguard review).
+
+## 5) Общая оценка
+
+Проект в рабочем состоянии и заметно зрелее ранней версии: ключевые crash/UX проблемы на основных экранах закрыты, репозиторный слой структурирован. Главные риски сейчас — безопасность OAuth/WebView, тестовое покрытие и высокая сложность крупных UI-файлов.

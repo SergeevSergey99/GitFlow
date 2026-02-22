@@ -1,86 +1,41 @@
-# Отложенные задачи
+# Рекомендации и ближайший backlog
 
-> Обновлено: 2026-02-19. Фазы 1 + мелкие правки вне фаз — завершены.
-> Полный анализ проблем — см. PROJECT_ANALYSIS.md
+> Обновлено: 2026-02-22
 
----
+## Выполнено
 
-## Перед началом Фазы 2
+- [x] Разделён `GitRepository` по тематическим файлам + общий интерфейс `IGitRepository`.
+- [x] Исправлен crash при выборе активного репозитория.
+- [x] Исправлен reset-конфликт при unstage (`<paths> + --mixed/--soft/--hard`).
+- [x] Улучшен `ChangesScreen`: полноэкранный diff, long-press actions, tree/list режим, сворачивание панели commit.
+- [x] Добавлены действия: история файла, копирование имени/пути, reset changes.
 
-Мелкие правки, которые не вошли в предыдущие сессии:
+## P0 — следующий шаг (обязательное)
 
-- [ ] **Обновить зависимости** (отдельный шаг с тестированием):
-  - Compose BOM: `2023.10.01` → `2024.12+`
-  - Kotlin: `1.9.20` → `2.0+` (K2 compiler)
-  - Coroutines: `1.7.3` → `1.9+`
-  - Core KTX: `1.12.0` → `1.15+`
-  - Lifecycle/Navigation/Retrofit — до актуальных версий
-  - **JGit: `5.13.3` → `6.10+`** — мажорный апгрейд, другой group ID, требует отдельного тестирования
+- [ ] Добавить regression tests для сценариев:
+  - [ ] single/batch stage/unstage;
+  - [ ] reset/discard file changes;
+  - [ ] open diff / open history.
+- [ ] Harden OAuth WebView:
+  - [ ] allowlist хостов (`github.com`, `gitlab.com`, callback host);
+  - [ ] блокировка любых внешних редиректов;
+  - [ ] аудит JavaScript/DOM storage настроек.
+- [ ] Проверить отсутствие секретов в логах auth/network и в crash-репортах.
 
-- [ ] **`logging-interceptor`** добавлен в зависимости (`build.gradle.kts:98`), но не подключён ни к одному OkHttp-клиенту в `AuthManager`. Либо подключить (полезно для отладки сети), либо удалить как мёртвую зависимость. Удобнее сделать при рефакторинге `AuthManager` в Фазе 2.
+## P1 — архитектура и поддерживаемость
 
-- [ ] **`refreshGitLabTokenIfNeeded()`** сейчас вызывается только перед `getRepositories()`. При рефакторинге в Phase 2 (разделение GitRepository) нужно также вызывать перед clone/push/pull для GitLab. Удобно будет сделать через `getValidToken(provider)` в отдельном методе.
+- [ ] Разгрузить `ChangesScreen.kt` на отдельные компоненты (tree panel, file actions menu, dialogs).
+- [ ] Разгрузить `CommitDetailDialog.kt` на независимые секции.
+- [ ] Внедрить DI (Hilt/Koin) минимум для `IGitRepository`, `AuthManager`, `AppSettingsManager`.
+- [ ] Добавить CI pipeline: compile + lint + тесты.
 
----
+## P2 — производительность и UX
 
-## Фаза 2: Архитектура и производительность
+- [ ] Профилировать работу на больших репозиториях (graph/diff/history).
+- [ ] Добавить кэширование дорогих вычислений (diff/history при повторных открытиях).
+- [ ] Продумать унификацию tree/list UX между `ChangesScreen` и `CommitDetailDialog`.
 
-### Блок 2a — быстрые победы (низкий риск)
+## Технические заметки
 
-- [ ] Исправить утечки ресурсов: `RevWalk`, `TreeWalk`, `DiffFormatter` без `use {}` в `GitRepository.kt`
-- [ ] Оптимизировать загрузку тегов: убрать `getTagsForCommit()` из цикла коммитов, загрузить все теги один раз → `HashMap<commitHash, List<String>>`
-- [ ] Стандартизировать обработку ошибок: `sealed class GitResult<T>` вместо смеси `null` / `emptyList()` / `Boolean` / исключений
-- [ ] Добавить `Log.e` в ProGuard `-assumenosideeffects` — **уже сделано ✓** (на случай если придётся перечитывать)
-
-### Блок 2b — архитектурный рефакторинг (высокий риск)
-
-- [ ] Разделить `GitRepository.kt` (2199 строк) на:
-  - `CommitOperations` — getCommits, diff, fileHistory
-  - `BranchOperations` — ветки, checkout, merge, rebase, cherryPick
-  - `RemoteOperations` — clone, pull, push, fetch, credentialsProvider
-  - `FileOperations` — stage, unstage, restore, status
-  - `TagOperations` — теги
-  - Создать `interface IGitRepository`
-- [ ] Разделить `CommitDetailDialog.kt` (2895 строк):
-  - Вынести `CommitDetailViewModel`
-  - Вынести `DiffViewer`, `FileTreePanel`, `CommitInfoHeader` как отдельные компоненты
-- [ ] Добавить пагинацию коммитов: `getCommits(page, pageSize)` + lazy loading в `EnhancedGraphScreen`
-- [ ] Кэш Git-объектов: `GitRepositoryCache` (LRU по path) вместо пересоздания `Git` на каждый вызов
-- [ ] Внедрить Hilt (делать последним после разделения классов):
-  - `@HiltAndroidApp` для Application
-  - `@HiltViewModel` для ViewModels
-  - Убрать `remember { SomeClass(context) }` из Composables
-
----
-
-## Фаза 3: Тестирование и CI/CD
-
-- [ ] Unit-тесты: `AuthManager`, `GitRepository` (Git-операции), ViewModels
-- [ ] UI-тесты основных экранов (Compose Testing)
-- [ ] Настроить GitHub Actions (lint + build + test)
-- [ ] Добавить Detekt / Ktlint
-- [ ] LeakCanary для debug-сборок
-
----
-
-## Фаза 4: Функциональные улучшения
-
-- [ ] **Git Stash** — stash/pop/apply/drop
-- [ ] **Поиск коммитов** — по сообщению, автору, дате
-- [ ] **Blame View** — автор каждой строки файла
-- [ ] **Token refresh для GitLab** — реализован `refreshGitLabTokenIfNeeded()`, но нужно интегрировать в clone/push/pull в JGit-операциях
-- [ ] **SSH-ключи** — генерация и управление
-- [ ] **Pull-to-refresh** на экранах списка репозиториев и изменений
-- [ ] **Индикатор прогресса** для push/pull операций
-- [ ] **Подтверждение опасных операций**: `hardResetToCommit`, удаление ветки, force push
-- [ ] **`GitOperationsSheet`** — раскомментировать кнопку и реализовать (`MainScreen.kt:36, 150`)
-- [ ] **Commit Amend** — редактирование последнего коммита
-
----
-
-## Фаза 5: Полировка
-
-- [ ] Загрузка аватаров пользователей (Coil)
-- [ ] Syntax highlighting в diff-просмотрщике
-- [ ] Подписание release-сборки (signing config)
-- [ ] Подготовка к публикации в Google Play
+- JGit остаётся на `5.13.3` из-за совместимости с minSdk 26.
+- Для воспроизводимых локальных сборок нужен стабильный `gradlew` в репозитории.
