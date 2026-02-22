@@ -202,8 +202,7 @@ fun EnhancedGraphView(
         if (!isLoading && commits.isNotEmpty()) {
             CommitSearchBar(
                 query = searchQuery,
-                onQueryChange = { searchQuery = it },
-                resultCount = if (searchQuery.isNotBlank()) filteredCommits.size else null
+                onQueryChange = { searchQuery = it }
             )
         }
 
@@ -627,41 +626,34 @@ fun EnhancedGraphView(
 @Composable
 private fun CommitSearchBar(
     query: String,
-    onQueryChange: (String) -> Unit,
-    resultCount: Int?
+    onQueryChange: (String) -> Unit
 ) {
-    Column(
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-    ) {
-        OutlinedTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text(stringResource(R.string.graph_search_hint)) },
-            leadingIcon = {
-                Icon(Icons.Default.Search, contentDescription = null)
-            },
-            trailingIcon = {
-                if (query.isNotEmpty()) {
-                    IconButton(onClick = { onQueryChange("") }) {
-                        Icon(Icons.Default.Close, contentDescription = null)
-                    }
-                }
-            },
-            singleLine = true,
-            shape = RoundedCornerShape(24.dp)
-        )
-        if (resultCount != null) {
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        placeholder = {
             Text(
-                text = stringResource(R.string.graph_search_results, resultCount),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 4.dp, top = 2.dp)
+                text = stringResource(R.string.graph_search_hint),
+                maxLines = 1,
+                softWrap = false
             )
-        }
-    }
+        },
+        leadingIcon = {
+            Icon(Icons.Default.Search, contentDescription = null)
+        },
+        trailingIcon = {
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(Icons.Default.Close, contentDescription = null)
+                }
+            }
+        },
+        singleLine = true,
+        shape = RoundedCornerShape(24.dp)
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)

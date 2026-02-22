@@ -42,6 +42,25 @@ internal suspend fun GitRepository.getBranchesImpl(repository: Repository): List
     }
 }
 
+internal suspend fun GitRepository.fetchImpl(repository: Repository): GitResult<Unit> = withContext(Dispatchers.IO) {
+    try {
+        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
+        val remoteUrl = git.repository.config.let {
+            it.getString("remote", "origin", "pushurl") ?: it.getString("remote", "origin", "url")
+        }
+        val credentials = resolveCredentialsProvider(remoteUrl)
+        git.use { g ->
+            val fetchCommand = g.fetch()
+            credentials?.let { fetchCommand.setCredentialsProvider(it) }
+            fetchCommand.call()
+        }
+        refreshRepository(repository)
+        GitResult.Success(Unit)
+    } catch (e: Exception) {
+        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+    }
+}
+
 internal suspend fun GitRepository.pullImpl(repository: Repository): GitResult<Unit> = withContext(Dispatchers.IO) {
     try {
         val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")

@@ -265,6 +265,8 @@
     <string name="changes_stash_apply_failed">Failed to apply stash</string>
     <string name="changes_stash_dropped">Stash dropped</string>
     <string name="changes_stash_drop_failed">Failed to drop stash</string>
+    <string name="changes_fetch_button">Fetch</string>
+    <string name="changes_pull_button">Pull</string>
     <string name="changes_push_button">Push (%1$d)</string>
     <string name="changes_remote_not_configured">Remote \'origin\' is not configured</string>
     <string name="changes_staged_title">Staged Changes (%1$d)</string>
@@ -273,6 +275,10 @@
     <string name="changes_commit_message_empty">Commit message cannot be empty</string>
     <string name="changes_commit_created">Commit created</string>
     <string name="changes_commit_failed">Commit failed</string>
+    <string name="changes_fetch_successful">Fetch successful</string>
+    <string name="changes_fetch_failed">Fetch failed</string>
+    <string name="changes_pull_successful">Pull successful</string>
+    <string name="changes_pull_failed">Pull failed</string>
     <string name="changes_push_successful">Push successful</string>
     <string name="changes_push_failed">Push failed</string>
     <string name="push_progress_pushing">Pushing…</string>

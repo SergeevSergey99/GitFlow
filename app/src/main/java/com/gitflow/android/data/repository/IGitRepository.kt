@@ -39,6 +39,7 @@ interface IGitRepository {
     suspend fun getCommitDiffs(commit: Commit, repository: Repository): List<FileDiff>
     suspend fun getCommitDiffs(commit: Commit): List<FileDiff>
     suspend fun getBranches(repository: Repository): List<Branch>
+    suspend fun fetch(repository: Repository): GitResult<Unit>
     suspend fun pull(repository: Repository): GitResult<Unit>
     suspend fun push(repository: Repository): GitResult<Unit>
     suspend fun pushWithProgress(repository: Repository, onProgress: (SyncProgress) -> Unit): GitResult<Unit>

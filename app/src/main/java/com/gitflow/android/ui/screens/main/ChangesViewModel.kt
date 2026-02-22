@@ -188,6 +188,30 @@ class ChangesViewModel(
         }
     }
 
+    fun fetch() {
+        guard {
+            val result = gitRepository.fetch(repository)
+            if (result is GitResult.Success) {
+                reloadChanges()
+                emit(str(R.string.changes_fetch_successful))
+            } else {
+                emit((result as? GitResult.Failure)?.message?.ifBlank { null } ?: str(R.string.changes_fetch_failed))
+            }
+        }
+    }
+
+    fun pull() {
+        guard {
+            val result = gitRepository.pull(repository)
+            if (result is GitResult.Success) {
+                reloadChanges()
+                emit(str(R.string.changes_pull_successful))
+            } else {
+                emit((result as? GitResult.Failure)?.message?.ifBlank { null } ?: str(R.string.changes_pull_failed))
+            }
+        }
+    }
+
     fun toggleFile(file: FileChange) {
         guard {
             val result = if (file.stage == ChangeStage.STAGED) {

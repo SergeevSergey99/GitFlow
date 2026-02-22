@@ -100,6 +100,8 @@ fun ChangesScreen(
             onToggleAmend = viewModel::toggleAmendMode,
             onStashOpen = viewModel::openStashDialog,
             onStageAll = viewModel::stageAll,
+            onFetch = viewModel::fetch,
+            onPull = viewModel::pull,
             onCommit = viewModel::commit,
             onPush = viewModel::push,
             onFileToggle = viewModel::toggleFile,
@@ -156,6 +158,8 @@ private fun ChangesContent(
     onToggleAmend: () -> Unit,
     onStashOpen: () -> Unit,
     onStageAll: () -> Unit,
+    onFetch: () -> Unit,
+    onPull: () -> Unit,
     onCommit: () -> Unit,
     onPush: () -> Unit,
     onFileToggle: (FileChange) -> Unit,
@@ -198,6 +202,8 @@ private fun ChangesContent(
                     stagedFiles = stagedFiles,
                     unstagedFiles = unstagedFiles,
                     onStageAll = onStageAll,
+                    onFetch = onFetch,
+                    onPull = onPull,
                     onCommit = onCommit,
                     onPush = onPush,
                     isBusy = isProcessing,
@@ -230,6 +236,8 @@ private fun CommitSection(
     stagedFiles: List<FileChange>,
     unstagedFiles: List<FileChange>,
     onStageAll: () -> Unit,
+    onFetch: () -> Unit,
+    onPull: () -> Unit,
     onCommit: () -> Unit,
     onPush: () -> Unit,
     isBusy: Boolean,
@@ -298,8 +306,42 @@ private fun CommitSection(
                     Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        if (isAmendMode) stringResource(R.string.changes_amend_button)
-                        else stringResource(R.string.changes_commit_button)
+                        text = if (isAmendMode) stringResource(R.string.changes_amend_button)
+                        else stringResource(R.string.changes_commit_button),
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onFetch,
+                    modifier = Modifier.weight(1f),
+                    enabled = canPush && !isBusy
+                ) {
+                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = stringResource(R.string.changes_fetch_button),
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+                OutlinedButton(
+                    onClick = onPull,
+                    modifier = Modifier.weight(1f),
+                    enabled = canPush && !isBusy
+                ) {
+                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = stringResource(R.string.changes_pull_button),
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }

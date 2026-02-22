@@ -265,6 +265,8 @@
     <string name="changes_stash_apply_failed">Не удалось применить stash</string>
     <string name="changes_stash_dropped">Stash удалён</string>
     <string name="changes_stash_drop_failed">Не удалось удалить stash</string>
+    <string name="changes_fetch_button">Fetch</string>
+    <string name="changes_pull_button">Pull</string>
     <string name="changes_push_button">Push (%1$d)</string>
     <string name="changes_remote_not_configured">Remote \'origin\' не настроен</string>
     <string name="changes_staged_title">Добавленные изменения (%1$d)</string>
@@ -273,6 +275,10 @@
     <string name="changes_commit_message_empty">Сообщение коммита не может быть пустым</string>
     <string name="changes_commit_created">Коммит создан</string>
     <string name="changes_commit_failed">Не удалось создать коммит</string>
+    <string name="changes_fetch_successful">Fetch выполнен успешно</string>
+    <string name="changes_fetch_failed">Ошибка fetch</string>
+    <string name="changes_pull_successful">Pull выполнен успешно</string>
+    <string name="changes_pull_failed">Ошибка pull</string>
     <string name="changes_push_successful">Push выполнен успешно</string>
     <string name="changes_push_failed">Ошибка push</string>
     <string name="push_progress_pushing">Отправка…</string>
