@@ -247,6 +247,7 @@
     <string name="changes_select_repo">Select a repository to view changes</string>
     <string name="changes_commit_title">Commit Changes</string>
     <string name="changes_commit_message_hint">Commit message</string>
+    <string name="changes_commit_description_hint">Description (optional)</string>
     <string name="changes_stage_all">Stage All</string>
     <string name="changes_commit_button">Commit</string>
     <string name="changes_amend_last_commit">Amend last commit</string>
@@ -267,6 +268,7 @@
     <string name="changes_stash_drop_failed">Failed to drop stash</string>
     <string name="changes_fetch_button">Fetch</string>
     <string name="changes_pull_button">Pull</string>
+    <string name="changes_pull_button_count">Pull (%1$d)</string>
     <string name="changes_push_button">Push (%1$d)</string>
     <string name="changes_remote_not_configured">Remote \'origin\' is not configured</string>
     <string name="changes_staged_title">Staged Changes (%1$d)</string>

@@ -64,10 +64,13 @@ fun FileChangeCard(
             Spacer(modifier = Modifier.width(8.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(
+                StartEllipsizedText(
                     text = file.path,
-                    fontSize = 14.sp,
-                    fontFamily = FontFamily.Monospace
+                    modifier = Modifier.fillMaxWidth(),
+                    style = LocalTextStyle.current.copy(
+                        fontSize = 14.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
                 )
                 if (file.additions > 0 || file.deletions > 0) {
                     Row(

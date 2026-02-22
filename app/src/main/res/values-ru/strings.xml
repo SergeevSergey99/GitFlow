@@ -247,8 +247,9 @@
     <string name="changes_select_repo">Выберите репозиторий для просмотра изменений</string>
     <string name="changes_commit_title">Закоммитить изменения</string>
     <string name="changes_commit_message_hint">Сообщение коммита</string>
+    <string name="changes_commit_description_hint">Описание (необязательно)</string>
     <string name="changes_stage_all">Добавить всё</string>
-    <string name="changes_commit_button">Коммит</string>
+    <string name="changes_commit_button">Commit</string>
     <string name="changes_amend_last_commit">Изменить последний коммит</string>
     <string name="changes_amend_button">Изменить</string>
     <string name="changes_stash_button">Stash</string>
@@ -267,6 +268,7 @@
     <string name="changes_stash_drop_failed">Не удалось удалить stash</string>
     <string name="changes_fetch_button">Fetch</string>
     <string name="changes_pull_button">Pull</string>
+    <string name="changes_pull_button_count">Pull (%1$d)</string>
     <string name="changes_push_button">Push (%1$d)</string>
     <string name="changes_remote_not_configured">Remote \'origin\' не настроен</string>
     <string name="changes_staged_title">Добавленные изменения (%1$d)</string>

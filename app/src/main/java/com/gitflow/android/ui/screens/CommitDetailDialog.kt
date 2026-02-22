@@ -52,6 +52,7 @@ import androidx.core.content.FileProvider
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gitflow.android.R
+import com.gitflow.android.ui.components.StartEllipsizedText
 import com.gitflow.android.data.models.*
 import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.data.settings.AppSettingsManager
@@ -532,15 +533,14 @@ fun DiffView(
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
+            StartEllipsizedText(
                 text = selectedFile.path,
-                fontSize = 12.sp,
-                fontFamily = FontFamily.Monospace,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                softWrap = false
+                style = TextStyle(
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Spacer(modifier = Modifier.width(8.dp))
@@ -1323,11 +1323,22 @@ fun CommitInfoView(commit: Commit) {
 
                     if (commit.description.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = stringResource(R.string.commit_detail_description),
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Description,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.tertiary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = stringResource(R.string.commit_detail_description),
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.tertiary
+                            )
+                        }
                         Spacer(modifier = Modifier.height(4.dp))
                         SelectionContainer {
                             Text(

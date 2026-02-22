@@ -17,7 +17,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gitflow.android.R
@@ -95,8 +97,10 @@ fun ChangesScreen(
             stagedFiles = stagedFiles,
             unstagedFiles = unstagedFiles,
             commitMessage = uiState.commitMessage,
+            commitDescription = uiState.commitDescription,
             isAmendMode = uiState.isAmendMode,
             onCommitMessageChange = viewModel::setCommitMessage,
+            onCommitDescriptionChange = viewModel::setCommitDescription,
             onToggleAmend = viewModel::toggleAmendMode,
             onStashOpen = viewModel::openStashDialog,
             onStageAll = viewModel::stageAll,
@@ -109,7 +113,8 @@ fun ChangesScreen(
             onAcceptOurs = viewModel::acceptOurs,
             onAcceptTheirs = viewModel::acceptTheirs,
             canPush = uiState.canPush,
-            pendingPushCommits = uiState.pendingPushCommits
+            pendingPushCommits = uiState.pendingPushCommits,
+            pendingPullCommits = uiState.pendingPullCommits
         )
 
         // Push progress overlay
@@ -153,8 +158,10 @@ private fun ChangesContent(
     stagedFiles: List<FileChange>,
     unstagedFiles: List<FileChange>,
     commitMessage: String,
+    commitDescription: String,
     isAmendMode: Boolean,
     onCommitMessageChange: (String) -> Unit,
+    onCommitDescriptionChange: (String) -> Unit,
     onToggleAmend: () -> Unit,
     onStashOpen: () -> Unit,
     onStageAll: () -> Unit,
@@ -167,7 +174,8 @@ private fun ChangesContent(
     onAcceptOurs: (FileChange) -> Unit,
     onAcceptTheirs: (FileChange) -> Unit,
     canPush: Boolean,
-    pendingPushCommits: Int
+    pendingPushCommits: Int,
+    pendingPullCommits: Int
 ) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -195,8 +203,10 @@ private fun ChangesContent(
 
                 CommitSection(
                     commitMessage = commitMessage,
+                    commitDescription = commitDescription,
                     isAmendMode = isAmendMode,
                     onCommitMessageChange = onCommitMessageChange,
+                    onCommitDescriptionChange = onCommitDescriptionChange,
                     onToggleAmend = onToggleAmend,
                     onStashOpen = onStashOpen,
                     stagedFiles = stagedFiles,
@@ -208,7 +218,8 @@ private fun ChangesContent(
                     onPush = onPush,
                     isBusy = isProcessing,
                     canPush = canPush,
-                    pendingPushCommits = pendingPushCommits
+                    pendingPushCommits = pendingPushCommits,
+                    pendingPullCommits = pendingPullCommits
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -229,8 +240,10 @@ private fun ChangesContent(
 @Composable
 private fun CommitSection(
     commitMessage: String,
+    commitDescription: String,
     isAmendMode: Boolean,
     onCommitMessageChange: (String) -> Unit,
+    onCommitDescriptionChange: (String) -> Unit,
     onToggleAmend: () -> Unit,
     onStashOpen: () -> Unit,
     stagedFiles: List<FileChange>,
@@ -242,7 +255,8 @@ private fun CommitSection(
     onPush: () -> Unit,
     isBusy: Boolean,
     canPush: Boolean,
-    pendingPushCommits: Int
+    pendingPushCommits: Int,
+    pendingPullCommits: Int
 ) {
     Card(
         modifier = Modifier.fillMaxWidth()
@@ -261,6 +275,15 @@ private fun CommitSection(
                 label = { Text(stringResource(R.string.changes_commit_message_hint)) },
                 modifier = Modifier.fillMaxWidth(),
                 maxLines = 3
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = commitDescription,
+                onValueChange = onCommitDescriptionChange,
+                label = { Text(stringResource(R.string.changes_commit_description_hint)) },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2,
+                maxLines = 6
             )
             Spacer(modifier = Modifier.height(4.dp))
             Row(
@@ -305,11 +328,9 @@ private fun CommitSection(
                 ) {
                     Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(
+                    AdaptiveSingleLineButtonText(
                         text = if (isAmendMode) stringResource(R.string.changes_amend_button)
-                        else stringResource(R.string.changes_commit_button),
-                        maxLines = 1,
-                        softWrap = false
+                        else stringResource(R.string.changes_commit_button)
                     )
                 }
             }
@@ -339,7 +360,11 @@ private fun CommitSection(
                     Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = stringResource(R.string.changes_pull_button),
+                        text = if (pendingPullCommits > 0) {
+                            stringResource(R.string.changes_pull_button_count, pendingPullCommits)
+                        } else {
+                            stringResource(R.string.changes_pull_button)
+                        },
                         maxLines = 1,
                         softWrap = false
                     )
@@ -370,6 +395,23 @@ private fun CommitSection(
             }
         }
     }
+}
+
+@Composable
+private fun AdaptiveSingleLineButtonText(text: String) {
+    var compact by remember(text) { mutableStateOf(false) }
+    Text(
+        text = text,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Clip,
+        fontSize = if (compact) 11.sp else 14.sp,
+        onTextLayout = { layoutResult ->
+            if (!compact && layoutResult.hasVisualOverflow) {
+                compact = true
+            }
+        }
+    )
 }
 
 @Composable

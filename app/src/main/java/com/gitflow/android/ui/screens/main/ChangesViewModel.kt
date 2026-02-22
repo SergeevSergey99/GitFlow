@@ -26,6 +26,7 @@ data class ChangesUiState(
     val isProcessing: Boolean = false,
     val isConflictLoading: Boolean = false,
     val commitMessage: String = "",
+    val commitDescription: String = "",
     val isAmendMode: Boolean = false,
     val showStashDialog: Boolean = false,
     val stashList: List<StashEntry> = emptyList(),
@@ -33,6 +34,7 @@ data class ChangesUiState(
     val conflictDetails: MergeConflict? = null,
     val canPush: Boolean = false,
     val pendingPushCommits: Int = 0,
+    val pendingPullCommits: Int = 0,
     /** Non-null while push is in progress; null otherwise. */
     val syncProgress: SyncProgress? = null,
     // Transient snackbar message — cleared after display
@@ -69,6 +71,7 @@ class ChangesViewModel(
                 pendingPushCommits = updated.pendingPushCommits
             )
         }
+        refreshPullCount()
     }
 
     fun loadChanges() {
@@ -78,6 +81,7 @@ class ChangesViewModel(
                     isLoading = true,
                     conflictDetails = null,
                     commitMessage = "",
+                    commitDescription = "",
                     isProcessing = false,
                     isConflictLoading = false
                 )
@@ -85,12 +89,14 @@ class ChangesViewModel(
             try {
                 val files = gitRepository.getChangedFiles(repository)
                 val refreshed = gitRepository.refreshRepository(repository)
+                val pullCount = loadPendingPullCount()
                 _uiState.update {
                     it.copy(
                         changes = files,
                         isLoading = false,
                         canPush = refreshed?.hasRemoteOrigin ?: it.canPush,
-                        pendingPushCommits = refreshed?.pendingPushCommits ?: it.pendingPushCommits
+                        pendingPushCommits = refreshed?.pendingPushCommits ?: it.pendingPushCommits,
+                        pendingPullCommits = pullCount
                     )
                 }
             } catch (e: Exception) {
@@ -102,11 +108,13 @@ class ChangesViewModel(
     private suspend fun reloadChanges() {
         val files = gitRepository.getChangedFiles(repository)
         val refreshed = gitRepository.refreshRepository(repository)
+        val pullCount = loadPendingPullCount()
         _uiState.update {
             it.copy(
                 changes = files,
                 canPush = refreshed?.hasRemoteOrigin ?: it.canPush,
-                pendingPushCommits = refreshed?.pendingPushCommits ?: it.pendingPushCommits
+                pendingPushCommits = refreshed?.pendingPushCommits ?: it.pendingPushCommits,
+                pendingPullCommits = pullCount
             )
         }
     }
@@ -128,15 +136,26 @@ class ChangesViewModel(
         _uiState.update { it.copy(commitMessage = text) }
     }
 
+    fun setCommitDescription(text: String) {
+        _uiState.update { it.copy(commitDescription = text) }
+    }
+
     fun toggleAmendMode() {
         val next = !_uiState.value.isAmendMode
         if (next) {
             viewModelScope.launch {
-                val lastMessage = gitRepository.getLastCommitMessage(repository) ?: ""
-                _uiState.update { it.copy(isAmendMode = true, commitMessage = lastMessage) }
+                val lastMessage = gitRepository.getLastCommitMessage(repository).orEmpty()
+                val split = splitCommitMessage(lastMessage)
+                _uiState.update {
+                    it.copy(
+                        isAmendMode = true,
+                        commitMessage = split.first,
+                        commitDescription = split.second
+                    )
+                }
             }
         } else {
-            _uiState.update { it.copy(isAmendMode = false, commitMessage = "") }
+            _uiState.update { it.copy(isAmendMode = false, commitMessage = "", commitDescription = "") }
         }
     }
 
@@ -151,8 +170,16 @@ class ChangesViewModel(
     }
 
     fun commit() {
-        val message = _uiState.value.commitMessage.trim()
-        if (message.isEmpty()) {
+        val title = _uiState.value.commitMessage.trim()
+        val description = _uiState.value.commitDescription.trim()
+        val message = buildString {
+            append(title)
+            if (description.isNotBlank()) {
+                append("\n\n")
+                append(description)
+            }
+        }
+        if (title.isEmpty()) {
             emit(str(R.string.changes_commit_message_empty))
             return
         }
@@ -164,7 +191,7 @@ class ChangesViewModel(
                 gitRepository.commit(repository, message)
             }
             if (result is GitResult.Success) {
-                _uiState.update { it.copy(commitMessage = "", isAmendMode = false) }
+                _uiState.update { it.copy(commitMessage = "", commitDescription = "", isAmendMode = false) }
                 reloadChanges()
                 emit(str(R.string.changes_commit_created))
             } else {
@@ -363,6 +390,36 @@ class ChangesViewModel(
 
     private fun emit(message: String) {
         _uiState.update { it.copy(message = message) }
+    }
+
+    private fun refreshPullCount() {
+        viewModelScope.launch {
+            val count = loadPendingPullCount()
+            _uiState.update { it.copy(pendingPullCommits = count) }
+        }
+    }
+
+    private suspend fun loadPendingPullCount(): Int {
+        return try {
+            val branches = gitRepository.getBranches(repository)
+            branches.firstOrNull { it.isLocal && it.name == repository.currentBranch }?.behind ?: 0
+        } catch (_: Exception) {
+            0
+        }
+    }
+
+    private fun splitCommitMessage(message: String): Pair<String, String> {
+        val separatorIndex = message.indexOf("\n\n")
+        return if (separatorIndex >= 0) {
+            val title = message.substring(0, separatorIndex).trim()
+            val description = message.substring(separatorIndex + 2).trim()
+            title to description
+        } else {
+            val lines = message.lines()
+            val title = lines.firstOrNull().orEmpty().trim()
+            val description = lines.drop(1).joinToString("\n").trim()
+            title to description
+        }
     }
 }
 
