@@ -12,6 +12,7 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.net.URI
 import java.net.URLEncoder
+import timber.log.Timber
 
 class AuthManager(val context: Context) {
 
@@ -277,7 +278,7 @@ class AuthManager(val context: Context) {
         }
 
         val token = getToken(provider)
-            ?: throw Exception("Токен не найден для провайдера $provider")
+            ?: throw IllegalStateException("Токен не найден для провайдера $provider")
 
         val authHeader = "Bearer ${token.accessToken}"
 
@@ -297,7 +298,7 @@ class AuthManager(val context: Context) {
                 repositories.add(repo.toGitRemoteRepository())
             }
         } else {
-            throw Exception("Ошибка получения репозиториев пользователя: ${userReposResponse.code()}")
+            throw IllegalStateException("Ошибка получения репозиториев пользователя: ${userReposResponse.code()}")
         }
 
         try {
@@ -311,10 +312,14 @@ class AuthManager(val context: Context) {
                                 repositories.add(repo.toGitRemoteRepository())
                             }
                         }
-                    } catch (_: Exception) { }
+                    } catch (e: Exception) {
+                        Timber.w(e, "Failed to fetch repos for org ${org.login}")
+                    }
                 }
             }
-        } catch (_: Exception) { }
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to fetch user organizations")
+        }
 
         return repositories.distinctBy { it.id }
     }
@@ -329,7 +334,7 @@ class AuthManager(val context: Context) {
                 repositories.add(project.toGitRemoteRepository())
             }
         } else {
-            throw Exception("Ошибка получения проектов GitLab: ${projectsResponse.code()}")
+            throw IllegalStateException("Ошибка получения проектов GitLab: ${projectsResponse.code()}")
         }
 
         return repositories
@@ -387,6 +392,7 @@ class AuthManager(val context: Context) {
             saveToken(GitProvider.GITLAB, newToken)
             true
         } catch (e: Exception) {
+            Timber.w(e, "Failed to refresh GitLab token")
             false
         }
     }

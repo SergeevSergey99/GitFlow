@@ -297,7 +297,7 @@ fun CommitDetailDialog(
                                         tint = MaterialTheme.colorScheme.error
                                     )
                                     Text(
-                                        text = uiState.diffsLoadError!!,
+                                        text = uiState.diffsLoadError.orEmpty(),
                                         color = MaterialTheme.colorScheme.error,
                                         textAlign = TextAlign.Center
                                     )
@@ -363,7 +363,7 @@ fun CommitDetailDialog(
                                         tint = MaterialTheme.colorScheme.error
                                     )
                                     Text(
-                                        text = uiState.diffsLoadError!!,
+                                        text = uiState.diffsLoadError.orEmpty(),
                                         color = MaterialTheme.colorScheme.error,
                                         textAlign = TextAlign.Center
                                     )
@@ -2266,7 +2266,7 @@ fun FileViewerDialog(
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = loadError!!,
+                                    text = loadError.orEmpty(),
                                     color = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
                                     fontSize = 12.sp,
                                     textAlign = TextAlign.Center
@@ -2276,7 +2276,7 @@ fun FileViewerDialog(
                     }
                     fileContent != null -> {
                         SyntaxHighlightedFileContent(
-                            content = fileContent!!,
+                            content = fileContent.orEmpty(),
                             fileName = file.name,
                             modifier = Modifier.fillMaxSize()
                         )
@@ -2342,7 +2342,7 @@ fun SyntaxHighlightedFileContent(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = renderError!!,
+                    text = renderError.orEmpty(),
                     color = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
                     fontSize = 12.sp,
                     textAlign = TextAlign.Center
