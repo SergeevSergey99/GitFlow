@@ -3,6 +3,8 @@ package com.gitflow.android.data.repository
 import com.gitflow.android.data.models.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.eclipse.jgit.api.CreateBranchCommand
+import org.eclipse.jgit.api.errors.RefAlreadyExistsException
 import org.eclipse.jgit.api.CherryPickResult
 import org.eclipse.jgit.api.MergeResult
 import org.eclipse.jgit.api.ResetCommand
@@ -39,6 +41,76 @@ internal suspend fun GitRepository.getBranchesImpl(repository: Repository): List
         git.use { g -> getBranchesInternal(g) }
     } catch (e: Exception) {
         emptyList()
+    }
+}
+
+internal suspend fun GitRepository.checkoutBranchImpl(
+    repository: Repository,
+    branchName: String,
+    isLocal: Boolean
+): GitResult<Unit> = withContext(Dispatchers.IO) {
+    try {
+        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
+        git.use { g ->
+            if (isLocal) {
+                g.checkout().setName(branchName).call()
+            } else {
+                val localName = branchName.removePrefix("origin/")
+                try {
+                    g.checkout()
+                        .setCreateBranch(true)
+                        .setName(localName)
+                        .setStartPoint(branchName)
+                        .setUpstreamMode(CreateBranchCommand.SetupUpstreamMode.TRACK)
+                        .call()
+                } catch (e: RefAlreadyExistsException) {
+                    g.checkout().setName(localName).call()
+                }
+            }
+        }
+        refreshRepository(repository)
+        GitResult.Success(Unit)
+    } catch (e: Exception) {
+        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+    }
+}
+
+internal suspend fun GitRepository.createBranchImpl(
+    repository: Repository,
+    branchName: String,
+    checkout: Boolean
+): GitResult<Unit> = withContext(Dispatchers.IO) {
+    try {
+        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
+        git.use { g ->
+            if (checkout) {
+                g.checkout().setCreateBranch(true).setName(branchName).call()
+            } else {
+                g.branchCreate().setName(branchName).call()
+            }
+        }
+        refreshRepository(repository)
+        GitResult.Success(Unit)
+    } catch (e: Exception) {
+        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+    }
+}
+
+internal suspend fun GitRepository.deleteBranchImpl(
+    repository: Repository,
+    branchName: String,
+    force: Boolean
+): GitResult<Unit> = withContext(Dispatchers.IO) {
+    try {
+        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
+        val deleted = git.use { g ->
+            g.branchDelete().setBranchNames(branchName).setForce(force).call()
+        }
+        if (deleted.isEmpty()) return@withContext GitResult.Failure.Generic("Branch not deleted")
+        refreshRepository(repository)
+        GitResult.Success(Unit)
+    } catch (e: Exception) {
+        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
     }
 }
 

@@ -18,6 +18,7 @@ import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.ui.config.GraphConfig
 import com.gitflow.android.ui.components.CloneProgressOverlay
+import com.gitflow.android.ui.components.dialogs.BranchManagementDialog
 import com.gitflow.android.ui.screens.main.ChangesScreen
 import com.gitflow.android.ui.screens.main.RepositoryListScreen
 import com.gitflow.android.ui.screens.main.SettingsScreen
@@ -35,6 +36,7 @@ fun MainScreen(navController: NavController) {
     val gitRepository = viewModel.getGitRepository()
 
     var showOperationsSheet by remember { mutableStateOf(false) }
+    var showBranchDialog by remember { mutableStateOf(false) }
 
     // Обновляем выбранный репозиторий если он изменился в списке
     LaunchedEffect(repositories) {
@@ -59,7 +61,16 @@ fun MainScreen(navController: NavController) {
                         }
                     }
                 },
-                actions = {},
+                actions = {
+                    selectedRepository?.let {
+                        IconButton(onClick = { showBranchDialog = true }) {
+                            Icon(
+                                Icons.Default.CallSplit,
+                                contentDescription = stringResource(R.string.branches_title)
+                            )
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -142,6 +153,22 @@ fun MainScreen(navController: NavController) {
                 repository = repository,
                 gitRepository = gitRepository,
                 onDismiss = { showOperationsSheet = false }
+            )
+        }
+    }
+
+    // Branch Management Dialog
+    if (showBranchDialog) {
+        selectedRepository?.let { repo ->
+            BranchManagementDialog(
+                repository = repo,
+                gitRepository = gitRepository,
+                currentBranch = repo.currentBranch,
+                onDismiss = { showBranchDialog = false },
+                onBranchChanged = {
+                    showBranchDialog = false
+                    viewModel.refreshRepositories()
+                }
             )
         }
     }

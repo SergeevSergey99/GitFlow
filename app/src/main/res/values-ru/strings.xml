@@ -345,6 +345,22 @@
     <string name="graph_commit_merge_message">Слить коммит %1$s в ветку %2$s.</string>
     <string name="graph_commit_merge_success">Слияние завершено</string>
 
+    <!-- BranchManagementDialog -->
+    <string name="branches_title">Ветки</string>
+    <string name="branches_section_local">Локальные</string>
+    <string name="branches_section_remote">Удалённые</string>
+    <string name="branches_search_hint">Поиск веток…</string>
+    <string name="branches_new_branch">Новая ветка</string>
+    <string name="branches_name_hint">Название ветки</string>
+    <string name="branches_create">Создать</string>
+    <string name="branches_checkout_on_create">Переключиться сразу</string>
+    <string name="branches_delete_title">Удалить ветку?</string>
+    <string name="branches_force_delete">Принудительно (непромёрженная)</string>
+    <string name="branches_checked_out">Переключено на %1$s</string>
+    <string name="branches_created">Ветка %1$s создана</string>
+    <string name="branches_deleted">Ветка %1$s удалена</string>
+    <string name="branches_no_branches">Ветки не найдены</string>
+
     <!-- DeleteRepositoryDialog -->
     <string name="delete_repo_title">Удаление репозитория</string>
     <string name="delete_repo_checkbox">Также удалить файлы репозитория</string>

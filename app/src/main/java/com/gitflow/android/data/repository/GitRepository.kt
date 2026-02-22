@@ -191,6 +191,9 @@ class GitRepository(internal val context: Context) : IGitRepository {
     override suspend fun getLastCommitMessage(repository: Repository): String? = getLastCommitMessageImpl(repository)
 
     override suspend fun getBranches(repository: Repository): List<Branch> = getBranchesImpl(repository)
+    override suspend fun checkoutBranch(repository: Repository, branchName: String, isLocal: Boolean): GitResult<Unit> = checkoutBranchImpl(repository, branchName, isLocal)
+    override suspend fun createBranch(repository: Repository, branchName: String, checkout: Boolean): GitResult<Unit> = createBranchImpl(repository, branchName, checkout)
+    override suspend fun deleteBranch(repository: Repository, branchName: String, force: Boolean): GitResult<Unit> = deleteBranchImpl(repository, branchName, force)
     override suspend fun fetch(repository: Repository): GitResult<Unit> = fetchImpl(repository)
     override suspend fun pull(repository: Repository): GitResult<Unit> = pullImpl(repository)
     override suspend fun push(repository: Repository): GitResult<Unit> = pushImpl(repository)

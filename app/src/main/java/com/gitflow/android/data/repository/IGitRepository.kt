@@ -41,6 +41,9 @@ interface IGitRepository {
     suspend fun getCommitDiffs(commit: Commit, repository: Repository): List<FileDiff>
     suspend fun getCommitDiffs(commit: Commit): List<FileDiff>
     suspend fun getBranches(repository: Repository): List<Branch>
+    suspend fun checkoutBranch(repository: Repository, branchName: String, isLocal: Boolean): GitResult<Unit>
+    suspend fun createBranch(repository: Repository, branchName: String, checkout: Boolean): GitResult<Unit>
+    suspend fun deleteBranch(repository: Repository, branchName: String, force: Boolean): GitResult<Unit>
     suspend fun fetch(repository: Repository): GitResult<Unit>
     suspend fun pull(repository: Repository): GitResult<Unit>
     suspend fun push(repository: Repository): GitResult<Unit>
