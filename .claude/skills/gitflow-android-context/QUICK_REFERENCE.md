@@ -2,6 +2,11 @@
 
 ## Key files (actual)
 
+### Project docs
+- `CHANGELOG.md`
+- `PROJECT_ANALYSIS.md`
+- `RECOMMENDATIONS.md`
+
 ### Repository layer
 - `app/src/main/java/com/gitflow/android/data/repository/IGitRepository.kt`
 - `app/src/main/java/com/gitflow/android/data/repository/GitRepository.kt`
