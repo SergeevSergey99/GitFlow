@@ -20,7 +20,7 @@ Git repo on filesystem + persisted app state
 - `data/repository/GitRepository.kt` — composition/delegation entry point
 - `data/repository/GitRepositoryMeta.kt` — repository CRUD/clone/refresh
 - `data/repository/GitRepositoryIndex.kt` — status, stage/unstage, commit, conflicts, working diff
-- `data/repository/GitRepositoryBranches.kt` — fetch/pull/push/branches/tags/cherry-pick/merge
+- `data/repository/GitRepositoryBranches.kt` — fetch/pull/push/branches/checkoutBranch/createBranch/deleteBranch/tags/cherry-pick/merge
 - `data/repository/GitRepositoryCommits.kt` — commit list + commit diffs
 - `data/repository/GitRepositoryFiles.kt` — file tree/content/restore/history
 - `data/repository/GitRepositoryStash.kt` — stash operations
@@ -31,11 +31,13 @@ Git repo on filesystem + persisted app state
 - `ui/auth/OAuthActivity.kt` — WebView-based auth UI
 
 ### UI layer
-- `ui/screens/MainScreen.kt` — top-level tabs/navigation
+- `ui/screens/MainScreen.kt` — top-level tabs/navigation; CallSplit branch button in TopAppBar
 - `ui/screens/main/ChangesScreen.kt` — working tree/staging UX (list+tree, file actions, diff dialog)
 - `ui/screens/main/ChangesViewModel.kt` — operations orchestration for changes screen
+- `ui/screens/main/BranchesViewModel.kt` — branch list, checkout/create/delete with guard-mutex
 - `ui/screens/EnhancedGraphScreen.kt` — commit graph
 - `ui/screens/CommitDetailDialog.kt` — commit details, commit file tree, commit diff/history dialogs
+- `ui/components/dialogs/BranchManagementDialog.kt` — branch dialog: local/remote list, search, ahead/behind, new branch form, delete confirm
 
 ## 3. Current design choices
 

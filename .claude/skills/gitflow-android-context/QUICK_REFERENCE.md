@@ -17,8 +17,10 @@
 ### Screens / ViewModels
 - `app/src/main/java/com/gitflow/android/ui/screens/main/ChangesScreen.kt`
 - `app/src/main/java/com/gitflow/android/ui/screens/main/ChangesViewModel.kt`
+- `app/src/main/java/com/gitflow/android/ui/screens/main/BranchesViewModel.kt`
 - `app/src/main/java/com/gitflow/android/ui/screens/CommitDetailDialog.kt`
 - `app/src/main/java/com/gitflow/android/ui/screens/EnhancedGraphScreen.kt`
+- `app/src/main/java/com/gitflow/android/ui/components/dialogs/BranchManagementDialog.kt`
 
 ### Auth
 - `app/src/main/java/com/gitflow/android/data/auth/AuthManager.kt`
@@ -41,6 +43,12 @@
 1. `CommitDetailDialog.kt`
 2. `CommitDetailViewModel.kt`
 3. `GitRepositoryFiles.kt`
+
+### Branch checkout / create / delete
+1. `MainScreen.kt` (showBranchDialog, CallSplit button)
+2. `BranchManagementDialog.kt` (UI, DeleteBranchConfirmDialog)
+3. `BranchesViewModel.kt` (guard-mutex, operations)
+4. `IGitRepository.kt` + `GitRepositoryBranches.kt` (checkoutBranch/createBranch/deleteBranch)
 
 ## Useful commands
 

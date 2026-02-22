@@ -48,3 +48,4 @@ Use this skill when user asks to:
 - OAuth/WebView hardening (domain allowlist/security posture).
 - Large UI files (`ChangesScreen.kt`, `CommitDetailDialog.kt`) still complex.
 - Limited automated regression coverage for critical Git flows.
+- `BranchManagementDialog` closes automatically on any successful operation (via `LaunchedEffect(uiState.message)`); if merge/rebase is added, revisit flow.

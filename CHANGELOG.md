@@ -2,6 +2,16 @@
 
 Все заметные изменения проекта фиксируются здесь.
 
+## 2026-02-22 (2)
+
+### Added — Branch Management UI
+- `BranchManagementDialog.kt` — диалог управления ветками: список локальных/удалённых, поиск, ahead/behind chips, переключение, удаление, создание новой ветки с опцией checkout.
+- `BranchesViewModel.kt` — ViewModel с guard-mutex, loadBranches/checkoutBranch/createBranch/deleteBranch, Factory per repository.
+- `IGitRepository` — добавлены `checkoutBranch`, `createBranch`, `deleteBranch`.
+- `GitRepositoryBranches.kt` — реализации: remote checkout с `RefAlreadyExistsException` fallback и `TRACK`-режимом.
+- `MainScreen.kt` — кнопка `CallSplit` в `TopAppBar`; `showBranchDialog` state; вызов `viewModel.refreshRepositories()` после операции.
+- Строки EN/RU: 15 новых ключей `branches_*`.
+
 ## 2026-02-22
 
 ### Added

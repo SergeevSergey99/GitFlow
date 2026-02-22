@@ -1,6 +1,6 @@
 # Рекомендации и ближайший backlog
 
-> Обновлено: 2026-02-22
+> Обновлено: 2026-02-22 (2)
 > История изменений: `CHANGELOG.md`
 
 ## Выполнено
@@ -10,6 +10,7 @@
 - [x] Исправлен reset-конфликт при unstage (`<paths> + --mixed/--soft/--hard`).
 - [x] Улучшен `ChangesScreen`: полноэкранный diff, long-press actions, tree/list режим, сворачивание панели commit.
 - [x] Добавлены действия: история файла, копирование имени/пути, reset changes.
+- [x] Реализован `BranchManagementDialog` + `BranchesViewModel`: переключение/создание/удаление веток, remote tracking checkout, поиск, ahead/behind chips.
 
 ## P0 — следующий шаг (обязательное)
 
@@ -29,6 +30,12 @@
 - [ ] Разгрузить `CommitDetailDialog.kt` на независимые секции.
 - [ ] Внедрить DI (Hilt/Koin) минимум для `IGitRepository`, `AuthManager`, `AppSettingsManager`.
 - [ ] Добавить CI pipeline: compile + lint + тесты.
+
+## P1.5 — Branch Management (доработки)
+
+- [ ] Добавить merge/rebase ветки из `BranchManagementDialog`.
+- [ ] Rename ветки (JGit: `branchRename`).
+- [ ] Push отдельной ветки из диалога.
 
 ## P2 — производительность и UX
 

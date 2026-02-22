@@ -1,6 +1,6 @@
 # GitFlowAndroid — актуальный анализ проекта
 
-> Обновлено: 2026-02-22
+> Обновлено: 2026-02-22 (2)
 > История изменений: `CHANGELOG.md`
 
 ## 1) Текущее состояние
@@ -40,6 +40,7 @@
   - полноэкранный diff dialog.
 - В `CommitDetailDialog` улучшены path-truncation/действия по long-press/режимы отображения.
 - Fetch/Pull/Push UX и счётчики подтянуты в UI.
+- Добавлен `BranchManagementDialog` с `BranchesViewModel`: переключение, создание, удаление веток; поддержка remote tracking branches; кнопка `CallSplit` в TopAppBar.
 
 ## 3) Критические проблемы (ещё актуальны)
 
@@ -67,6 +68,7 @@
   - open diff + open history.
 - Закрыть WebView OAuth hardening (allowlist host/scheme, блок редиректов вне провайдера).
 - Финализировать UX tree/list в Changes (если нужны мелкие доработки).
+- Branch Management: добавить merge/rebase ветки из диалога (`BranchManagementDialog`).
 
 ### P1
 - Вынести крупные блоки из `ChangesScreen` и `CommitDetailDialog` в отдельные компоненты + ViewModel-слой.
