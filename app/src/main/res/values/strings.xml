@@ -269,6 +269,13 @@
     <string name="changes_fetch_button">Fetch</string>
     <string name="changes_pull_button">Pull</string>
     <string name="changes_pull_button_count">Pull (%1$d)</string>
+    <string name="changes_show_commit_controls">Show commit controls</string>
+    <string name="changes_hide_commit_controls">Hide commit controls</string>
+    <string name="changes_diff_title">File changes</string>
+    <string name="changes_diff_unavailable">Failed to build file diff</string>
+    <string name="changes_reset_file_changes">Reset changes</string>
+    <string name="changes_discard_success">Changes reset</string>
+    <string name="changes_discard_failed">Failed to reset changes</string>
     <string name="changes_push_button">Push (%1$d)</string>
     <string name="changes_remote_not_configured">Remote \'origin\' is not configured</string>
     <string name="changes_staged_title">Staged Changes (%1$d)</string>

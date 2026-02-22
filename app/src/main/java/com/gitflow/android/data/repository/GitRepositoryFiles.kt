@@ -158,6 +158,17 @@ internal suspend fun GitRepository.getFileHistoryAutoImpl(commit: Commit, filePa
     return getFileHistoryImpl(commit, filePath, repo)
 }
 
+internal suspend fun GitRepository.getFileHistoryForPathImpl(repository: Repository, filePath: String): List<Commit> = withContext(Dispatchers.IO) {
+    val git = openRepository(repository.path) ?: return@withContext emptyList()
+    try {
+        git.log().addPath(filePath).setMaxCount(100).call().map { mapRevCommitToCommit(it) }
+    } catch (_: Exception) {
+        emptyList()
+    } finally {
+        git.close()
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------

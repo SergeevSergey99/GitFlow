@@ -269,6 +269,13 @@
     <string name="changes_fetch_button">Fetch</string>
     <string name="changes_pull_button">Pull</string>
     <string name="changes_pull_button_count">Pull (%1$d)</string>
+    <string name="changes_show_commit_controls">Показать панель коммита</string>
+    <string name="changes_hide_commit_controls">Скрыть панель коммита</string>
+    <string name="changes_diff_title">Изменения файла</string>
+    <string name="changes_diff_unavailable">Не удалось построить diff файла</string>
+    <string name="changes_reset_file_changes">Сбросить изменения</string>
+    <string name="changes_discard_success">Изменения сброшены</string>
+    <string name="changes_discard_failed">Не удалось сбросить изменения</string>
     <string name="changes_push_button">Push (%1$d)</string>
     <string name="changes_remote_not_configured">Remote \'origin\' не настроен</string>
     <string name="changes_staged_title">Добавленные изменения (%1$d)</string>

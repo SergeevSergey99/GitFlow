@@ -1,6 +1,6 @@
 package com.gitflow.android.ui.components
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -17,11 +17,17 @@ import com.gitflow.android.R
 import com.gitflow.android.data.models.ChangeStatus
 import com.gitflow.android.data.models.FileChange
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun FileChangeCard(
     file: FileChange,
     isStaged: Boolean,
     onToggle: () -> Unit,
+    onOpen: () -> Unit,
+    onLongPress: (() -> Unit)? = null,
+    isMenuExpanded: Boolean = false,
+    onDismissMenu: (() -> Unit)? = null,
+    menuContent: (@Composable ColumnScope.() -> Unit)? = null,
     onResolveConflict: ((FileChange) -> Unit)? = null,
     onAcceptOurs: ((FileChange) -> Unit)? = null,
     onAcceptTheirs: ((FileChange) -> Unit)? = null
@@ -36,68 +42,82 @@ fun FileChangeCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onToggle() }
+            .combinedClickable(
+                onClick = onOpen,
+                onLongClick = { onLongPress?.invoke() }
+            )
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Checkbox(
-                checked = isStaged,
-                onCheckedChange = { onToggle() }
-            )
-
-            Icon(
-                when (file.status) {
-                    ChangeStatus.ADDED -> Icons.Default.Add
-                    ChangeStatus.MODIFIED -> Icons.Default.Edit
-                    ChangeStatus.DELETED -> Icons.Default.Delete
-                    else -> Icons.Default.Description
-                },
-                contentDescription = null,
-                tint = statusColor,
-                modifier = Modifier.size(20.dp)
-            )
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                StartEllipsizedText(
-                    text = file.path,
-                    modifier = Modifier.fillMaxWidth(),
-                    style = LocalTextStyle.current.copy(
-                        fontSize = 14.sp,
-                        fontFamily = FontFamily.Monospace
-                    )
+        Box {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = isStaged,
+                    onCheckedChange = { onToggle() }
                 )
-                if (file.additions > 0 || file.deletions > 0) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "+${file.additions}",
-                            fontSize = 11.sp,
-                            color = Color(0xFF4CAF50)
+
+                Icon(
+                    when (file.status) {
+                        ChangeStatus.ADDED -> Icons.Default.Add
+                        ChangeStatus.MODIFIED -> Icons.Default.Edit
+                        ChangeStatus.DELETED -> Icons.Default.Delete
+                        else -> Icons.Default.Description
+                    },
+                    contentDescription = null,
+                    tint = statusColor,
+                    modifier = Modifier.size(20.dp)
+                )
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    StartEllipsizedText(
+                        text = file.path,
+                        modifier = Modifier.fillMaxWidth(),
+                        style = LocalTextStyle.current.copy(
+                            fontSize = 14.sp,
+                            fontFamily = FontFamily.Monospace
                         )
-                        Text(
-                            text = "-${file.deletions}",
-                            fontSize = 11.sp,
-                            color = Color(0xFFF44336)
+                    )
+                    if (file.additions > 0 || file.deletions > 0) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "+${file.additions}",
+                                fontSize = 11.sp,
+                                color = Color(0xFF4CAF50)
+                            )
+                            Text(
+                                text = "-${file.deletions}",
+                                fontSize = 11.sp,
+                                color = Color(0xFFF44336)
+                            )
+                        }
+                    }
+
+                    if (file.hasConflicts) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        AssistChipRow(
+                            conflictCount = file.conflictSections,
+                            onResolveConflict = onResolveConflict,
+                            onAcceptOurs = onAcceptOurs,
+                            onAcceptTheirs = onAcceptTheirs,
+                            file = file
                         )
                     }
                 }
+            }
 
-                if (file.hasConflicts) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    AssistChipRow(
-                        conflictCount = file.conflictSections,
-                        onResolveConflict = onResolveConflict,
-                        onAcceptOurs = onAcceptOurs,
-                        onAcceptTheirs = onAcceptTheirs,
-                        file = file
-                    )
+            if (menuContent != null && onDismissMenu != null) {
+                DropdownMenu(
+                    expanded = isMenuExpanded,
+                    onDismissRequest = onDismissMenu
+                ) {
+                    menuContent()
                 }
             }
         }

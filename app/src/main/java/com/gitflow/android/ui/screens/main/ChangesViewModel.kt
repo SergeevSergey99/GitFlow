@@ -257,6 +257,32 @@ class ChangesViewModel(
         }
     }
 
+    fun toggleFiles(files: List<FileChange>) {
+        if (files.isEmpty()) return
+        guard {
+            files.forEach { file ->
+                if (file.stage == ChangeStage.STAGED) {
+                    gitRepository.unstageFile(repository, file.path)
+                } else {
+                    gitRepository.stageFile(repository, file)
+                }
+            }
+            reloadChanges()
+        }
+    }
+
+    fun discardFileChanges(path: String) {
+        guard {
+            val result = gitRepository.discardFileChanges(repository, path)
+            if (result is GitResult.Success) {
+                reloadChanges()
+                emit(str(R.string.changes_discard_success))
+            } else {
+                emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_discard_failed))
+            }
+        }
+    }
+
     fun acceptOurs(file: FileChange) {
         guard {
             val result = gitRepository.resolveConflict(repository, file.path, ConflictResolutionStrategy.OURS)

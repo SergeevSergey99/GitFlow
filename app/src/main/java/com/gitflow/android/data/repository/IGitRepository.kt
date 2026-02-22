@@ -20,8 +20,10 @@ interface IGitRepository {
     suspend fun refreshRepository(repository: Repository): Repository?
     suspend fun getCommits(repository: Repository, page: Int = 0, pageSize: Int = 50): List<Commit>
     suspend fun getChangedFiles(repository: Repository): List<FileChange>
+    suspend fun getWorkingFileDiff(repository: Repository, filePath: String, stage: ChangeStage): FileDiff?
     suspend fun stageFile(repository: Repository, file: FileChange): GitResult<Unit>
     suspend fun unstageFile(repository: Repository, filePath: String): GitResult<Unit>
+    suspend fun discardFileChanges(repository: Repository, filePath: String): GitResult<Unit>
     suspend fun stageAll(repository: Repository): GitResult<Unit>
     suspend fun getMergeConflicts(repository: Repository): List<MergeConflict>
     suspend fun getMergeConflict(repository: Repository, path: String): MergeConflict?
@@ -55,6 +57,7 @@ interface IGitRepository {
     suspend fun restoreFileToParentCommit(commit: Commit, filePath: String): GitResult<Unit>
     suspend fun getFileHistory(commit: Commit, filePath: String, repository: Repository): List<Commit>
     suspend fun getFileHistory(commit: Commit, filePath: String): List<Commit>
+    suspend fun getFileHistoryForPath(repository: Repository, filePath: String): List<Commit>
     suspend fun stashSave(repository: Repository, message: String = ""): GitResult<Unit>
     suspend fun stashList(repository: Repository): List<StashEntry>
     suspend fun stashApply(repository: Repository, stashIndex: Int): GitResult<Unit>

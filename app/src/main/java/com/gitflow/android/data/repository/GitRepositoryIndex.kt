@@ -6,7 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.eclipse.jgit.api.CheckoutCommand
 import org.eclipse.jgit.api.Git
-import org.eclipse.jgit.api.ResetCommand
+import org.eclipse.jgit.diff.DiffEntry
 import org.eclipse.jgit.diff.DiffFormatter
 import org.eclipse.jgit.dircache.DirCacheIterator
 import org.eclipse.jgit.treewalk.CanonicalTreeParser
@@ -102,7 +102,25 @@ internal suspend fun GitRepository.unstageFileImpl(repository: Repository, fileP
     try {
         val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
         git.use { g ->
-            g.reset().setMode(ResetCommand.ResetType.MIXED).addPath(filePath).call()
+            g.reset().addPath(filePath).call()
+        }
+        GitResult.Success(Unit)
+    } catch (e: Exception) {
+        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+    }
+}
+
+internal suspend fun GitRepository.discardFileChangesImpl(repository: Repository, filePath: String): GitResult<Unit> = withContext(Dispatchers.IO) {
+    try {
+        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
+        git.use { g ->
+            val status = g.status().call()
+            if (status.untracked.contains(filePath)) {
+                File(repository.path, filePath).deleteRecursively()
+            } else {
+                g.reset().addPath(filePath).call()
+                g.checkout().addPath(filePath).call()
+            }
         }
         GitResult.Success(Unit)
     } catch (e: Exception) {
@@ -120,6 +138,46 @@ internal suspend fun GitRepository.stageAllImpl(repository: Repository): GitResu
         GitResult.Success(Unit)
     } catch (e: Exception) {
         GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+    }
+}
+
+internal suspend fun GitRepository.getWorkingFileDiffImpl(
+    repository: Repository,
+    filePath: String,
+    stage: ChangeStage
+): FileDiff? = withContext(Dispatchers.IO) {
+    try {
+        val git = openRepository(repository.path) ?: return@withContext null
+        git.use { g ->
+            val jRepo = g.repository
+            val diffCommand = g.diff().setPathFilter(PathFilter.create(filePath))
+
+            when (stage) {
+                ChangeStage.STAGED -> {
+                    val oldTreeIterator = jRepo.newObjectReader().use { reader ->
+                        val headTreeId = jRepo.resolve("HEAD^{tree}")
+                        if (headTreeId != null) CanonicalTreeParser().apply { reset(reader, headTreeId) }
+                        else EmptyTreeIterator()
+                    }
+                    diffCommand.setOldTree(oldTreeIterator)
+                    diffCommand.setNewTree(DirCacheIterator(jRepo.readDirCache()))
+                }
+                ChangeStage.UNSTAGED -> {
+                    diffCommand.setOldTree(DirCacheIterator(jRepo.readDirCache()))
+                    diffCommand.setNewTree(FileTreeIterator(jRepo))
+                }
+            }
+
+            val entry = diffCommand.call().firstOrNull() ?: return@withContext null
+            val output = ByteArrayOutputStream()
+            DiffFormatter(output).use { formatter ->
+                formatter.setRepository(jRepo)
+                formatter.format(entry)
+            }
+            parseWorkingDiff(entry, output.toString())
+        }
+    } catch (_: Exception) {
+        null
     }
 }
 
@@ -286,6 +344,103 @@ private fun parseDiffStats(diffText: String): Pair<Int, Int> {
         }
     }
     return additions to deletions
+}
+
+private fun parseWorkingDiff(diffEntry: DiffEntry, diffText: String): FileDiff {
+    val lines = diffText.split('\n')
+    val hunks = mutableListOf<DiffHunk>()
+    var currentHunk: DiffHunk? = null
+    val hunkLines = mutableListOf<DiffLine>()
+    var additions = 0
+    var deletions = 0
+    var oldLineNum = 0
+    var newLineNum = 0
+
+    for (line in lines) {
+        when {
+            line.startsWith("@@") -> {
+                currentHunk?.let {
+                    hunks.add(it.copy(lines = hunkLines.toList()))
+                    hunkLines.clear()
+                }
+                val hunkInfo = parseIndexHunkHeader(line)
+                oldLineNum = hunkInfo.first
+                newLineNum = hunkInfo.third
+                currentHunk = DiffHunk(
+                    header = line,
+                    oldStart = hunkInfo.first,
+                    oldLines = hunkInfo.second,
+                    newStart = hunkInfo.third,
+                    newLines = hunkInfo.fourth,
+                    lines = emptyList()
+                )
+            }
+            line.startsWith("+") && !line.startsWith("+++") -> {
+                additions++
+                hunkLines.add(
+                    DiffLine(
+                        type = LineType.ADDED,
+                        content = line.drop(1),
+                        lineNumber = null,
+                        oldLineNumber = null,
+                        newLineNumber = newLineNum++
+                    )
+                )
+            }
+            line.startsWith("-") && !line.startsWith("---") -> {
+                deletions++
+                hunkLines.add(
+                    DiffLine(
+                        type = LineType.DELETED,
+                        content = line.drop(1),
+                        lineNumber = null,
+                        oldLineNumber = oldLineNum++,
+                        newLineNumber = null
+                    )
+                )
+            }
+            line.startsWith(" ") -> {
+                hunkLines.add(
+                    DiffLine(
+                        type = LineType.CONTEXT,
+                        content = line.drop(1),
+                        lineNumber = oldLineNum,
+                        oldLineNumber = oldLineNum++,
+                        newLineNumber = newLineNum++
+                    )
+                )
+            }
+        }
+    }
+    currentHunk?.let { hunks.add(it.copy(lines = hunkLines.toList())) }
+
+    val status = when (diffEntry.changeType) {
+        DiffEntry.ChangeType.ADD -> FileStatus.ADDED
+        DiffEntry.ChangeType.DELETE -> FileStatus.DELETED
+        DiffEntry.ChangeType.RENAME -> FileStatus.RENAMED
+        else -> FileStatus.MODIFIED
+    }
+
+    return FileDiff(
+        path = diffEntry.newPath ?: diffEntry.oldPath,
+        oldPath = if (diffEntry.oldPath != diffEntry.newPath) diffEntry.oldPath else null,
+        status = status,
+        additions = additions,
+        deletions = deletions,
+        hunks = hunks
+    )
+}
+
+private data class HunkTuple4<T1, T2, T3, T4>(val first: T1, val second: T2, val third: T3, val fourth: T4)
+
+private fun parseIndexHunkHeader(header: String): HunkTuple4<Int, Int, Int, Int> {
+    val match = """@@ -(\d+),(\d+) \+(\d+),(\d+) @@""".toRegex().find(header)
+    return if (match != null) {
+        val (oldStart, oldLines, newStart, newLines) = match.destructured
+        HunkTuple4(oldStart.toInt(), oldLines.toInt(), newStart.toInt(), newLines.toInt())
+    } else {
+        HunkTuple4(0, 0, 0, 0)
+    }
 }
 
 internal fun parseConflictFile(repositoryPath: String, path: String): MergeConflict? {

@@ -178,8 +178,10 @@ class GitRepository(internal val context: Context) : IGitRepository {
     override suspend fun getCommitDiffs(commit: Commit): List<FileDiff> = getCommitDiffsAutoImpl(commit)
 
     override suspend fun getChangedFiles(repository: Repository): List<FileChange> = getChangedFilesImpl(repository)
+    override suspend fun getWorkingFileDiff(repository: Repository, filePath: String, stage: ChangeStage): FileDiff? = getWorkingFileDiffImpl(repository, filePath, stage)
     override suspend fun stageFile(repository: Repository, file: FileChange): GitResult<Unit> = stageFileImpl(repository, file)
     override suspend fun unstageFile(repository: Repository, filePath: String): GitResult<Unit> = unstageFileImpl(repository, filePath)
+    override suspend fun discardFileChanges(repository: Repository, filePath: String): GitResult<Unit> = discardFileChangesImpl(repository, filePath)
     override suspend fun stageAll(repository: Repository): GitResult<Unit> = stageAllImpl(repository)
     override suspend fun getMergeConflicts(repository: Repository): List<MergeConflict> = getMergeConflictsImpl(repository)
     override suspend fun resolveConflict(repository: Repository, path: String, strategy: ConflictResolutionStrategy): GitResult<Unit> = resolveConflictImpl(repository, path, strategy)
@@ -212,6 +214,7 @@ class GitRepository(internal val context: Context) : IGitRepository {
     override suspend fun restoreFileToParentCommit(commit: Commit, filePath: String): GitResult<Unit> = restoreFileToParentCommitAutoImpl(commit, filePath)
     override suspend fun getFileHistory(commit: Commit, filePath: String, repository: Repository): List<Commit> = getFileHistoryImpl(commit, filePath, repository)
     override suspend fun getFileHistory(commit: Commit, filePath: String): List<Commit> = getFileHistoryAutoImpl(commit, filePath)
+    override suspend fun getFileHistoryForPath(repository: Repository, filePath: String): List<Commit> = getFileHistoryForPathImpl(repository, filePath)
 
     override suspend fun stashSave(repository: Repository, message: String): GitResult<Unit> = stashSaveImpl(repository, message)
     override suspend fun stashList(repository: Repository): List<StashEntry> = stashListImpl(repository)
