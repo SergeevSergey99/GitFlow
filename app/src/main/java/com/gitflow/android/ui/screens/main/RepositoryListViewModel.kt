@@ -28,7 +28,8 @@ data class RepositoryListUiState(
 
 class RepositoryListViewModel(
     application: Application,
-    private val gitRepository: IGitRepository
+    private val gitRepository: IGitRepository,
+    private val settingsManager: AppSettingsManager
 ) : AndroidViewModel(application) {
 
     private fun str(id: Int): String = getApplication<Application>().getString(id)
@@ -55,8 +56,7 @@ class RepositoryListViewModel(
     fun createRepository(name: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-            val app = getApplication<Application>()
-            val baseDir = AppSettingsManager(app).getRepositoriesBaseDir(app)
+            val baseDir = settingsManager.getRepositoriesBaseDir(getApplication())
             val localPath = "${baseDir.absolutePath}/$name"
             when (val result = gitRepository.createRepository(name, localPath)) {
                 is GitResult.Success -> _uiState.update { it.copy(showAddDialog = false, isLoading = false) }
@@ -89,8 +89,7 @@ class RepositoryListViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             try {
-                val app = getApplication<Application>()
-                val baseDir = AppSettingsManager(app).getRepositoriesBaseDir(app)
+                val baseDir = settingsManager.getRepositoriesBaseDir(getApplication())
                 val fallbackName = url.substringAfterLast('/').removeSuffix(".git")
                 val targetName = if (name.isBlank()) fallbackName else name
                 val targetPath = "${baseDir.absolutePath}/$targetName"

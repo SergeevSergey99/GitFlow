@@ -24,8 +24,9 @@ import com.gitflow.android.data.models.GitResult
 import com.gitflow.android.data.repository.CloneProgress
 import com.gitflow.android.data.repository.CloneProgressCallback
 import com.gitflow.android.data.repository.CloneProgressTracker
-import com.gitflow.android.data.repository.GitRepository
+import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.data.settings.AppSettingsManager
+import org.koin.android.ext.android.inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -42,7 +43,7 @@ class CloneRepositoryService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private lateinit var notificationManager: NotificationManagerCompat
-    private lateinit var gitRepository: GitRepository
+    private val gitRepository: IGitRepository by inject()
 
     private var cloneJob: Job? = null
     private var progressCallback: CloneProgressCallback? = null
@@ -51,7 +52,6 @@ class CloneRepositoryService : Service() {
     override fun onCreate() {
         super.onCreate()
         notificationManager = NotificationManagerCompat.from(this)
-        gitRepository = GitRepository(applicationContext)
         ensureChannel()
     }
 

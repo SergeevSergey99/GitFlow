@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gitflow.android.data.auth.AuthManager
+import org.koin.androidx.compose.koinInject
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitUser
 
@@ -32,7 +33,7 @@ fun AuthScreen(
     viewModel: AuthViewModel = viewModel()
 ) {
     val context = LocalContext.current
-    val authManager = remember { AuthManager(context) }
+    val authManager: AuthManager = koinInject()
     
     val githubUser by viewModel.githubUser.collectAsState()
     val gitlabUser by viewModel.gitlabUser.collectAsState()

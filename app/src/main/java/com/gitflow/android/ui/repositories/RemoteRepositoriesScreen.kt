@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import org.koin.androidx.compose.koinInject
 import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
@@ -43,7 +44,7 @@ fun RemoteRepositoriesScreen(
     viewModel: RemoteRepositoriesViewModel = viewModel()
 ) {
     val context = LocalContext.current
-    val authManager = remember { AuthManager(context) }
+    val authManager: AuthManager = koinInject()
 
     val repositories by viewModel.repositories.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -508,8 +509,9 @@ fun CloneDialog(
     onConfirm: (String) -> Unit
 ) {
     val context = LocalContext.current
-    val defaultLocalPath = remember(context, repositoryName) {
-        val baseDir = AppSettingsManager(context).getRepositoriesBaseDir(context)
+    val settingsManager: AppSettingsManager = koinInject()
+    val defaultLocalPath = remember(repositoryName) {
+        val baseDir = settingsManager.getRepositoriesBaseDir(context)
         File(baseDir, repositoryName).absolutePath
     }
     var localPath by remember(defaultLocalPath) { mutableStateOf(defaultLocalPath) }
