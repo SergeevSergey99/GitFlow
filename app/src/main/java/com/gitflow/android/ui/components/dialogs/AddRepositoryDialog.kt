@@ -264,6 +264,7 @@ private fun CloneTab(
     onDestinationChange: (String) -> Unit,
     onBrowseDestination: () -> Unit
 ) {
+    @Suppress("DEPRECATION")
     val clipboardManager = LocalClipboardManager.current
 
     OutlinedTextField(

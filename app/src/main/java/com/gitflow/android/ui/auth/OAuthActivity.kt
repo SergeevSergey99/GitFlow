@@ -5,6 +5,7 @@ import android.net.Uri
 import android.net.http.SslError
 import android.os.Bundle
 import android.webkit.SslErrorHandler
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -185,13 +186,12 @@ fun OAuthScreen(
 
                             override fun onReceivedError(
                                 view: WebView?,
-                                errorCode: Int,
-                                description: String?,
-                                failingUrl: String?
+                                request: WebResourceRequest?,
+                                error: WebResourceError?
                             ) {
-                                super.onReceivedError(view, errorCode, description, failingUrl)
+                                super.onReceivedError(view, request, error)
                                 isLoading = false
-                                onError("Ошибка загрузки: $description")
+                                onError("Ошибка загрузки: ${error?.description}")
                             }
 
                             override fun onReceivedSslError(
@@ -263,7 +263,7 @@ private fun checkForAuthCode(
         }
 
         val code = uri.getQueryParameter("code")
-        if (code != null && state != null) {
+        if (code != null) {
             onCodeReceived(code, state)
         } else {
             onError("Не удалось получить код авторизации")
