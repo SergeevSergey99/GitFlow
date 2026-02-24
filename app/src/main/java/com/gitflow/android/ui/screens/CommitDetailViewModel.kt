@@ -86,7 +86,7 @@ class CommitDetailViewModel(
 
     fun selectTab(tab: Int) {
         _uiState.update { it.copy(selectedTab = tab) }
-        if (tab == 3) loadFileTree()
+        if (tab == 2) loadFileTree()
     }
 
     fun selectFile(file: FileDiff?) {

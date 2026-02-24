@@ -142,7 +142,6 @@
     <!-- Commit Detail Dialog -->
     <string name="commit_detail_close">Закрыть</string>
     <string name="commit_detail_files_count">%1$d файлов</string>
-    <string name="commit_detail_tab_changes">Изменения</string>
     <string name="commit_detail_tab_files">Файлы</string>
     <string name="commit_detail_tab_info">Информация</string>
     <string name="commit_detail_tab_file_tree">Дерево файлов</string>

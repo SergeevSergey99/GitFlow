@@ -142,7 +142,6 @@
     <!-- Commit Detail Dialog -->
     <string name="commit_detail_close">Close</string>
     <string name="commit_detail_files_count">%1$d files</string>
-    <string name="commit_detail_tab_changes">Changes</string>
     <string name="commit_detail_tab_files">Files</string>
     <string name="commit_detail_tab_info">Info</string>
     <string name="commit_detail_tab_file_tree">File Tree</string>

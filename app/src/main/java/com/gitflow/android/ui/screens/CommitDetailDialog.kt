@@ -110,6 +110,7 @@ fun CommitDetailDialog(
 
     var showChangedFilesTree by remember { mutableStateOf(settingsManager.isCommitFilesTreeViewEnabled()) }
     var pendingRestoreConfirm by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
+    var diffOverlayFile by remember { mutableStateOf<FileDiff?>(null) }
 
     fun requestRestoreToCommit(fileName: String, filePath: String) {
         pendingRestoreConfirm = Pair(fileName) {
@@ -244,7 +245,7 @@ fun CommitDetailDialog(
                         onClick = { viewModel.selectTab(1) },
                         text = {
                             Text(
-                                text = stringResource(R.string.commit_detail_tab_changes),
+                                text = stringResource(R.string.commit_detail_tab_info),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -253,17 +254,6 @@ fun CommitDetailDialog(
                     Tab(
                         selected = uiState.selectedTab == 2,
                         onClick = { viewModel.selectTab(2) },
-                        text = {
-                            Text(
-                                text = stringResource(R.string.commit_detail_tab_info),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    )
-                    Tab(
-                        selected = uiState.selectedTab == 3,
-                        onClick = { viewModel.selectTab(3) },
                         text = {
                             Text(
                                 text = stringResource(R.string.commit_detail_tab_file_tree),
@@ -311,7 +301,7 @@ fun CommitDetailDialog(
                         else -> {
                             ChangedFilesView(
                                 fileDiffs = uiState.fileDiffs,
-                                selectedFile = uiState.selectedFile,
+                                selectedFile = diffOverlayFile,
                                 showTree = showChangedFilesTree,
                                 hasParentCommit = commit.parents.isNotEmpty(),
                                 contextMenuTargetPath = uiState.contextMenuTargetPath,
@@ -337,53 +327,12 @@ fun CommitDetailDialog(
                                     requestViewHistory(diff.path.substringAfterLast('/'), diff.path)
                                 }
                             ) { file ->
-                                viewModel.selectFile(file)
-                                viewModel.selectTab(1)
+                                diffOverlayFile = file
                             }
                         }
                     }
-                    1 -> when {
-                        uiState.isLoadingDiffs -> {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator()
-                            }
-                        }
-                        uiState.diffsLoadError != null -> {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.ErrorOutline,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(48.dp),
-                                        tint = MaterialTheme.colorScheme.error
-                                    )
-                                    Text(
-                                        text = uiState.diffsLoadError.orEmpty(),
-                                        color = MaterialTheme.colorScheme.error,
-                                        textAlign = TextAlign.Center
-                                    )
-                                }
-                            }
-                        }
-                        else -> {
-                            DiffView(
-                                selectedFile = uiState.selectedFile,
-                                allowedExtensions = normalizedPreviewExtensions,
-                                allowedFileNames = normalizedPreviewFileNames
-                            )
-                        }
-                    }
-                    2 -> CommitInfoView(commit)
-                    3 -> FileTreeView(
+                    1 -> CommitInfoView(commit)
+                    2 -> FileTreeView(
                         commit = commit,
                         repository = repository,
                         gitRepository = gitRepository,
@@ -448,9 +397,117 @@ fun CommitDetailDialog(
             onDismiss = { viewModel.dismissHistoryDiff() }
         )
     }
+
+    diffOverlayFile?.let { fileDiff ->
+        CommitFileDiffOverlay(
+            fileDiff = fileDiff,
+            allowedExtensions = normalizedPreviewExtensions,
+            allowedFileNames = normalizedPreviewFileNames,
+            onDismiss = { diffOverlayFile = null }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CommitFileDiffOverlay(
+    fileDiff: FileDiff,
+    allowedExtensions: Set<String>,
+    allowedFileNames: Set<String>,
+    onDismiss: () -> Unit
+) {
+    val isPreviewSupported = isPreviewSupported(
+        fileName = fileDiff.path.substringAfterLast('/'),
+        allowedExtensions = allowedExtensions,
+        allowedFileNames = allowedFileNames
+    )
+    var sideBySide by rememberSaveable(fileDiff.path) { mutableStateOf(false) }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            shape = RoundedCornerShape(0.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    StartEllipsizedText(
+                        text = fileDiff.path,
+                        modifier = Modifier.weight(1f),
+                        style = LocalTextStyle.current.copy(
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    )
+                    if (isPreviewSupported) {
+                        IconButton(onClick = { sideBySide = false }, modifier = Modifier.size(32.dp)) {
+                            Icon(
+                                Icons.Default.ViewAgenda,
+                                contentDescription = stringResource(R.string.commit_detail_unified_view),
+                                tint = if (!sideBySide) MaterialTheme.colorScheme.primary
+                                       else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(onClick = { sideBySide = true }, modifier = Modifier.size(32.dp)) {
+                            Icon(
+                                Icons.Default.ViewColumn,
+                                contentDescription = stringResource(R.string.commit_detail_side_by_side),
+                                tint = if (sideBySide) MaterialTheme.colorScheme.primary
+                                       else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.commit_detail_close))
+                    }
+                }
+                HorizontalDivider()
+                if (isPreviewSupported) {
+                    if (sideBySide) SideBySideDiffView(fileDiff) else UnifiedDiffView(fileDiff)
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.ErrorOutline,
+                                contentDescription = null,
+                                modifier = Modifier.size(64.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = stringResource(R.string.commit_detail_preview_not_supported),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 16.sp,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = stringResource(R.string.commit_detail_preview_settings_hint),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                fontSize = 14.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun DiffView(
     selectedFile: FileDiff?,
