@@ -115,6 +115,7 @@ dependencies {
     // Koin DI
     implementation(platform("io.insert-koin:koin-bom:4.0.0"))
     implementation("io.insert-koin:koin-android")
+    implementation("io.insert-koin:koin-compose")
     implementation("io.insert-koin:koin-androidx-compose")
 
     // Logging
