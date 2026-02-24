@@ -42,7 +42,7 @@ private const val SIZE_WARNING_THRESHOLD_BYTES = 50L * 1024L * 1024L
 fun RemoteRepositoriesScreen(
     onNavigateBack: () -> Unit,
     onRepositoryCloned: () -> Unit,
-    viewModel: RemoteRepositoriesViewModel = viewModel()
+    viewModel: RemoteRepositoriesViewModel = koinViewModel()
 ) {
     val context = LocalContext.current
     val authManager: AuthManager = koinInject()

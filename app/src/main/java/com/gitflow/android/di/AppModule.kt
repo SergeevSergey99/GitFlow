@@ -12,6 +12,8 @@ import com.gitflow.android.ui.screens.main.BranchesViewModel
 import com.gitflow.android.ui.screens.main.ChangesViewModel
 import com.gitflow.android.ui.screens.main.RepositoryListViewModel
 import com.gitflow.android.ui.screens.main.SettingsViewModel
+import com.gitflow.android.ui.auth.AuthViewModel
+import com.gitflow.android.ui.repositories.RemoteRepositoriesViewModel
 import org.koin.android.ext.koin.androidApplication
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.viewModel
@@ -24,6 +26,8 @@ val appModule = module {
     single<IGitRepository> { GitRepository(androidContext(), get()) }
 
     // ViewModels — static dependencies
+    viewModel { AuthViewModel() }
+    viewModel { RemoteRepositoriesViewModel() }
     viewModel { MainViewModel(androidApplication(), get()) }
     viewModel { RepositoryListViewModel(androidApplication(), get(), get()) }
     viewModel { SettingsViewModel(androidApplication(), get(), get()) }

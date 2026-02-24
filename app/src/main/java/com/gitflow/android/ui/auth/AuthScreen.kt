@@ -21,7 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import org.koin.androidx.compose.koinViewModel
 import com.gitflow.android.data.auth.AuthManager
 import org.koin.compose.koinInject
 import com.gitflow.android.data.models.GitProvider
@@ -31,7 +31,7 @@ import com.gitflow.android.data.models.GitUser
 @Composable
 fun AuthScreen(
     onNavigateBack: () -> Unit,
-    viewModel: AuthViewModel = viewModel()
+    viewModel: AuthViewModel = koinViewModel()
 ) {
     val context = LocalContext.current
     val authManager: AuthManager = koinInject()
