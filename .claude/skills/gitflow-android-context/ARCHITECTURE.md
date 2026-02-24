@@ -30,6 +30,12 @@ Git repo on filesystem + persisted app state
 - `data/auth/AuthManager.kt` — OAuth flow, token storage, provider handling
 - `ui/auth/OAuthActivity.kt` — WebView-based auth UI
 
+### DI layer (Koin 4.0)
+- `di/AppModule.kt` — Koin module: `single { AuthManager }`, `single { AppSettingsManager }`, `single<IGitRepository> { GitRepository }`, all 8 ViewModels via `viewModel {}` / `viewModel { params -> ... }`
+- `GitFlowApplication.kt` — `startKoin { androidContext; modules(appModule) }`
+- Services use `KoinComponent` + `by inject()` (e.g. `CloneRepositoryService`)
+- Screens use `koinViewModel()` and `koinInject()` — no manual Factory classes anywhere
+
 ### UI layer
 - `ui/screens/MainScreen.kt` — top-level tabs/navigation; CallSplit branch button in TopAppBar
 - `ui/screens/main/ChangesScreen.kt` — working tree/staging UX (list+tree, file actions, diff dialog)
@@ -49,7 +55,6 @@ Git repo on filesystem + persisted app state
 ## 4. Current pain points
 
 - Large UI files still contain mixed presentation + interaction orchestration.
-- No formal DI container yet (manual factories / constructor passing).
 - Regression tests for critical git flows are still insufficient.
 
 ## 5. Safe-change checklist

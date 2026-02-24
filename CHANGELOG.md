@@ -2,6 +2,35 @@
 
 Все заметные изменения проекта фиксируются здесь.
 
+## 2026-02-25
+
+### Added — Koin 4.0 DI
+- `di/AppModule.kt` — Koin-модуль: синглтоны `AuthManager`, `AppSettingsManager`, `IGitRepository`; все 8 ViewModels зарегистрированы (`koinViewModel` / `parametersOf` для runtime-параметров).
+- `koin-android`, `koin-compose`, `koin-androidx-compose` добавлены в `build.gradle.kts`.
+- `GitFlowApplication` — `startKoin { androidContext; modules(appModule) }`.
+- ProGuard-правила для Koin добавлены в `proguard-rules.pro`.
+
+### Changed — DI migration
+- `GitRepository` — конструктор принимает `AuthManager` напрямую (инжектируется Koin); `by lazy { AuthManager(context) }` удалён.
+- `MainViewModel`, `SettingsViewModel`, `RepositoryListViewModel` — конструкторы получают зависимости через DI.
+- `CloneRepositoryService` — реализует `KoinComponent`; `gitRepository: IGitRepository by inject()` вместо ручного создания.
+- Все экраны (`MainScreen`, `RepositoryListScreen`, `ChangesScreen`, `CommitDetailDialog`, `BranchManagementDialog`, `SettingsScreen`, `AuthScreen`, `RemoteRepositoriesScreen`) — `koinViewModel()` / `koinInject()` вместо `viewModel(factory = ...)` и `remember { }`.
+- Удалены все вложенные `Factory`-классы из ViewModels (`RepositoryListViewModel`, `BranchesViewModel`, `ChangesViewModel`, `CommitDetailViewModel`).
+
+### Fixed — Compiler warnings
+- AutoMirrored Material Icons: `ArrowBack`, `ArrowForward`, `Sort`, `List`, `Send` и 8 других мигрированы на `Icons.AutoMirrored.Filled.*`.
+- Compose API: `Divider` → `HorizontalDivider`, `TabRow` → `PrimaryTabRow`, `ScrollableTabRow` → `PrimaryScrollableTabRow`, `LinearProgressIndicator` — lambda-форма.
+- `OAuthActivity`: deprecated `onReceivedError(WebView, Int, String, String)` → `onReceivedError(WebView, WebResourceRequest, WebResourceError)`.
+- Koin DSL: импорт `viewModel` DSL перенесён на `org.koin.core.module.dsl.viewModel`.
+- `SettingsScreen`: `LocalLifecycleOwner` → `androidx.lifecycle.compose`.
+
+### Fixed — IDE
+- Явная зависимость `koin-compose` добавлена в `build.gradle.kts` для корректной индексации в IDE (транзитивная зависимость не всегда разрешается).
+
+### Docs
+- Актуализированы `PROJECT_ANALYSIS.md`, `RECOMMENDATIONS.md`.
+- Актуализированы `.claude/skills/gitflow-android-context/{SKILL.md, ARCHITECTURE.md, QUICK_REFERENCE.md}`.
+
 ## 2026-02-22 (2)
 
 ### Added — Branch Management UI

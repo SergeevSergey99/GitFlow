@@ -19,8 +19,9 @@ Use this skill when user asks to:
 
 ## Current project snapshot (important)
 
-- Stack: Kotlin 2.3.10, AGP 8.13.2, Compose BOM 2026.01.01, JGit 5.13.3.
+- Stack: Kotlin 2.3.10, AGP 8.13.2, Compose BOM 2026.01.01, JGit 5.13.3, **Koin 4.0**.
 - Pattern: MVVM + `StateFlow`.
+- DI: Koin 4.0 — `di/AppModule.kt` registers all singletons and ViewModels; no manual Factory classes; screens use `koinViewModel()` / `koinInject()`.
 - Repository contract: `IGitRepository`.
 - Repository implementation is split by domains:
   - `GitRepositoryMeta.kt`

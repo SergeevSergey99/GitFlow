@@ -1,6 +1,6 @@
 # Рекомендации и ближайший backlog
 
-> Обновлено: 2026-02-22 (2)
+> Обновлено: 2026-02-25
 > История изменений: `CHANGELOG.md`
 
 ## Выполнено
@@ -11,6 +11,8 @@
 - [x] Улучшен `ChangesScreen`: полноэкранный diff, long-press actions, tree/list режим, сворачивание панели commit.
 - [x] Добавлены действия: история файла, копирование имени/пути, reset changes.
 - [x] Реализован `BranchManagementDialog` + `BranchesViewModel`: переключение/создание/удаление веток, remote tracking checkout, поиск, ahead/behind chips.
+- [x] Внедрён Koin 4.0 DI: `di/AppModule.kt`, синглтоны + все ViewModels; удалены все Factory-классы; `koinViewModel()` / `koinInject()` на всех экранах.
+- [x] Исправлены compiler warnings: AutoMirrored icons, Compose API (`HorizontalDivider`, `PrimaryTabRow`), OAuthActivity deprecated `onReceivedError`, Koin DSL import.
 
 ## P0 — следующий шаг (обязательное)
 
@@ -28,7 +30,6 @@
 
 - [ ] Разгрузить `ChangesScreen.kt` на отдельные компоненты (tree panel, file actions menu, dialogs).
 - [ ] Разгрузить `CommitDetailDialog.kt` на независимые секции.
-- [ ] Внедрить DI (Hilt/Koin) минимум для `IGitRepository`, `AuthManager`, `AppSettingsManager`.
 - [ ] Добавить CI pipeline: compile + lint + тесты.
 
 ## P1.5 — Branch Management (доработки)

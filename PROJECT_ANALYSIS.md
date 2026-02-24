@@ -1,6 +1,6 @@
 # GitFlowAndroid — актуальный анализ проекта
 
-> Обновлено: 2026-02-22 (2)
+> Обновлено: 2026-02-25
 > История изменений: `CHANGELOG.md`
 
 ## 1) Текущее состояние
@@ -15,6 +15,7 @@
 - JGit: `5.13.3.202401111512-r`
 - Coroutines: `1.10.2`
 - DataStore Preferences: `1.1.2`
+- Koin: `4.0.0` (DI — singleton + ViewModel registration)
 
 ### Архитектура (фактически)
 - MVVM + `StateFlow`
@@ -41,6 +42,7 @@
 - В `CommitDetailDialog` улучшены path-truncation/действия по long-press/режимы отображения.
 - Fetch/Pull/Push UX и счётчики подтянуты в UI.
 - Добавлен `BranchManagementDialog` с `BranchesViewModel`: переключение, создание, удаление веток; поддержка remote tracking branches; кнопка `CallSplit` в TopAppBar.
+- Внедрён **Koin 4.0** DI: `AppModule.kt` регистрирует синглтоны (`AuthManager`, `AppSettingsManager`, `IGitRepository`) и все 8 ViewModels; удалены все manual Factory-классы; все экраны используют `koinViewModel()` / `koinInject()`.
 
 ## 3) Критические проблемы (ещё актуальны)
 
@@ -52,7 +54,6 @@
 ### Архитектура и поддерживаемость
 1. `CommitDetailDialog.kt` и `ChangesScreen.kt` остаются перегруженными по UI-логике.
 2. Часть UI state по-прежнему локально в composable, не в ViewModel (не везде нужно, но есть перегруз).
-3. Отсутствует полноценный DI-контейнер (Hilt/Koin).
 
 ### Качество и стабильность
 1. Нет стабильного набора unit/UI тестов для regression-critical сценариев (stage/unstage/diff/history).
@@ -72,7 +73,6 @@
 
 ### P1
 - Вынести крупные блоки из `ChangesScreen` и `CommitDetailDialog` в отдельные компоненты + ViewModel-слой.
-- Ввести DI (минимально — для repository/auth/settings).
 - Добавить CI: `assembleDebug`, `compileDebugKotlin`, базовые тесты.
 
 ### P2

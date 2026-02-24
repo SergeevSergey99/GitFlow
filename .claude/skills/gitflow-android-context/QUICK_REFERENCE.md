@@ -26,6 +26,9 @@
 - `app/src/main/java/com/gitflow/android/data/auth/AuthManager.kt`
 - `app/src/main/java/com/gitflow/android/ui/auth/OAuthActivity.kt`
 
+### DI
+- `app/src/main/java/com/gitflow/android/di/AppModule.kt`
+
 ## Typical edit map
 
 ### Stage/unstage/reset issues
@@ -63,9 +66,17 @@ rg --files -uu -g '*.md' .claude .
 rg -n "changes_|commit_detail_|graph_" app/src/main/res/values/strings.xml app/src/main/res/values-ru/strings.xml
 ```
 
+### Adding a new ViewModel / dependency
+
+1. Add to `di/AppModule.kt` — `viewModel { MyViewModel(get()) }` or `viewModel { params -> MyViewModel(params.get()) }`.
+2. Use `koinViewModel()` in the composable screen.
+3. If runtime parameter needed: `koinViewModel(key = entity.id, parameters = { parametersOf(entity) })`.
+
 ## Common pitfalls
 
 - Do not assume old file names (`RealGitRepository.kt`) still exist.
 - Keep both locales (`values` and `values-ru`) updated.
 - For staged/unstaged logic, avoid incompatible JGit reset mode combinations.
 - Always test click vs checkbox behavior separately in file lists.
+- `koinInject` is in `org.koin.compose` (not `org.koin.androidx.compose`) — Koin 4.0 package reorganization.
+- `viewModel {}` DSL must use import `org.koin.core.module.dsl.viewModel` (not `org.koin.androidx.viewmodel.dsl`).
