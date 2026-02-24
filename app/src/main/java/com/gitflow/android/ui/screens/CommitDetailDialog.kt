@@ -50,7 +50,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import androidx.compose.ui.res.stringResource
-import org.koin.androidx.compose.koinInject
+import org.koin.compose.koinInject
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 import com.gitflow.android.R

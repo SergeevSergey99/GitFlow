@@ -21,7 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import org.koin.androidx.compose.koinInject
+import org.koin.compose.koinInject
 import org.koin.androidx.compose.koinViewModel
 import androidx.navigation.NavController
 import com.gitflow.android.R
