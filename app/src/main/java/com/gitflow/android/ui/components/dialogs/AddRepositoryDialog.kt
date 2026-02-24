@@ -231,7 +231,7 @@ private fun RepositoryTabs(
         val fontSizePx = if (maxChars > 0) tabWidthPx / (maxChars) else 14f
         val fontSizeSp = with(density) { fontSizePx.toFloat().toSp() }
 
-        TabRow(selectedTabIndex = selectedTab) {
+        PrimaryTabRow(selectedTabIndex = selectedTab) {
             tabTitles.forEachIndexed { index, title ->
                 Tab(
                     selected = selectedTab == index,

@@ -17,7 +17,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
@@ -221,7 +223,7 @@ fun CommitDetailDialog(
                 }
 
                 // Tabs
-                ScrollableTabRow(
+                PrimaryScrollableTabRow(
                     selectedTabIndex = uiState.selectedTab,
                     modifier = Modifier.fillMaxWidth(),
                     edgePadding = 16.dp
@@ -574,7 +576,7 @@ fun DiffView(
             }
         }
 
-        Divider()
+        HorizontalDivider()
 
         // Diff content
         if (showSideBySide) {
@@ -802,7 +804,7 @@ fun ChangedFilesView(
     val peekNestedScroll = remember(showTree, canPullDown) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (source != NestedScrollSource.Drag) return Offset.Zero
+                if (source != NestedScrollSource.UserInput) return Offset.Zero
 
                 val dy = available.y
                 if (dy > 0f && canPullDown) {
@@ -827,7 +829,7 @@ fun ChangedFilesView(
                 available: Offset,
                 source: NestedScrollSource
             ): Offset {
-                if (source != NestedScrollSource.Drag) return Offset.Zero
+                if (source != NestedScrollSource.UserInput) return Offset.Zero
                 if (available.y < 0f && revealOffsetPx > 0f) {
                     isDraggingPeek = true
                     val prev = revealOffsetPx
@@ -896,7 +898,7 @@ fun ChangedFilesView(
                 modifier = Modifier.size(32.dp)
             ) {
                 Icon(
-                    imageVector = if (showTree) Icons.Default.ViewList else Icons.Default.AccountTree,
+                    imageVector = if (showTree) Icons.AutoMirrored.Filled.ViewList else Icons.Default.AccountTree,
                     contentDescription = if (showTree) stringResource(R.string.commit_detail_tab_files) else stringResource(R.string.commit_detail_tab_file_tree),
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(18.dp)
@@ -1536,15 +1538,15 @@ fun getFileIcon(fileName: String): androidx.compose.ui.graphics.vector.ImageVect
         fileName.endsWith(".java") -> Icons.Default.Code
         fileName.endsWith(".xml") -> Icons.Default.Language
         fileName.endsWith(".json") -> Icons.Default.DataObject
-        fileName.endsWith(".md") -> Icons.Default.Article
+        fileName.endsWith(".md") -> Icons.AutoMirrored.Filled.Article
         fileName.endsWith(".gradle") || fileName.endsWith(".gradle.kts") -> Icons.Default.Build
         fileName.endsWith(".properties") -> Icons.Default.Settings
-        fileName.endsWith(".txt") -> Icons.Default.TextSnippet
+        fileName.endsWith(".txt") -> Icons.AutoMirrored.Filled.TextSnippet
         fileName.endsWith(".png") || fileName.endsWith(".jpg") || fileName.endsWith(".jpeg") -> Icons.Default.Image
         fileName == "AndroidManifest.xml" -> Icons.Default.Android
         fileName == "README.md" -> Icons.Default.Info
         fileName == ".gitignore" -> Icons.Default.VisibilityOff
-        else -> Icons.Default.InsertDriveFile
+        else -> Icons.AutoMirrored.Filled.InsertDriveFile
     }
 }
 
@@ -1691,7 +1693,7 @@ fun FileTreeView(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     IconButton(onClick = { viewModel.closeFilterBar() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.commit_detail_file_tree_close_search))
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.commit_detail_file_tree_close_search))
                     }
                 }
             }

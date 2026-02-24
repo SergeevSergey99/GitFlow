@@ -34,9 +34,9 @@ class MainActivity : ComponentActivity() {
         }
 
         val locale = when (language) {
-            AppSettingsManager.LANGUAGE_ENGLISH -> Locale("en")
-            AppSettingsManager.LANGUAGE_RUSSIAN -> Locale("ru")
-            else -> Locale("ru") // Fallback to Russian
+            AppSettingsManager.LANGUAGE_ENGLISH -> Locale.forLanguageTag("en")
+            AppSettingsManager.LANGUAGE_RUSSIAN -> Locale.forLanguageTag("ru")
+            else -> Locale.forLanguageTag("ru") // Fallback to Russian
         }
 
         Locale.setDefault(locale)

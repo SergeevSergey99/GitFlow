@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -741,7 +742,7 @@ private fun SectionHeader(
             modifier = Modifier.size(28.dp)
         ) {
             Icon(
-                imageVector = if (isTreeView) Icons.Default.ViewList else Icons.Default.AccountTree,
+                imageVector = if (isTreeView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.AccountTree,
                 contentDescription = if (isTreeView) stringResource(R.string.commit_detail_tab_files) else stringResource(R.string.commit_detail_tab_file_tree),
                 modifier = Modifier.size(16.dp),
                 tint = MaterialTheme.colorScheme.primary
@@ -1055,7 +1056,7 @@ private fun WorkingTreeDiffDialog(
                         Icon(Icons.Default.Close, contentDescription = null)
                     }
                 }
-                Divider()
+                HorizontalDivider()
                 if (sideBySide) SideBySideDiffView(diff) else UnifiedDiffView(diff)
             }
         }
@@ -1096,7 +1097,7 @@ private fun FileHistoryDialog(
                         Icon(Icons.Default.Close, contentDescription = null)
                     }
                 }
-                Divider()
+                HorizontalDivider()
                 when {
                     isLoading -> {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1146,7 +1147,7 @@ private fun fileStatusIcon(status: ChangeStatus): androidx.compose.ui.graphics.v
     ChangeStatus.DELETED -> Icons.Default.RemoveCircle
     ChangeStatus.RENAMED -> Icons.Default.DriveFileRenameOutline
     ChangeStatus.COPIED -> Icons.Default.FileCopy
-    ChangeStatus.UNTRACKED -> Icons.Default.HelpOutline
+    ChangeStatus.UNTRACKED -> Icons.AutoMirrored.Filled.HelpOutline
 }
 
 @Composable

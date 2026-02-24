@@ -3,6 +3,7 @@ package com.gitflow.android.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -65,7 +66,7 @@ fun MainScreen(navController: NavController) {
                     selectedRepository?.let {
                         IconButton(onClick = { showBranchDialog = true }) {
                             Icon(
-                                Icons.Default.CallSplit,
+                                Icons.AutoMirrored.Filled.CallSplit,
                                 contentDescription = stringResource(R.string.branches_title)
                             )
                         }

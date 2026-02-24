@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -69,7 +70,7 @@ fun BranchManagementDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        Icons.Default.CallSplit,
+                        Icons.AutoMirrored.Filled.CallSplit,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary
                     )
@@ -309,7 +310,7 @@ private fun BranchRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            imageVector = if (isCurrent) Icons.Default.AccountTree else Icons.Default.CallSplit,
+            imageVector = if (isCurrent) Icons.Default.AccountTree else Icons.AutoMirrored.Filled.CallSplit,
             contentDescription = null,
             tint = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(20.dp)

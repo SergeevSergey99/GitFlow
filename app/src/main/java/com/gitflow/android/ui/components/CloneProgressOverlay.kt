@@ -121,7 +121,7 @@ private fun CloneProgressCard(
 
                     if (state.progress.total > 0) {
                         LinearProgressIndicator(
-                            progress = state.progress.progress.coerceIn(0f, 1f),
+                            progress = { state.progress.progress.coerceIn(0f, 1f) },
                             modifier = Modifier.fillMaxWidth(),
                             color = MaterialTheme.colorScheme.primary
                         )

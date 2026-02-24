@@ -377,23 +377,11 @@ class CloneRepositoryService : Service() {
             if (!settingsManager.isWifiOnlyDownloadsEnabled()) {
                 return true
             }
-            return isWifiConnection(context)
-        }
-
-        private fun isWifiConnection(context: Context): Boolean {
-            val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-                ?: return false
-
-            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                val network = connectivityManager.activeNetwork ?: return false
-                val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
-                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+            val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val network = connectivityManager.activeNetwork ?: return false
+            val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+            return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
                     capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
-            } else {
-                val networkInfo = connectivityManager.activeNetworkInfo ?: return false
-                networkInfo.type == ConnectivityManager.TYPE_WIFI ||
-                    networkInfo.type == ConnectivityManager.TYPE_ETHERNET
-            }
         }
 
         private fun showWifiOnlyRestriction(context: Context) {

@@ -20,10 +20,10 @@ import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Label
-import androidx.compose.material.icons.filled.LabelOff
+import androidx.compose.material.icons.automirrored.filled.Label
+import androidx.compose.material.icons.automirrored.filled.LabelOff
 import androidx.compose.material.icons.filled.LocalOffer
-import androidx.compose.material.icons.filled.MergeType
+import androidx.compose.material.icons.automirrored.filled.MergeType
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Search
@@ -338,7 +338,7 @@ fun EnhancedGraphView(
                 )
 
                 CommitActionListItem(
-                    icon = Icons.Default.Label,
+                    icon = Icons.AutoMirrored.Filled.Label,
                     text = stringResource(R.string.graph_commit_action_tag_add),
                     enabled = !isOperationRunning,
                     onClick = {
@@ -349,7 +349,7 @@ fun EnhancedGraphView(
 
                 val canDeleteTag = commitTags.isNotEmpty()
                 CommitActionListItem(
-                    icon = Icons.Default.LabelOff,
+                    icon = Icons.AutoMirrored.Filled.LabelOff,
                     text = stringResource(R.string.graph_commit_action_tag_delete),
                     enabled = canDeleteTag && !isOperationRunning,
                     onClick = {
@@ -371,7 +371,7 @@ fun EnhancedGraphView(
                 )
 
                 CommitActionListItem(
-                    icon = Icons.Default.MergeType,
+                    icon = Icons.AutoMirrored.Filled.MergeType,
                     text = stringResource(R.string.graph_commit_action_merge, currentBranchName),
                     enabled = !isOperationRunning,
                     onClick = {
@@ -908,7 +908,7 @@ private fun GraphCommitRow(
                 // Иконка merge коммита
                 if (commit.isMergeCommit) {
                     androidx.compose.material3.Icon(
-                        Icons.Default.MergeType,
+                        Icons.AutoMirrored.Filled.MergeType,
                         contentDescription = stringResource(R.string.graph_merge_commit),
                         modifier = Modifier.size(14.dp),
                         tint = MaterialTheme.colorScheme.primary

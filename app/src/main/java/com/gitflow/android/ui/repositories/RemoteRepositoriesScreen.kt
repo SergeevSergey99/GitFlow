@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -87,7 +88,7 @@ fun RemoteRepositoriesScreen(
                 title = { Text(stringResource(R.string.remote_repos_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.remote_repos_back))
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.remote_repos_back))
                     }
                 },
                 actions = {
@@ -178,7 +179,7 @@ fun ProviderTabs(
     isGitHubAuthenticated: Boolean,
     isGitLabAuthenticated: Boolean
 ) {
-    TabRow(
+    PrimaryTabRow(
         selectedTabIndex = when (selectedProvider) {
             GitProvider.GITHUB -> 0
             GitProvider.GITLAB -> 1
