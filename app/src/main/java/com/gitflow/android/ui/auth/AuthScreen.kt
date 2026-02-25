@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -16,13 +17,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
 import org.koin.androidx.compose.koinViewModel
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitUser
@@ -214,11 +218,10 @@ fun AccountCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Icon(
-                    providerIcon(provider),
-                    contentDescription = null,
-                    modifier = Modifier.size(32.dp),
-                    tint = providerIconColor(provider)
+                ProviderAvatar(
+                    provider = provider,
+                    avatarUrl = user?.avatarUrl,
+                    modifier = Modifier.size(40.dp)
                 )
 
                 Column(modifier = Modifier.weight(1f)) {
@@ -395,6 +398,44 @@ private fun PATLoginDialog(
             }
         }
     )
+}
+
+// ---- Provider avatar composable ---------------------------------------------
+
+/**
+ * Displays the user's avatar for [provider]. If [avatarUrl] is non-null it loads
+ * the image with Coil; otherwise falls back to the provider icon.
+ */
+@Composable
+internal fun ProviderAvatar(
+    provider: GitProvider,
+    avatarUrl: String?,
+    modifier: Modifier = Modifier
+) {
+    val iconColor = providerIconColor(provider)
+    Surface(
+        modifier = modifier,
+        shape = CircleShape,
+        color = iconColor.copy(alpha = 0.12f)
+    ) {
+        if (avatarUrl != null) {
+            AsyncImage(
+                model = avatarUrl,
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Icon(
+                providerIcon(provider),
+                contentDescription = null,
+                modifier = Modifier.padding(8.dp),
+                tint = iconColor
+            )
+        }
+    }
 }
 
 // ---- Provider display helpers ------------------------------------------------

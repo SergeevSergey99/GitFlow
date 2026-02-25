@@ -118,6 +118,10 @@ dependencies {
     implementation("io.insert-koin:koin-compose")
     implementation("io.insert-koin:koin-androidx-compose")
 
+    // Coil — async image loading for avatars
+    implementation("io.coil-kt.coil3:coil-compose:3.0.4")
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.4")
+
     // Logging
     implementation("com.jakewharton.timber:timber:5.0.1")
 

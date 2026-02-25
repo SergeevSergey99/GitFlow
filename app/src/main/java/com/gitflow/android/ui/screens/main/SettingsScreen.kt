@@ -35,9 +35,14 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
 import com.gitflow.android.data.models.GitProvider
-import com.gitflow.android.data.models.GitUser
 import com.gitflow.android.data.settings.AppSettingsManager
+import com.gitflow.android.ui.auth.providerDisplayName
+import com.gitflow.android.ui.auth.providerIcon
+import com.gitflow.android.ui.auth.providerIconColor
 import com.gitflow.android.ui.components.dialogs.GraphPresetDialog
 import com.gitflow.android.ui.components.dialogs.ThemePresetDialog
 import org.koin.androidx.compose.koinViewModel
@@ -130,9 +135,7 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             AccountSection(
-                githubUser = uiState.githubUser,
-                gitlabUser = uiState.gitlabUser,
-                hasAnyAuth = uiState.githubUser != null || uiState.gitlabUser != null,
+                connectedAccounts = uiState.connectedAccounts,
                 onManageAccountsClick = { navController.navigate("auth") }
             )
 
@@ -497,11 +500,10 @@ private fun FilePreviewSettingsEditor(
 
 @Composable
 private fun AccountSection(
-    githubUser: GitUser?,
-    gitlabUser: GitUser?,
-    hasAnyAuth: Boolean,
+    connectedAccounts: List<ConnectedAccount>,
     onManageAccountsClick: () -> Unit
 ) {
+    val hasAnyAuth = connectedAccounts.isNotEmpty()
     Card(
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -516,23 +518,12 @@ private fun AccountSection(
             Spacer(modifier = Modifier.height(12.dp))
 
             if (hasAnyAuth) {
-                // Показываем информацию об авторизованных аккаунтах
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    githubUser?.let { user ->
-                        UserAccountRow(
-                            user = user,
-                            provider = GitProvider.GITHUB
-                        )
-                    }
-                    gitlabUser?.let { user ->
-                        UserAccountRow(
-                            user = user,
-                            provider = GitProvider.GITLAB
-                        )
+                    connectedAccounts.forEach { account ->
+                        UserAccountRow(account = account)
                     }
                 }
             } else {
-                // Показываем состояние "гость"
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -751,34 +742,38 @@ private fun AboutSection() {
 }
 
 @Composable
-fun UserAccountRow(
-    user: GitUser,
-    provider: GitProvider
-) {
+fun UserAccountRow(account: ConnectedAccount) {
+    val user = account.user
+    val provider = user.provider
+    val iconColor = providerIconColor(provider)
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Avatar: real image or fallback provider icon
         Surface(
             modifier = Modifier.size(48.dp),
             shape = CircleShape,
-            color = when (provider) {
-                GitProvider.GITHUB -> Color(0xFF24292F).copy(alpha = 0.1f)
-                GitProvider.GITLAB -> Color(0xFFFC6D26).copy(alpha = 0.1f)
-            }
+            color = iconColor.copy(alpha = 0.12f)
         ) {
-            Icon(
-                when (provider) {
-                    GitProvider.GITHUB -> Icons.Default.Code
-                    GitProvider.GITLAB -> Icons.Default.Storage
-                },
-                contentDescription = null,
-                modifier = Modifier.padding(12.dp),
-                tint = when (provider) {
-                    GitProvider.GITHUB -> Color(0xFF24292F)
-                    GitProvider.GITLAB -> Color(0xFFFC6D26)
-                }
-            )
+            if (user.avatarUrl != null) {
+                AsyncImage(
+                    model = user.avatarUrl,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    providerIcon(provider),
+                    contentDescription = null,
+                    modifier = Modifier.padding(12.dp),
+                    tint = iconColor
+                )
+            }
         }
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -787,10 +782,24 @@ fun UserAccountRow(
                 fontWeight = FontWeight.Medium
             )
             Text(
-                text = "${provider.name} • @${user.login}",
+                text = "${providerDisplayName(provider)} • @${user.login}",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            if (account.instanceUrl != null) {
+                Text(
+                    text = account.instanceUrl,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            user.email?.let { email ->
+                Text(
+                    text = email,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
         Surface(
             shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),

@@ -4,7 +4,6 @@ import android.app.Application
 import android.content.SharedPreferences
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitUser
@@ -13,11 +12,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
+
+data class ConnectedAccount(
+    val user: GitUser,
+    val instanceUrl: String? = null
+)
 
 data class SettingsUiState(
-    val githubUser: GitUser? = null,
-    val gitlabUser: GitUser? = null,
+    val connectedAccounts: List<ConnectedAccount> = emptyList(),
     val wifiOnlyDownloads: Boolean = false,
     val currentLanguage: String = AppSettingsManager.LANGUAGE_SYSTEM,
     val customStoragePath: String? = null,
@@ -52,12 +54,18 @@ class SettingsViewModel(
         }
     }
 
+    private fun buildConnectedAccounts(): List<ConnectedAccount> =
+        GitProvider.entries.mapNotNull { provider ->
+            if (!authManager.isAuthenticated(provider)) return@mapNotNull null
+            val user = authManager.getCurrentUser(provider) ?: return@mapNotNull null
+            ConnectedAccount(user = user, instanceUrl = authManager.getInstanceUrl(provider))
+        }
+
     private fun loadInitialState() {
         val app = getApplication<Application>()
         val customUri = settingsManager.getCustomStorageUri()
         _uiState.value = SettingsUiState(
-            githubUser = authManager.getCurrentUser(GitProvider.GITHUB),
-            gitlabUser = authManager.getCurrentUser(GitProvider.GITLAB),
+            connectedAccounts = buildConnectedAccounts(),
             wifiOnlyDownloads = settingsManager.isWifiOnlyDownloadsEnabled(),
             currentLanguage = settingsManager.getLanguage(),
             customStoragePath = customUri,
@@ -71,12 +79,7 @@ class SettingsViewModel(
 
     /** Re-read auth users — called on screen resume in case the auth screen changed them. */
     fun refreshUsers() {
-        _uiState.update {
-            it.copy(
-                githubUser = authManager.getCurrentUser(GitProvider.GITHUB),
-                gitlabUser = authManager.getCurrentUser(GitProvider.GITLAB)
-            )
-        }
+        _uiState.update { it.copy(connectedAccounts = buildConnectedAccounts()) }
     }
 
     fun setWifiOnlyDownloads(enabled: Boolean) {
