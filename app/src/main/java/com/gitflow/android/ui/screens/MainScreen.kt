@@ -34,6 +34,7 @@ fun MainScreen(navController: NavController) {
     val selectedGraphPreset by viewModel.selectedGraphPreset.collectAsState()
     val selectedColorTheme by viewModel.selectedColorTheme.collectAsState()
     val selectedDarkMode by viewModel.selectedDarkMode.collectAsState()
+    val isRestoringSession by viewModel.isRestoringSession.collectAsState()
     val repositories by viewModel.repositoriesFlow.collectAsState(initial = emptyList())
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val gitRepository = viewModel.getGitRepository()
@@ -109,6 +110,10 @@ fun MainScreen(navController: NavController) {
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            if (isRestoringSession) {
+                // Ждём восстановления сессии — ничего не показываем чтобы избежать мигания
+                return@Box
+            }
             when (selectedTab) {
                 0 -> RepositoryListScreen(
                     repositories = repositories,

@@ -41,6 +41,10 @@ class MainViewModel(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
+    // true пока не завершена первая попытка восстановить сессию
+    private val _isRestoringSession = MutableStateFlow(settingsManager.getLastRepositoryId() != null)
+    val isRestoringSession: StateFlow<Boolean> = _isRestoringSession.asStateFlow()
+
     fun selectTab(tab: Int) {
         _selectedTab.value = tab
     }
@@ -98,6 +102,7 @@ class MainViewModel(
                 // Репозиторий удалён, недоступен или повреждён — сбрасываем
                 settingsManager.setLastRepositoryId(null)
             }
+            _isRestoringSession.value = false
             return
         }
         val updated = repositories.find { it.id == selected.id }
