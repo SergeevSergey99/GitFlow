@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
 
+enum class MainTab { REPOSITORIES, GRAPH, CHANGES, SETTINGS }
+
 class MainViewModel(
     application: Application,
     private val gitRepository: IGitRepository,
@@ -23,8 +25,8 @@ class MainViewModel(
 
     val repositoriesFlow: Flow<List<Repository>> = gitRepository.getRepositoriesFlow()
 
-    private val _selectedTab = MutableStateFlow(0)
-    val selectedTab: StateFlow<Int> = _selectedTab.asStateFlow()
+    private val _selectedTab = MutableStateFlow(MainTab.REPOSITORIES)
+    val selectedTab: StateFlow<MainTab> = _selectedTab.asStateFlow()
 
     private val _selectedRepository = MutableStateFlow<Repository?>(null)
     val selectedRepository: StateFlow<Repository?> = _selectedRepository.asStateFlow()
@@ -45,13 +47,13 @@ class MainViewModel(
     private val _isRestoringSession = MutableStateFlow(settingsManager.getLastRepositoryId() != null)
     val isRestoringSession: StateFlow<Boolean> = _isRestoringSession.asStateFlow()
 
-    fun selectTab(tab: Int) {
+    fun selectTab(tab: MainTab) {
         _selectedTab.value = tab
     }
 
     fun selectRepository(repo: Repository) {
         _selectedRepository.value = repo
-        _selectedTab.value = 1
+        _selectedTab.value = MainTab.GRAPH
         settingsManager.setLastRepositoryId(repo.id)
     }
 
@@ -97,7 +99,7 @@ class MainViewModel(
             val repo = repositories.find { it.id == lastId }
             if (repo != null && isValidGitRepo(repo.path)) {
                 _selectedRepository.value = repo
-                _selectedTab.value = 1
+                _selectedTab.value = MainTab.GRAPH
             } else {
                 // Репозиторий удалён, недоступен или повреждён — сбрасываем
                 settingsManager.setLastRepositoryId(null)
@@ -110,7 +112,7 @@ class MainViewModel(
             updated == null || !isValidGitRepo(updated.path) -> {
                 _selectedRepository.value = null
                 settingsManager.setLastRepositoryId(null)
-                if (_selectedTab.value != 0) _selectedTab.value = 0
+                if (_selectedTab.value != MainTab.REPOSITORIES) _selectedTab.value = MainTab.REPOSITORIES
             }
             updated != selected -> {
                 _selectedRepository.value = updated

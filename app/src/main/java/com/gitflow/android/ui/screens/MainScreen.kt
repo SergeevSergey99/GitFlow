@@ -81,26 +81,26 @@ fun MainScreen(navController: NavController) {
                 NavigationBarItem(
                     icon = { Icon(Icons.Default.Folder, contentDescription = stringResource(R.string.main_screen_tab_repos)) },
                     label = { Text(stringResource(R.string.main_screen_tab_repos)) },
-                    selected = selectedTab == 0,
-                    onClick = { viewModel.selectTab(0) }
+                    selected = selectedTab == MainTab.REPOSITORIES,
+                    onClick = { viewModel.selectTab(MainTab.REPOSITORIES) }
                 )
                 NavigationBarItem(
                     icon = { Icon(Icons.Default.AccountTree, contentDescription = stringResource(R.string.main_screen_tab_graph)) },
                     label = { Text(stringResource(R.string.main_screen_tab_graph)) },
-                    selected = selectedTab == 1,
-                    onClick = { viewModel.selectTab(1) }
+                    selected = selectedTab == MainTab.GRAPH,
+                    onClick = { viewModel.selectTab(MainTab.GRAPH) }
                 )
                 NavigationBarItem(
                     icon = { Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.main_screen_tab_changes)) },
                     label = { Text(stringResource(R.string.main_screen_tab_changes)) },
-                    selected = selectedTab == 2,
-                    onClick = { viewModel.selectTab(2) }
+                    selected = selectedTab == MainTab.CHANGES,
+                    onClick = { viewModel.selectTab(MainTab.CHANGES) }
                 )
                 NavigationBarItem(
                     icon = { Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.main_screen_tab_settings)) },
                     label = { Text(stringResource(R.string.main_screen_tab_settings)) },
-                    selected = selectedTab == 3,
-                    onClick = { viewModel.selectTab(3) }
+                    selected = selectedTab == MainTab.SETTINGS,
+                    onClick = { viewModel.selectTab(MainTab.SETTINGS) }
                 )
             }
         }
@@ -115,7 +115,7 @@ fun MainScreen(navController: NavController) {
                 return@Box
             }
             when (selectedTab) {
-                0 -> RepositoryListScreen(
+                MainTab.REPOSITORIES -> RepositoryListScreen(
                     repositories = repositories,
                     selectedRepositoryId = selectedRepository?.id,
                     gitRepository = gitRepository,
@@ -124,18 +124,18 @@ fun MainScreen(navController: NavController) {
                     onRefresh = { viewModel.refreshRepositories() },
                     navController = navController
                 )
-                1 -> {
+                MainTab.GRAPH -> {
                     EnhancedGraphView(
                         repository = selectedRepository,
                         gitRepository = gitRepository,
                         config = getGraphConfig(selectedGraphPreset)
                     )
                 }
-                2 -> ChangesScreen(
+                MainTab.CHANGES -> ChangesScreen(
                     repository = selectedRepository,
                     gitRepository = gitRepository
                 )
-                3 -> SettingsScreen(
+                MainTab.SETTINGS -> SettingsScreen(
                     selectedGraphPreset = selectedGraphPreset,
                     onGraphPresetChanged = { viewModel.changeGraphPreset(it) },
                     selectedColorTheme = selectedColorTheme,
