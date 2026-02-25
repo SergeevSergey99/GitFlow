@@ -48,18 +48,12 @@ fun MainScreen(navController: NavController) {
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
+                    selectedRepository?.let { repo ->
                         Text(
-                            stringResource(R.string.main_screen_title),
-                            fontWeight = FontWeight.Bold
+                            text = stringResource(R.string.main_screen_repo_info, repo.name, repo.currentBranch),
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        selectedRepository?.let { repo ->
-                            Text(
-                                text = stringResource(R.string.main_screen_repo_info, repo.name, repo.currentBranch),
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
                     }
                 },
                 actions = {
