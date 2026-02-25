@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.IGitRepository
+import com.gitflow.android.data.settings.AppSettingsManager
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,7 +14,8 @@ import kotlinx.coroutines.launch
 
 class MainViewModel(
     application: Application,
-    private val gitRepository: IGitRepository
+    private val gitRepository: IGitRepository,
+    private val settingsManager: AppSettingsManager
 ) : AndroidViewModel(application) {
 
     fun getGitRepository(): IGitRepository = gitRepository
@@ -26,7 +28,7 @@ class MainViewModel(
     private val _selectedRepository = MutableStateFlow<Repository?>(null)
     val selectedRepository: StateFlow<Repository?> = _selectedRepository.asStateFlow()
 
-    private val _selectedGraphPreset = MutableStateFlow("Default")
+    private val _selectedGraphPreset = MutableStateFlow(settingsManager.getGraphPreset())
     val selectedGraphPreset: StateFlow<String> = _selectedGraphPreset.asStateFlow()
 
     private val _isRefreshing = MutableStateFlow(false)
@@ -43,6 +45,7 @@ class MainViewModel(
 
     fun changeGraphPreset(preset: String) {
         _selectedGraphPreset.value = preset
+        settingsManager.setGraphPreset(preset)
     }
 
     fun refreshRepositories() {

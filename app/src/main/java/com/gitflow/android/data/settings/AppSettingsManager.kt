@@ -111,6 +111,14 @@ class AppSettingsManager(context: Context) {
         preferences.unregisterOnSharedPreferenceChangeListener(listener)
     }
 
+    fun getGraphPreset(): String {
+        return preferences.getString(KEY_GRAPH_PRESET, GRAPH_PRESET_DEFAULT) ?: GRAPH_PRESET_DEFAULT
+    }
+
+    fun setGraphPreset(preset: String) {
+        preferences.edit().putString(KEY_GRAPH_PRESET, preset).apply()
+    }
+
     fun getLanguage(): String {
         return preferences.getString(KEY_LANGUAGE, LANGUAGE_RUSSIAN) ?: LANGUAGE_RUSSIAN
     }
@@ -185,10 +193,16 @@ class AppSettingsManager(context: Context) {
         internal const val KEY_PREVIEW_FILE_NAMES = "preview_file_names"
         private const val KEY_LANGUAGE = "app_language"
         private const val KEY_CUSTOM_STORAGE_URI = "custom_storage_uri"
+        private const val KEY_GRAPH_PRESET = "graph_preset"
 
         const val LANGUAGE_SYSTEM = "system"
         const val LANGUAGE_ENGLISH = "en"
         const val LANGUAGE_RUSSIAN = "ru"
+
+        const val GRAPH_PRESET_DEFAULT = "Default"
+        const val GRAPH_PRESET_COMPACT = "Compact"
+        const val GRAPH_PRESET_LARGE = "Large"
+        const val GRAPH_PRESET_WIDE = "Wide"
 
         val DEFAULT_PREVIEW_EXTENSIONS: LinkedHashSet<String> = linkedSetOf(
             "c",

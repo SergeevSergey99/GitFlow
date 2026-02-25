@@ -5,21 +5,37 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.times
 
 data class GraphConfig(
+    /** Высота одной строки коммита (вертикальный шаг между коммитами) */
     val rowHeight: Dp,
+    /** Внутренний вертикальный отступ внутри строки */
     val rowPadding: Dp,
+    /** Горизонтальный шаг между соседними ветками (дорожками) */
     val laneStep: Dp,
+    /** Диаметр кружка-узла коммита */
     val nodeSize: Dp,
+    /** Смещение центра узла от левого края области графа */
     val nodeCenterOffset: Dp,
+    /** Толщина обводки узла коммита */
     val nodeBorderWidth: Dp,
+    /** Толщина линий-связей между коммитами */
     val lineStrokeWidth: Dp,
+    /** Минимальная ширина информационной части (хеш, сообщение, бейджи) */
     val infoMinWidth: Dp,
+    /** Отступ от графа до начала информационной части */
     val infoStartPadding: Dp,
+    /** Вертикальный интервал между хешем/сообщением и строкой бейджей */
     val textSpacing: Dp,
+    /** Горизонтальный интервал между бейджами веток/тегов */
     val badgeSpacing: Dp,
+    /** Радиус скругления углов бейджа */
     val badgeCornerRadius: Dp,
+    /** Горизонтальный внутренний отступ бейджа */
     val badgeHorizontalPadding: Dp,
+    /** Вертикальный внутренний отступ бейджа */
     val badgeVerticalPadding: Dp,
+    /** Размер иконки внутри бейджа */
     val badgeIconSize: Dp,
+    /** Отступ между иконкой и текстом внутри бейджа */
     val badgeIconSpacing: Dp
 ) {
     fun getGraphWidth(maxLanes: Int): Dp {
