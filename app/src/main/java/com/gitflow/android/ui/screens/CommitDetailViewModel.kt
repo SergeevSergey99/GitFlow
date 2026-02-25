@@ -11,9 +11,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+enum class CommitDetailTab { Files, Info, FileTree }
+
 data class CommitDetailUiState(
     // Main dialog state
-    val selectedTab: Int = 0,
+    val selectedTab: CommitDetailTab = CommitDetailTab.Files,
     val fileDiffs: List<FileDiff> = emptyList(),
     val isLoadingDiffs: Boolean = true,
     val diffsLoadError: String? = null,
@@ -84,9 +86,9 @@ class CommitDetailViewModel(
         }
     }
 
-    fun selectTab(tab: Int) {
+    fun selectTab(tab: CommitDetailTab) {
         _uiState.update { it.copy(selectedTab = tab) }
-        if (tab == 2) loadFileTree()
+        if (tab == CommitDetailTab.FileTree) loadFileTree()
     }
 
     fun selectFile(file: FileDiff?) {
