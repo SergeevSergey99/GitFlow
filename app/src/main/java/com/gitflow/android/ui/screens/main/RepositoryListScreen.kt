@@ -36,6 +36,7 @@ import com.gitflow.android.ui.components.dialogs.DeleteRepositoryDialog
 @Composable
 fun RepositoryListScreen(
     repositories: List<Repository>,
+    selectedRepositoryId: String? = null,
     gitRepository: IGitRepository,
     onRepositorySelected: (Repository) -> Unit,
     isRefreshing: Boolean = false,
@@ -82,6 +83,7 @@ fun RepositoryListScreen(
                 items(repositories) { repository ->
                     RepositoryCard(
                         repository = repository,
+                        isSelected = repository.id == selectedRepositoryId,
                         onClick = { onRepositorySelected(repository) },
                         onDelete = { repo, _ ->
                             repoViewModel.showDeleteConfirm(repo)

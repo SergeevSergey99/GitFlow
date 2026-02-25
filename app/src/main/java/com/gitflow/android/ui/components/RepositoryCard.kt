@@ -23,6 +23,7 @@ import java.util.*
 @Composable
 fun RepositoryCard(
     repository: Repository,
+    isSelected: Boolean = false,
     onClick: () -> Unit,
     onDelete: (Repository, Boolean) -> Unit = { _, _ -> }
 ) {
@@ -31,7 +32,12 @@ fun RepositoryCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() },
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(12.dp),
+        colors = if (isSelected) {
+            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+        } else {
+            CardDefaults.cardColors()
+        }
     ) {
         Row(
             modifier = Modifier

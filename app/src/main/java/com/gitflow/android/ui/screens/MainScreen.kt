@@ -110,6 +110,7 @@ fun MainScreen(navController: NavController) {
             when (selectedTab) {
                 0 -> RepositoryListScreen(
                     repositories = repositories,
+                    selectedRepositoryId = selectedRepository?.id,
                     gitRepository = gitRepository,
                     onRepositorySelected = { viewModel.selectRepository(it) },
                     isRefreshing = isRefreshing,
