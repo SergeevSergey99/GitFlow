@@ -19,6 +19,8 @@ interface IGitRepository {
     suspend fun updateRepository(repository: Repository)
     suspend fun refreshRepository(repository: Repository): Repository?
     suspend fun getCommits(repository: Repository, page: Int = 0, pageSize: Int = 50): List<Commit>
+    suspend fun getCommitByHash(hash: String, repository: Repository): Commit?
+    suspend fun getCommitByHash(hash: String): Commit?
     suspend fun getChangedFiles(repository: Repository): List<FileChange>
     suspend fun getWorkingFileDiff(repository: Repository, filePath: String, stage: ChangeStage): FileDiff?
     suspend fun stageFile(repository: Repository, file: FileChange): GitResult<Unit>

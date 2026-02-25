@@ -29,6 +29,9 @@ data class CommitDetailUiState(
     val contextMenuTargetPath: String? = null,
     val isRestoringFile: Boolean = false,
     val restoreResult: String? = null,
+    // Parent commits state
+    val parentCommits: List<Commit> = emptyList(),
+    val isLoadingParents: Boolean = false,
     // File history state
     val historyDialogFile: FileTreeNode? = null,
     val fileHistory: List<Commit> = emptyList(),
@@ -51,6 +54,23 @@ class CommitDetailViewModel(
 
     init {
         loadDiffs()
+        if (commit.parents.isNotEmpty()) loadParentCommits()
+    }
+
+    fun loadParentCommits() {
+        _uiState.update { it.copy(isLoadingParents = true) }
+        viewModelScope.launch {
+            val loaded = commit.parents.mapNotNull { hash ->
+                try {
+                    if (repository != null) {
+                        gitRepository.getCommitByHash(hash, repository)
+                    } else {
+                        gitRepository.getCommitByHash(hash)
+                    }
+                } catch (_: Exception) { null }
+            }
+            _uiState.update { it.copy(parentCommits = loaded, isLoadingParents = false) }
+        }
     }
 
     fun loadDiffs() {

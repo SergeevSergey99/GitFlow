@@ -71,13 +71,46 @@ private val CodeLineHorizontalPadding = 16.dp
 private val CodeLineNumberWidth = 48.dp
 private val CodeLineContentSpacing = 16.dp
 
-@OptIn(ExperimentalMaterial3Api::class)
+private const val MAX_PARENT_NAV_DEPTH = 10
+
 @Composable
 fun CommitDetailDialog(
     commit: Commit,
     repository: Repository?,
     gitRepository: IGitRepository,
     onDismiss: () -> Unit
+) {
+    val navHistory = remember { mutableStateListOf<Commit>() }
+    val currentCommit = navHistory.lastOrNull() ?: commit
+    val effectiveOnDismiss = if (navHistory.isNotEmpty()) {
+        { navHistory.removeLastOrNull(); Unit }
+    } else {
+        onDismiss
+    }
+
+    key(currentCommit.hash) {
+        CommitDetailContent(
+            commit = currentCommit,
+            repository = repository,
+            gitRepository = gitRepository,
+            onDismiss = effectiveOnDismiss,
+            onClose = onDismiss,
+            onNavigateToCommit = { target ->
+                if (navHistory.size < MAX_PARENT_NAV_DEPTH) navHistory.add(target)
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CommitDetailContent(
+    commit: Commit,
+    repository: Repository?,
+    gitRepository: IGitRepository,
+    onDismiss: () -> Unit,
+    onClose: () -> Unit = onDismiss,
+    onNavigateToCommit: (Commit) -> Unit = {}
 ) {
     val viewModel: CommitDetailViewModel = koinViewModel(
         key = commit.hash,
@@ -217,7 +250,7 @@ fun CommitDetailDialog(
                             }
                         }
 
-                        IconButton(onClick = onDismiss) {
+                        IconButton(onClick = onClose) {
                             Icon(Icons.Default.Close, contentDescription = stringResource(R.string.commit_detail_close))
                         }
                     }
@@ -331,7 +364,12 @@ fun CommitDetailDialog(
                             }
                         }
                     }
-                    CommitDetailTab.Info -> CommitInfoView(commit)
+                    CommitDetailTab.Info -> CommitInfoView(
+                        commit = commit,
+                        parentCommits = uiState.parentCommits,
+                        isLoadingParents = uiState.isLoadingParents,
+                        onNavigateToCommit = onNavigateToCommit
+                    )
                     CommitDetailTab.FileTree -> FileTreeView(
                         commit = commit,
                         repository = repository,
@@ -1251,7 +1289,12 @@ private fun buildChangedFilesTree(fileDiffs: List<FileDiff>): FileTreeNode {
 }
 
 @Composable
-fun CommitInfoView(commit: Commit) {
+fun CommitInfoView(
+    commit: Commit,
+    parentCommits: List<Commit> = emptyList(),
+    isLoadingParents: Boolean = false,
+    onNavigateToCommit: (Commit) -> Unit = {}
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
@@ -1391,13 +1434,63 @@ fun CommitInfoView(commit: Commit) {
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        commit.parents.forEach { parent ->
-                            Text(
-                                text = parent,
-                                fontSize = 12.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                        if (isLoadingParents) {
+                            CircularProgressIndicator(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .align(Alignment.CenterHorizontally)
                             )
+                        } else if (parentCommits.isNotEmpty()) {
+                            parentCommits.forEachIndexed { index, parent ->
+                                if (index > 0) Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedCard(
+                                    onClick = { onNavigateToCommit(parent) },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = parent.message,
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 14.sp,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            Text(
+                                                text = parent.author,
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = SimpleDateFormat("dd MMM yyyy HH:mm", Locale.getDefault()).format(Date(parent.timestamp)),
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Text(
+                                            text = parent.hash.take(8),
+                                            fontSize = 11.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            // Fallback: show raw hashes if load failed
+                            commit.parents.forEach { hash ->
+                                Text(
+                                    text = hash,
+                                    fontSize = 12.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }

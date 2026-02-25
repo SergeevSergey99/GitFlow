@@ -90,6 +90,47 @@ internal suspend fun GitRepository.getCommitsImpl(
 }
 
 // ---------------------------------------------------------------------------
+// getCommitByHash
+// ---------------------------------------------------------------------------
+
+internal suspend fun GitRepository.getCommitByHashImpl(hash: String, repository: Repository): Commit? = withContext(Dispatchers.IO) {
+    try {
+        val git = openRepository(repository.path) ?: return@withContext null
+        git.use { g ->
+            RevWalk(g.repository).use { rw ->
+                val objId = g.repository.resolve(hash) ?: return@withContext null
+                val revCommit = rw.parseCommit(objId)
+                Commit(
+                    hash = revCommit.id.name,
+                    message = revCommit.shortMessage,
+                    description = revCommit.fullMessage.removePrefix(revCommit.shortMessage).trim(),
+                    author = revCommit.authorIdent.name,
+                    email = revCommit.authorIdent.emailAddress,
+                    timestamp = revCommit.authorIdent.`when`.time,
+                    parents = revCommit.parents.map { it.id.name },
+                    isMergeCommit = revCommit.parentCount > 1
+                )
+            }
+        }
+    } catch (e: Exception) {
+        null
+    }
+}
+
+internal suspend fun GitRepository.getCommitByHashAutoImpl(hash: String): Commit? = withContext(Dispatchers.IO) {
+    try {
+        val repo = getRepositories().find { r ->
+            try {
+                openRepository(r.path)?.use { git -> git.repository.resolve(hash) != null } ?: false
+            } catch (_: Exception) { false }
+        } ?: return@withContext null
+        getCommitByHashImpl(hash, repo)
+    } catch (e: Exception) {
+        null
+    }
+}
+
+// ---------------------------------------------------------------------------
 // getCommitDiffs — explicit repository overload
 // ---------------------------------------------------------------------------
 
