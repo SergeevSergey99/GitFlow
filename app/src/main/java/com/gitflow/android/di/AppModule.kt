@@ -27,7 +27,7 @@ val appModule = module {
 
     // ViewModels — static dependencies
     viewModel { AuthViewModel() }
-    viewModel { RemoteRepositoriesViewModel() }
+    viewModel { RemoteRepositoriesViewModel(get()) }
     viewModel { MainViewModel(androidApplication(), get()) }
     viewModel { RepositoryListViewModel(androidApplication(), get(), get()) }
     viewModel { SettingsViewModel(androidApplication(), get(), get()) }

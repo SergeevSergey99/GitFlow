@@ -22,15 +22,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.viewmodel.compose.viewModel
 import org.koin.compose.koinInject
+import org.koin.androidx.compose.koinViewModel
 import com.gitflow.android.R
-import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitRemoteRepository
 import com.gitflow.android.data.settings.AppSettingsManager
 import com.gitflow.android.ui.components.CloneProgressOverlay
-import timber.log.Timber
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -45,7 +43,6 @@ fun RemoteRepositoriesScreen(
     viewModel: RemoteRepositoriesViewModel = koinViewModel()
 ) {
     val context = LocalContext.current
-    val authManager: AuthManager = koinInject()
 
     val repositories by viewModel.repositories.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -65,21 +62,12 @@ fun RemoteRepositoriesScreen(
                 context = context,
                 repository = request.repository,
                 localPath = request.localPath,
-                authManager = authManager,
                 onStarted = onRepositoryCloned
             )
         } else if (!granted) {
             viewModel.showError(context.getString(R.string.notification_permission_required))
         }
         pendingClone = null
-    }
-
-    LaunchedEffect(Unit) {
-        try {
-            viewModel.initializeRepositories(authManager)
-        } catch (e: Exception) {
-            Timber.e(e, "Ошибка в initializeRepositories")
-        }
     }
 
     Scaffold(
@@ -92,9 +80,7 @@ fun RemoteRepositoriesScreen(
                     }
                 },
                 actions = {
-                    IconButton(
-                        onClick = { viewModel.refreshRepositories(authManager) }
-                    ) {
+                    IconButton(onClick = { viewModel.refreshRepositories() }) {
                         Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.remote_repos_refresh))
                     }
                 }
@@ -106,17 +92,12 @@ fun RemoteRepositoriesScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            Column(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                // Tabs для выбора провайдера
+            Column(modifier = Modifier.fillMaxSize()) {
                 ProviderTabs(
                     selectedProvider = selectedProvider,
-                    onProviderSelected = { provider ->
-                        viewModel.selectProvider(provider, authManager)
-                    },
-                    isGitHubAuthenticated = authManager.isAuthenticated(GitProvider.GITHUB),
-                    isGitLabAuthenticated = authManager.isAuthenticated(GitProvider.GITLAB)
+                    onProviderSelected = { viewModel.selectProvider(it) },
+                    isGitHubAuthenticated = viewModel.isGitHubAuthenticated,
+                    isGitLabAuthenticated = viewModel.isGitLabAuthenticated
                 )
 
                 if (isLoading) {
@@ -135,7 +116,7 @@ fun RemoteRepositoriesScreen(
                 } else if (errorMessage != null) {
                     ErrorMessage(
                         message = errorMessage ?: "",
-                        onRetry = { viewModel.refreshRepositories(authManager) }
+                        onRetry = { viewModel.refreshRepositories() }
                     )
                 } else if (repositories.isEmpty()) {
                     EmptyRepositoriesMessage(selectedProvider)
@@ -154,7 +135,6 @@ fun RemoteRepositoriesScreen(
                                     context = context,
                                     repository = repository,
                                     localPath = localPath,
-                                    authManager = authManager,
                                     onStarted = onRepositoryCloned
                                 )
                             }

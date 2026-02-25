@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class RemoteRepositoriesViewModel : ViewModel() {
+class RemoteRepositoriesViewModel(private val authManager: AuthManager) : ViewModel() {
 
     private val _repositories = MutableStateFlow<List<GitRemoteRepository>>(emptyList())
     val repositories: StateFlow<List<GitRemoteRepository>> = _repositories.asStateFlow()
@@ -34,15 +34,18 @@ class RemoteRepositoriesViewModel : ViewModel() {
     private val _selectedProvider = MutableStateFlow<GitProvider?>(null)
     val selectedProvider: StateFlow<GitProvider?> = _selectedProvider.asStateFlow()
 
-    fun initializeRepositories(authManager: AuthManager) {
+    val isGitHubAuthenticated: Boolean get() = authManager.isAuthenticated(GitProvider.GITHUB)
+    val isGitLabAuthenticated: Boolean get() = authManager.isAuthenticated(GitProvider.GITLAB)
+
+    init {
+        initializeRepositories()
+    }
+
+    private fun initializeRepositories() {
         try {
             when {
-                authManager.isAuthenticated(GitProvider.GITHUB) -> {
-                    selectProvider(GitProvider.GITHUB, authManager)
-                }
-                authManager.isAuthenticated(GitProvider.GITLAB) -> {
-                    selectProvider(GitProvider.GITLAB, authManager)
-                }
+                authManager.isAuthenticated(GitProvider.GITHUB) -> selectProvider(GitProvider.GITHUB)
+                authManager.isAuthenticated(GitProvider.GITLAB) -> selectProvider(GitProvider.GITLAB)
                 else -> {
                     _errorMessage.value = "Необходимо авторизоваться в GitHub или GitLab. Настройте OAuth конфигурацию в oauth.properties"
                     _isLoading.value = false
@@ -53,32 +56,28 @@ class RemoteRepositoriesViewModel : ViewModel() {
         }
     }
 
-    fun selectProvider(provider: GitProvider, authManager: AuthManager) {
+    fun selectProvider(provider: GitProvider) {
         try {
             if (!authManager.isAuthenticated(provider)) {
                 _errorMessage.value = "Необходимо авторизоваться в ${provider.name}"
                 return
             }
-
             _selectedProvider.value = provider
-            loadRepositories(provider, authManager)
+            loadRepositories(provider)
         } catch (e: Exception) {
             _errorMessage.value = "Ошибка при выборе провайдера: ${e.message}"
         }
     }
 
-    fun refreshRepositories(authManager: AuthManager) {
-        _selectedProvider.value?.let { provider ->
-            loadRepositories(provider, authManager)
-        }
+    fun refreshRepositories() {
+        _selectedProvider.value?.let { loadRepositories(it) }
     }
 
-    private fun loadRepositories(provider: GitProvider, authManager: AuthManager) {
+    private fun loadRepositories(provider: GitProvider) {
         viewModelScope.launch {
             try {
                 _isLoading.value = true
                 _errorMessage.value = null
-
                 val repos = authManager.getRepositories(provider)
                 _repositories.value = repos.sortedByDescending { it.updatedAt }
             } catch (e: Exception) {
@@ -94,13 +93,11 @@ class RemoteRepositoriesViewModel : ViewModel() {
         context: Context,
         repository: GitRemoteRepository,
         localPath: String,
-        authManager: AuthManager,
         onStarted: () -> Unit
     ) {
         viewModelScope.launch {
             _isCloning.value = true
             _errorMessage.value = null
-
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                     ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -108,10 +105,8 @@ class RemoteRepositoriesViewModel : ViewModel() {
                     _errorMessage.value = context.getString(R.string.notification_permission_required)
                     return@launch
                 }
-
                 val cloneUrl = authManager.getCloneUrl(repository)
                     ?: throw Exception("Не удалось получить URL для клонирования")
-
                 val started = CloneRepositoryService.start(
                     context = context,
                     repository = repository,
@@ -122,7 +117,6 @@ class RemoteRepositoriesViewModel : ViewModel() {
                     _errorMessage.value = context.getString(R.string.clone_wifi_only_error)
                     return@launch
                 }
-
                 onStarted()
             } catch (e: Exception) {
                 _errorMessage.value = "Ошибка клонирования: ${e.message}"
