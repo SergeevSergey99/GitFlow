@@ -18,6 +18,7 @@ import com.gitflow.android.ui.auth.AuthScreen
 import com.gitflow.android.ui.repositories.RemoteRepositoriesScreen
 import com.gitflow.android.ui.theme.GitFlowTheme
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
@@ -56,21 +57,21 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun GitFlowApp() {
-    val mainViewModel: MainViewModel = koinViewModel()
-    val colorTheme by mainViewModel.selectedColorTheme.collectAsState()
+    val settingsManager: AppSettingsManager = koinInject()
+    val colorTheme by settingsManager.colorThemeFlow.collectAsState()
 
     GitFlowTheme(colorTheme = colorTheme) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background
         ) {
-            GitFlowNav(mainViewModel)
+            GitFlowNav()
         }
     }
 }
 
 @Composable
-private fun GitFlowNav(mainViewModel: MainViewModel) {
+private fun GitFlowNav() {
     val navController = rememberNavController()
 
     NavHost(

@@ -6,6 +6,9 @@ import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Environment
 import android.provider.DocumentsContract
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 import java.util.LinkedHashSet
 import java.util.Locale
@@ -14,6 +17,9 @@ class AppSettingsManager(context: Context) {
 
     private val preferences: SharedPreferences =
         context.applicationContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+
+    private val _colorThemeFlow = MutableStateFlow(getColorTheme())
+    val colorThemeFlow: StateFlow<String> = _colorThemeFlow.asStateFlow()
 
     fun isWifiOnlyDownloadsEnabled(): Boolean {
         return preferences.getBoolean(KEY_WIFI_ONLY_DOWNLOADS, true)
@@ -125,6 +131,7 @@ class AppSettingsManager(context: Context) {
 
     fun setColorTheme(theme: String) {
         preferences.edit().putString(KEY_COLOR_THEME, theme).apply()
+        _colorThemeFlow.value = theme
     }
 
     fun getLanguage(): String {
