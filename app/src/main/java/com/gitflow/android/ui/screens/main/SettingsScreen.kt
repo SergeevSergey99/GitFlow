@@ -48,6 +48,8 @@ fun SettingsScreen(
     onGraphPresetChanged: (String) -> Unit,
     selectedColorTheme: String,
     onColorThemeChanged: (String) -> Unit,
+    selectedDarkMode: String,
+    onDarkModeChanged: (String) -> Unit,
     navController: NavController
 ) {
     val viewModel: SettingsViewModel = koinViewModel()
@@ -136,7 +138,9 @@ fun SettingsScreen(
 
             ThemeSettingsSection(
                 selectedColorTheme = selectedColorTheme,
-                onThemeClick = { showThemeDialog = true }
+                onThemeClick = { showThemeDialog = true },
+                selectedDarkMode = selectedDarkMode,
+                onDarkModeChanged = onDarkModeChanged
             )
 
             GraphSettingsSection(
@@ -579,10 +583,13 @@ private fun AccountSection(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ThemeSettingsSection(
     selectedColorTheme: String,
-    onThemeClick: () -> Unit
+    onThemeClick: () -> Unit,
+    selectedDarkMode: String,
+    onDarkModeChanged: (String) -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -593,6 +600,42 @@ private fun ThemeSettingsSection(
             )
             Spacer(modifier = Modifier.height(12.dp))
 
+            // Переключатель светлая / системная / тёмная
+            Text(stringResource(R.string.settings_dark_mode), fontWeight = FontWeight.Medium)
+            Spacer(modifier = Modifier.height(8.dp))
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                val modes = listOf(
+                    AppSettingsManager.DARK_MODE_LIGHT  to R.string.settings_dark_mode_light,
+                    AppSettingsManager.DARK_MODE_SYSTEM to R.string.settings_dark_mode_system,
+                    AppSettingsManager.DARK_MODE_DARK   to R.string.settings_dark_mode_dark,
+                )
+                modes.forEachIndexed { index, (mode, labelRes) ->
+                    SegmentedButton(
+                        selected = selectedDarkMode == mode,
+                        onClick = { onDarkModeChanged(mode) },
+                        shape = SegmentedButtonDefaults.itemShape(index, modes.size),
+                        icon = {
+                            SegmentedButtonDefaults.Icon(active = selectedDarkMode == mode) {
+                                Icon(
+                                    imageVector = when (mode) {
+                                        AppSettingsManager.DARK_MODE_LIGHT  -> Icons.Default.LightMode
+                                        AppSettingsManager.DARK_MODE_DARK   -> Icons.Default.DarkMode
+                                        else                                -> Icons.Default.Brightness6
+                                    },
+                                    contentDescription = null,
+                                    modifier = Modifier.size(SegmentedButtonDefaults.IconSize)
+                                )
+                            }
+                        }
+                    ) {
+                        Text(stringResource(labelRes), maxLines = 1)
+                    }
+                }
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+            // Цветовая тема
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

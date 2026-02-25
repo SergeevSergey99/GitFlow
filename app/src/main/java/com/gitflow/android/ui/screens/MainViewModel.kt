@@ -34,6 +34,9 @@ class MainViewModel(
     private val _selectedColorTheme = MutableStateFlow(settingsManager.getColorTheme())
     val selectedColorTheme: StateFlow<String> = _selectedColorTheme.asStateFlow()
 
+    private val _selectedDarkMode = MutableStateFlow(settingsManager.getDarkMode())
+    val selectedDarkMode: StateFlow<String> = _selectedDarkMode.asStateFlow()
+
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
@@ -54,6 +57,11 @@ class MainViewModel(
     fun changeColorTheme(theme: String) {
         _selectedColorTheme.value = theme
         settingsManager.setColorTheme(theme)
+    }
+
+    fun changeDarkMode(mode: String) {
+        _selectedDarkMode.value = mode
+        settingsManager.setDarkMode(mode)
     }
 
     fun refreshRepositories() {

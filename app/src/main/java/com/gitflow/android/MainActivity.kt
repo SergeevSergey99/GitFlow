@@ -16,6 +16,7 @@ import com.gitflow.android.data.settings.AppSettingsManager
 import com.gitflow.android.ui.screens.*
 import com.gitflow.android.ui.auth.AuthScreen
 import com.gitflow.android.ui.repositories.RemoteRepositoriesScreen
+import androidx.compose.foundation.isSystemInDarkTheme
 import com.gitflow.android.ui.theme.GitFlowTheme
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
@@ -59,8 +60,14 @@ class MainActivity : ComponentActivity() {
 fun GitFlowApp() {
     val settingsManager: AppSettingsManager = koinInject()
     val colorTheme by settingsManager.colorThemeFlow.collectAsState()
+    val darkModePreference by settingsManager.darkModeFlow.collectAsState()
+    val darkTheme = when (darkModePreference) {
+        AppSettingsManager.DARK_MODE_LIGHT -> false
+        AppSettingsManager.DARK_MODE_DARK  -> true
+        else                               -> isSystemInDarkTheme()
+    }
 
-    GitFlowTheme(colorTheme = colorTheme) {
+    GitFlowTheme(colorTheme = colorTheme, darkTheme = darkTheme) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background

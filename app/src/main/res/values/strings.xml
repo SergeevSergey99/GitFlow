@@ -318,6 +318,10 @@
 
     <!-- ThemePresetDialog -->
     <string name="settings_theme_settings">Appearance</string>
+    <string name="settings_dark_mode">Dark mode</string>
+    <string name="settings_dark_mode_light">Light</string>
+    <string name="settings_dark_mode_system">System</string>
+    <string name="settings_dark_mode_dark">Dark</string>
     <string name="settings_theme_preset">Color Theme</string>
     <string name="settings_theme_preset_description">Choose the accent color for the app</string>
     <string name="theme_preset_title">Color Theme</string>

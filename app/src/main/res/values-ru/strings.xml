@@ -318,6 +318,10 @@
 
     <!-- ThemePresetDialog -->
     <string name="settings_theme_settings">Оформление</string>
+    <string name="settings_dark_mode">Тёмный режим</string>
+    <string name="settings_dark_mode_light">Светлая</string>
+    <string name="settings_dark_mode_system">Системная</string>
+    <string name="settings_dark_mode_dark">Тёмная</string>
     <string name="settings_theme_preset">Цветовая тема</string>
     <string name="settings_theme_preset_description">Выберите акцентный цвет приложения</string>
     <string name="theme_preset_title">Цветовая тема</string>

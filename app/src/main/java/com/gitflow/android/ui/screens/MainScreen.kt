@@ -33,6 +33,7 @@ fun MainScreen(navController: NavController) {
     val selectedRepository by viewModel.selectedRepository.collectAsState()
     val selectedGraphPreset by viewModel.selectedGraphPreset.collectAsState()
     val selectedColorTheme by viewModel.selectedColorTheme.collectAsState()
+    val selectedDarkMode by viewModel.selectedDarkMode.collectAsState()
     val repositories by viewModel.repositoriesFlow.collectAsState(initial = emptyList())
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val gitRepository = viewModel.getGitRepository()
@@ -134,6 +135,8 @@ fun MainScreen(navController: NavController) {
                     onGraphPresetChanged = { viewModel.changeGraphPreset(it) },
                     selectedColorTheme = selectedColorTheme,
                     onColorThemeChanged = { viewModel.changeColorTheme(it) },
+                    selectedDarkMode = selectedDarkMode,
+                    onDarkModeChanged = { viewModel.changeDarkMode(it) },
                     navController = navController
                 )
             }

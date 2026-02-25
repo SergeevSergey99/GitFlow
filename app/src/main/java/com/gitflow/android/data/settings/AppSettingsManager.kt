@@ -21,6 +21,9 @@ class AppSettingsManager(context: Context) {
     private val _colorThemeFlow = MutableStateFlow(getColorTheme())
     val colorThemeFlow: StateFlow<String> = _colorThemeFlow.asStateFlow()
 
+    private val _darkModeFlow = MutableStateFlow(getDarkMode())
+    val darkModeFlow: StateFlow<String> = _darkModeFlow.asStateFlow()
+
     fun isWifiOnlyDownloadsEnabled(): Boolean {
         return preferences.getBoolean(KEY_WIFI_ONLY_DOWNLOADS, true)
     }
@@ -134,6 +137,15 @@ class AppSettingsManager(context: Context) {
         _colorThemeFlow.value = theme
     }
 
+    fun getDarkMode(): String {
+        return preferences.getString(KEY_DARK_MODE, DARK_MODE_SYSTEM) ?: DARK_MODE_SYSTEM
+    }
+
+    fun setDarkMode(mode: String) {
+        preferences.edit().putString(KEY_DARK_MODE, mode).apply()
+        _darkModeFlow.value = mode
+    }
+
     fun getLanguage(): String {
         return preferences.getString(KEY_LANGUAGE, LANGUAGE_RUSSIAN) ?: LANGUAGE_RUSSIAN
     }
@@ -210,6 +222,7 @@ class AppSettingsManager(context: Context) {
         private const val KEY_CUSTOM_STORAGE_URI = "custom_storage_uri"
         private const val KEY_GRAPH_PRESET = "graph_preset"
         private const val KEY_COLOR_THEME = "color_theme"
+        private const val KEY_DARK_MODE = "dark_mode"
 
         const val LANGUAGE_SYSTEM = "system"
         const val LANGUAGE_ENGLISH = "en"
@@ -219,6 +232,10 @@ class AppSettingsManager(context: Context) {
         const val GRAPH_PRESET_COMPACT = "Compact"
         const val GRAPH_PRESET_LARGE = "Large"
         const val GRAPH_PRESET_WIDE = "Wide"
+
+        const val DARK_MODE_SYSTEM = "System"
+        const val DARK_MODE_LIGHT  = "Light"
+        const val DARK_MODE_DARK   = "Dark"
 
         const val COLOR_THEME_DEFAULT = "Dynamic"
         const val COLOR_THEME_PURPLE  = "Purple"
