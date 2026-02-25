@@ -242,6 +242,7 @@ class GitRepository(
         val sanitizedUrl = remoteUrl.trim()
         val parsedUri = runCatching { URI(sanitizedUrl) }.getOrNull()
 
+        // Credentials already embedded in the URL (e.g. https://token@host/…)
         val userInfo = parsedUri?.userInfo?.takeIf { it.isNotBlank() }
         if (userInfo != null) {
             val parts = userInfo.split(":", limit = 2)
@@ -251,22 +252,50 @@ class GitRepository(
         }
 
         val host = parsedUri?.host ?: return null
-        val provider = when {
-            host.contains("github.com", ignoreCase = true) -> GitProvider.GITHUB
-            host.contains("gitlab.com", ignoreCase = true) -> GitProvider.GITLAB
+
+        return when {
+            host.contains("github.com", ignoreCase = true) -> {
+                val token = authManager.getAccessToken(GitProvider.GITHUB)
+                    ?.takeIf { it.isNotBlank() } ?: return null
+                // GitHub: token as username, empty password
+                UsernamePasswordCredentialsProvider(token, "")
+            }
+            host.contains("gitlab.com", ignoreCase = true) -> {
+                authManager.refreshGitLabTokenIfNeeded()
+                val token = authManager.getAccessToken(GitProvider.GITLAB)
+                    ?.takeIf { it.isNotBlank() } ?: return null
+                UsernamePasswordCredentialsProvider("oauth2", token)
+            }
+            host.contains("bitbucket.org", ignoreCase = true) -> {
+                authManager.refreshBitbucketTokenIfNeeded()
+                val token = authManager.getAccessToken(GitProvider.BITBUCKET)
+                    ?.takeIf { it.isNotBlank() } ?: return null
+                // Bitbucket OAuth2: x-token-auth as username, access token as password
+                UsernamePasswordCredentialsProvider("x-token-auth", token)
+            }
+            isGiteaHost(host) -> {
+                val token = authManager.getAccessToken(GitProvider.GITEA)
+                    ?.takeIf { it.isNotBlank() } ?: return null
+                val username = authManager.getCurrentUser(GitProvider.GITEA)
+                    ?.login?.takeIf { it.isNotBlank() } ?: "git"
+                UsernamePasswordCredentialsProvider(username, token)
+            }
+            host.contains("dev.azure.com", ignoreCase = true) ||
+            host.contains("visualstudio.com", ignoreCase = true) -> {
+                val token = authManager.getAccessToken(GitProvider.AZURE_DEVOPS)
+                    ?.takeIf { it.isNotBlank() } ?: return null
+                // Azure DevOps PAT: empty username, PAT as password
+                UsernamePasswordCredentialsProvider("", token)
+            }
             else -> null
-        } ?: return null
-
-        // Refresh GitLab token before use if it is expired or about to expire
-        if (provider == GitProvider.GITLAB) {
-            authManager.refreshGitLabTokenIfNeeded()
         }
+    }
 
-        val token = authManager.getAccessToken(provider)?.takeIf { it.isNotBlank() } ?: return null
-        return when (provider) {
-            GitProvider.GITHUB -> UsernamePasswordCredentialsProvider(token, "")
-            GitProvider.GITLAB -> UsernamePasswordCredentialsProvider("oauth2", token)
-        }
+    /** Returns true if [host] matches the Gitea instance URL stored during PAT login. */
+    private fun isGiteaHost(host: String): Boolean {
+        val instanceUrl = authManager.getInstanceUrl(GitProvider.GITEA) ?: return false
+        val instanceHost = runCatching { URI(instanceUrl).host }.getOrNull() ?: return false
+        return host.equals(instanceHost, ignoreCase = true)
     }
 
     internal fun resolveCommitIdentity(git: Git): Pair<String, String>? {
@@ -281,17 +310,26 @@ class GitRepository(
         val originRemote = remoteConfigs.firstOrNull { it.name == "origin" } ?: remoteConfigs.firstOrNull()
         val remoteUri = originRemote?.urIs?.firstOrNull()
 
-        val provider = remoteUri?.toString()?.lowercase(Locale.ROOT)?.let { uriString ->
+        val remoteUriString = remoteUri?.toString()?.lowercase(Locale.ROOT)
+        val provider = remoteUriString?.let { uri ->
             when {
-                uriString.contains("github.com") -> GitProvider.GITHUB
-                uriString.contains("gitlab.com") -> GitProvider.GITLAB
-                else -> null
+                uri.contains("github.com") -> GitProvider.GITHUB
+                uri.contains("gitlab.com") -> GitProvider.GITLAB
+                uri.contains("bitbucket.org") -> GitProvider.BITBUCKET
+                uri.contains("dev.azure.com") || uri.contains("visualstudio.com") -> GitProvider.AZURE_DEVOPS
+                else -> {
+                    // Gitea: match against stored instance URL
+                    val giteaHost = authManager.getInstanceUrl(GitProvider.GITEA)
+                        ?.let { runCatching { URI(it).host }.getOrNull()?.lowercase(Locale.ROOT) }
+                    if (giteaHost != null && uri.contains(giteaHost)) GitProvider.GITEA else null
+                }
             }
         }
 
         val user = provider?.let { authManager.getCurrentUser(it) }
             ?: run {
-                for (candidate in listOf(GitProvider.GITHUB, GitProvider.GITLAB)) {
+                // Fallback: use any authenticated provider's user
+                for (candidate in GitProvider.entries) {
                     val u = authManager.getCurrentUser(candidate)
                     if (u != null) return@run u
                 }
@@ -303,6 +341,9 @@ class GitRepository(
             val email = user.email?.takeIf { it.isNotBlank() } ?: when (user.provider) {
                 GitProvider.GITHUB -> "${user.login}@users.noreply.github.com"
                 GitProvider.GITLAB -> "${user.login}@gitlab.com"
+                GitProvider.BITBUCKET -> "${user.login}@users.noreply.bitbucket.org"
+                GitProvider.GITEA -> user.login  // no reliable noreply format for self-hosted
+                GitProvider.AZURE_DEVOPS -> user.login
             }
             if (name.isNotBlank() && email.isNotBlank()) return name to email
         }

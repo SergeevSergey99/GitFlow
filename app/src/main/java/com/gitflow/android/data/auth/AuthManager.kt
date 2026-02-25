@@ -20,9 +20,10 @@ class AuthManager(val context: Context) {
     private val preferences: SharedPreferences = createEncryptedPreferences()
     private val gson = Gson()
 
-    // In-memory map: state -> (code_verifier, createdAt) for PKCE
+    // In-memory map: state -> (code_verifier, createdAt) for PKCE.
+    // ConcurrentHashMap: getAuthUrl and handleAuthCallback can run on different coroutines.
     private data class PendingAuth(val codeVerifier: String, val createdAt: Long = System.currentTimeMillis())
-    private val pendingAuthStates = mutableMapOf<String, PendingAuth>()
+    private val pendingAuthStates = java.util.concurrent.ConcurrentHashMap<String, PendingAuth>()
 
     init {
         OAuthConfig.initialize(context)
@@ -271,6 +272,16 @@ class AuthManager(val context: Context) {
         } catch (_: Exception) { null }
     }
 
+    private suspend fun fetchBitbucketPrimaryEmail(accessToken: String): String? {
+        return try {
+            val response = bitbucketApi.getUserEmails("Bearer $accessToken")
+            if (response.isSuccessful) {
+                response.body()?.values?.firstOrNull { it.is_primary && it.is_confirmed }?.email
+                    ?: response.body()?.values?.firstOrNull { it.is_primary }?.email
+            } else null
+        } catch (_: Exception) { null }
+    }
+
     private suspend fun handleGitLabCallback(code: String, codeVerifier: String): AuthResult {
         try {
             val tokenResponse = gitlabApi.getAccessToken(
@@ -343,11 +354,12 @@ class AuthManager(val context: Context) {
             }
             val bbUser = userResponse.body()
                 ?: return AuthResult(success = false, error = "Empty user response")
+            val email = fetchBitbucketPrimaryEmail(token.accessToken)
             val user = GitUser(
                 id = bbUser.account_id.hashCode().toLong(),
                 login = bbUser.username ?: bbUser.display_name,
                 name = bbUser.display_name,
-                email = null,
+                email = email,
                 avatarUrl = bbUser.links?.avatar?.href,
                 provider = GitProvider.BITBUCKET
             )
@@ -435,19 +447,22 @@ class AuthManager(val context: Context) {
     // Token refresh
     // ---------------------------------------------------------------------------
 
-    suspend fun refreshGitLabTokenIfNeeded(): Boolean = withContext(Dispatchers.IO) {
-        val token = getToken(GitProvider.GITLAB) ?: return@withContext false
-        if (!isTokenExpired(token)) return@withContext true
-        val refreshToken = token.refreshToken ?: return@withContext false
-        try {
+    // Note: these functions do NOT wrap withContext(Dispatchers.IO) — they are always
+    // called from within getRepositories which is already on Dispatchers.IO.
+    // resolveCredentialsProvider (GitRepository) calls them from a suspend context too.
+    suspend fun refreshGitLabTokenIfNeeded(): Boolean {
+        val token = getToken(GitProvider.GITLAB) ?: return false
+        if (!isTokenExpired(token)) return true
+        val refreshToken = token.refreshToken ?: return false
+        return try {
             val response = gitlabApi.refreshToken(
                 clientId = OAuthConfig.gitlabClientId,
                 clientSecret = OAuthConfig.gitlabClientSecret,
                 refreshToken = refreshToken,
                 redirectUri = OAuthConfig.REDIRECT_URI
             )
-            if (!response.isSuccessful) return@withContext false
-            val body = response.body() ?: return@withContext false
+            if (!response.isSuccessful) return false
+            val body = response.body() ?: return false
             val newToken = OAuthToken(
                 accessToken = body.access_token,
                 tokenType = body.token_type,
@@ -463,18 +478,18 @@ class AuthManager(val context: Context) {
         }
     }
 
-    suspend fun refreshBitbucketTokenIfNeeded(): Boolean = withContext(Dispatchers.IO) {
-        val token = getToken(GitProvider.BITBUCKET) ?: return@withContext false
-        if (!isTokenExpired(token)) return@withContext true
-        val refreshToken = token.refreshToken ?: return@withContext false
-        try {
+    suspend fun refreshBitbucketTokenIfNeeded(): Boolean {
+        val token = getToken(GitProvider.BITBUCKET) ?: return false
+        if (!isTokenExpired(token)) return true
+        val refreshToken = token.refreshToken ?: return false
+        return try {
             val basicAuth = "Basic " + Base64.encodeToString(
                 "${OAuthConfig.bitbucketClientId}:${OAuthConfig.bitbucketClientSecret}".toByteArray(),
                 Base64.NO_WRAP
             )
             val response = bitbucketTokenApi.refreshToken(basicAuth = basicAuth, refreshToken = refreshToken)
-            if (!response.isSuccessful) return@withContext false
-            val body = response.body() ?: return@withContext false
+            if (!response.isSuccessful) return false
+            val body = response.body() ?: return false
             val newToken = OAuthToken(
                 accessToken = body.access_token,
                 tokenType = body.token_type,
@@ -496,12 +511,16 @@ class AuthManager(val context: Context) {
     suspend fun getRepositories(provider: GitProvider): List<GitRemoteRepository> = withContext(Dispatchers.IO) {
         when (provider) {
             GitProvider.GITLAB -> {
-                refreshGitLabTokenIfNeeded()
+                if (!refreshGitLabTokenIfNeeded()) {
+                    throw IllegalStateException("Сессия GitLab истекла. Пожалуйста, войдите снова в Настройки → Управление аккаунтами.")
+                }
                 val token = getToken(provider) ?: throw IllegalStateException("Токен не найден для $provider")
                 getGitLabRepositories("Bearer ${token.accessToken}")
             }
             GitProvider.BITBUCKET -> {
-                refreshBitbucketTokenIfNeeded()
+                if (!refreshBitbucketTokenIfNeeded()) {
+                    throw IllegalStateException("Сессия Bitbucket истекла. Пожалуйста, войдите снова в Настройки → Управление аккаунтами.")
+                }
                 val token = getToken(provider) ?: throw IllegalStateException("Токен не найден для $provider")
                 getBitbucketRepositories("Bearer ${token.accessToken}")
             }
@@ -539,15 +558,21 @@ class AuthManager(val context: Context) {
                 break
             }
         }
-        // Org repos
+        // Org repos (paginated — up to 3 pages per org to handle large organizations)
         try {
             val orgsResponse = githubApi.getUserOrganizations(authHeader)
             if (orgsResponse.isSuccessful) {
                 orgsResponse.body()?.forEach { org ->
                     try {
-                        val orgRepos = githubApi.getOrganizationRepositories(authHeader, org.login)
-                        if (orgRepos.isSuccessful) {
-                            orgRepos.body()?.forEach { repositories.add(it.toGitRemoteRepository()) }
+                        for (page in 1..3) {
+                            val orgRepos = githubApi.getOrganizationRepositories(
+                                authHeader, org.login, page = page
+                            )
+                            if (orgRepos.isSuccessful) {
+                                val body = orgRepos.body() ?: break
+                                body.forEach { repositories.add(it.toGitRemoteRepository()) }
+                                if (body.size < 100) break
+                            } else break
                         }
                     } catch (e: Exception) {
                         Timber.w(e, "Failed to fetch repos for org ${org.login}")
@@ -671,7 +696,12 @@ class AuthManager(val context: Context) {
     // Auth state queries
     // ---------------------------------------------------------------------------
 
-    fun isAuthenticated(provider: GitProvider): Boolean = getToken(provider) != null
+    fun isAuthenticated(provider: GitProvider): Boolean {
+        val token = getToken(provider) ?: return false
+        // If the token has an expiry and it has passed, treat as not authenticated.
+        // isTokenExpired returns false when expiresAt == null (GitHub/Gitea/Azure PATs).
+        return !isTokenExpired(token)
+    }
 
     fun getCurrentUser(provider: GitProvider): GitUser? {
         val key = userKey(provider)

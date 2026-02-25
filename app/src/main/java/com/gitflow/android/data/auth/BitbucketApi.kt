@@ -18,6 +18,12 @@ data class BitbucketUser(
     val links: BitbucketUserLinks? = null
 )
 
+data class BitbucketEmail(
+    val email: String,
+    val is_primary: Boolean = false,
+    val is_confirmed: Boolean = false
+)
+
 data class BitbucketUserLinks(
     val avatar: BitbucketLink? = null
 )
@@ -93,6 +99,11 @@ interface BitbucketApi {
     suspend fun getCurrentUser(
         @Header("Authorization") authorization: String
     ): Response<BitbucketUser>
+
+    @GET("2.0/user/emails")
+    suspend fun getUserEmails(
+        @Header("Authorization") authorization: String
+    ): Response<BitbucketPagedResponse<BitbucketEmail>>
 
     @GET("2.0/user/permissions/workspaces")
     suspend fun getWorkspaces(
