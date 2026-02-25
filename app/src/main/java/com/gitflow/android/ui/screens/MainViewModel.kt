@@ -31,6 +31,9 @@ class MainViewModel(
     private val _selectedGraphPreset = MutableStateFlow(settingsManager.getGraphPreset())
     val selectedGraphPreset: StateFlow<String> = _selectedGraphPreset.asStateFlow()
 
+    private val _selectedColorTheme = MutableStateFlow(settingsManager.getColorTheme())
+    val selectedColorTheme: StateFlow<String> = _selectedColorTheme.asStateFlow()
+
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
@@ -46,6 +49,11 @@ class MainViewModel(
     fun changeGraphPreset(preset: String) {
         _selectedGraphPreset.value = preset
         settingsManager.setGraphPreset(preset)
+    }
+
+    fun changeColorTheme(theme: String) {
+        _selectedColorTheme.value = theme
+        settingsManager.setColorTheme(theme)
     }
 
     fun refreshRepositories() {

@@ -312,6 +312,27 @@
     <string name="graph_preset_wide_desc">Широкий вид для графов с множеством веток</string>
     <string name="graph_preset_cancel">Отмена</string>
 
+    <!-- ThemePresetDialog -->
+    <string name="settings_theme_settings">Оформление</string>
+    <string name="settings_theme_preset">Цветовая тема</string>
+    <string name="settings_theme_preset_description">Выберите акцентный цвет приложения</string>
+    <string name="theme_preset_title">Цветовая тема</string>
+    <string name="theme_preset_description">Выберите акцентный цвет приложения:</string>
+    <string name="theme_preset_dynamic">Динамическая</string>
+    <string name="theme_preset_dynamic_desc">Цвета из обоев рабочего стола (Android 12+)</string>
+    <string name="theme_preset_dynamic_unavailable">Требуется Android 12+, используется Фиолетовый</string>
+    <string name="theme_preset_purple">Фиолетовый</string>
+    <string name="theme_preset_purple_desc">Классический Material You фиолетовый</string>
+    <string name="theme_preset_blue">Синий</string>
+    <string name="theme_preset_blue_desc">Морской синий</string>
+    <string name="theme_preset_green">Зелёный</string>
+    <string name="theme_preset_green_desc">Лесной зелёный</string>
+    <string name="theme_preset_orange">Оранжевый</string>
+    <string name="theme_preset_orange_desc">Тёплый янтарный</string>
+    <string name="theme_preset_rose">Розовый</string>
+    <string name="theme_preset_rose_desc">Элегантный розовый</string>
+    <string name="theme_preset_cancel">Отмена</string>
+
     <!-- Graph commit actions -->
     <string name="graph_commit_actions_title">Действия с коммитом</string>
     <string name="graph_commit_tags_label">Теги у коммита: %1$d</string>

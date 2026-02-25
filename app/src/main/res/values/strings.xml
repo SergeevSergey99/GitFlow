@@ -312,6 +312,27 @@
     <string name="graph_preset_wide_desc">Wide view for graphs with many branches</string>
     <string name="graph_preset_cancel">Cancel</string>
 
+    <!-- ThemePresetDialog -->
+    <string name="settings_theme_settings">Appearance</string>
+    <string name="settings_theme_preset">Color Theme</string>
+    <string name="settings_theme_preset_description">Choose the accent color for the app</string>
+    <string name="theme_preset_title">Color Theme</string>
+    <string name="theme_preset_description">Choose the accent color for the app:</string>
+    <string name="theme_preset_dynamic">Dynamic</string>
+    <string name="theme_preset_dynamic_desc">Colors from your wallpaper (Android 12+)</string>
+    <string name="theme_preset_dynamic_unavailable">Requires Android 12+, using Purple</string>
+    <string name="theme_preset_purple">Purple</string>
+    <string name="theme_preset_purple_desc">Classic Material You purple</string>
+    <string name="theme_preset_blue">Blue</string>
+    <string name="theme_preset_blue_desc">Ocean blue</string>
+    <string name="theme_preset_green">Green</string>
+    <string name="theme_preset_green_desc">Forest green</string>
+    <string name="theme_preset_orange">Orange</string>
+    <string name="theme_preset_orange_desc">Warm amber</string>
+    <string name="theme_preset_rose">Rose</string>
+    <string name="theme_preset_rose_desc">Elegant rose</string>
+    <string name="theme_preset_cancel">Cancel</string>
+
     <!-- Graph commit actions -->
     <string name="graph_commit_actions_title">Commit actions</string>
     <string name="graph_commit_tags_label">Tags on this commit: %1$d</string>

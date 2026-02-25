@@ -39,12 +39,15 @@ import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitUser
 import com.gitflow.android.data.settings.AppSettingsManager
 import com.gitflow.android.ui.components.dialogs.GraphPresetDialog
+import com.gitflow.android.ui.components.dialogs.ThemePresetDialog
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
 fun SettingsScreen(
     selectedGraphPreset: String,
     onGraphPresetChanged: (String) -> Unit,
+    selectedColorTheme: String,
+    onColorThemeChanged: (String) -> Unit,
     navController: NavController
 ) {
     val viewModel: SettingsViewModel = koinViewModel()
@@ -53,6 +56,7 @@ fun SettingsScreen(
     val activity = context as? android.app.Activity
 
     var showGraphPresetDialog by remember { mutableStateOf(false) }
+    var showThemeDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     var permissionRefreshKey by remember { mutableStateOf(0) }
 
@@ -130,6 +134,11 @@ fun SettingsScreen(
                 onManageAccountsClick = { navController.navigate("auth") }
             )
 
+            ThemeSettingsSection(
+                selectedColorTheme = selectedColorTheme,
+                onThemeClick = { showThemeDialog = true }
+            )
+
             GraphSettingsSection(
                 selectedGraphPreset = selectedGraphPreset,
                 onPresetClick = { showGraphPresetDialog = true }
@@ -182,6 +191,17 @@ fun SettingsScreen(
                 showGraphPresetDialog = false
             },
             onDismiss = { showGraphPresetDialog = false }
+        )
+    }
+
+    if (showThemeDialog) {
+        ThemePresetDialog(
+            currentTheme = selectedColorTheme,
+            onThemeSelected = { theme ->
+                onColorThemeChanged(theme)
+                showThemeDialog = false
+            },
+            onDismiss = { showThemeDialog = false }
         )
     }
 
@@ -555,6 +575,53 @@ private fun AccountSection(
                         stringResource(R.string.settings_sign_in)
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun ThemeSettingsSection(
+    selectedColorTheme: String,
+    onThemeClick: () -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = stringResource(R.string.settings_theme_settings),
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onThemeClick() },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.settings_theme_preset), fontWeight = FontWeight.Medium)
+                    Text(
+                        text = selectedColorTheme,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = stringResource(R.string.settings_theme_preset_description),
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

@@ -119,6 +119,14 @@ class AppSettingsManager(context: Context) {
         preferences.edit().putString(KEY_GRAPH_PRESET, preset).apply()
     }
 
+    fun getColorTheme(): String {
+        return preferences.getString(KEY_COLOR_THEME, COLOR_THEME_DEFAULT) ?: COLOR_THEME_DEFAULT
+    }
+
+    fun setColorTheme(theme: String) {
+        preferences.edit().putString(KEY_COLOR_THEME, theme).apply()
+    }
+
     fun getLanguage(): String {
         return preferences.getString(KEY_LANGUAGE, LANGUAGE_RUSSIAN) ?: LANGUAGE_RUSSIAN
     }
@@ -194,6 +202,7 @@ class AppSettingsManager(context: Context) {
         private const val KEY_LANGUAGE = "app_language"
         private const val KEY_CUSTOM_STORAGE_URI = "custom_storage_uri"
         private const val KEY_GRAPH_PRESET = "graph_preset"
+        private const val KEY_COLOR_THEME = "color_theme"
 
         const val LANGUAGE_SYSTEM = "system"
         const val LANGUAGE_ENGLISH = "en"
@@ -203,6 +212,13 @@ class AppSettingsManager(context: Context) {
         const val GRAPH_PRESET_COMPACT = "Compact"
         const val GRAPH_PRESET_LARGE = "Large"
         const val GRAPH_PRESET_WIDE = "Wide"
+
+        const val COLOR_THEME_DEFAULT = "Dynamic"
+        const val COLOR_THEME_PURPLE  = "Purple"
+        const val COLOR_THEME_BLUE    = "Blue"
+        const val COLOR_THEME_GREEN   = "Green"
+        const val COLOR_THEME_ORANGE  = "Orange"
+        const val COLOR_THEME_ROSE    = "Rose"
 
         val DEFAULT_PREVIEW_EXTENSIONS: LinkedHashSet<String> = linkedSetOf(
             "c",
