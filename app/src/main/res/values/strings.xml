@@ -17,6 +17,10 @@
     <string name="notification_clone_cancelled_detail">Cloning %1$s cancelled by user</string>
     <string name="notification_permission_required">Allow notifications in app settings for background cloning</string>
     <string name="clone_wifi_only_error">Repository download is only allowed over Wi-Fi. Connect to Wi-Fi or disable this restriction in settings.</string>
+    <string name="clone_error_offline">No internet connection. Cannot start cloning.</string>
+    <string name="network_error_offline">No internet connection</string>
+    <string name="network_error_server_unreachable">Server unreachable. Check your connection.</string>
+    <string name="network_error_retry">Retry</string>
 
     <!-- Settings Screen -->
     <string name="settings_file_preview">File Preview</string>

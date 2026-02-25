@@ -199,6 +199,16 @@ class CloneRepositoryService : Service() {
                     .setContentTitle(getString(R.string.notification_clone_completed))
                     .setContentText(contentText)
             }
+            is GitResult.Failure.NetworkError -> {
+                val msg = if (result.isOffline) {
+                    getString(R.string.network_error_offline)
+                } else {
+                    getString(R.string.network_error_server_unreachable)
+                }
+                builder
+                    .setContentTitle(getString(R.string.notification_clone_failed))
+                    .setContentText(getString(R.string.notification_clone_failed_detail, repoFullName, msg))
+            }
             is GitResult.Failure -> {
                 val message = result.message.ifBlank { getString(R.string.notification_clone_failed_generic) }
                 if (message.contains("cancel", ignoreCase = true)) {
@@ -339,6 +349,10 @@ class CloneRepositoryService : Service() {
             customDestination: String? = null
         ): Boolean {
             val appContext = context.applicationContext
+            if (!isConnected(appContext)) {
+                showOfflineRestriction(appContext)
+                return false
+            }
             if (!isNetworkAllowed(appContext)) {
                 showWifiOnlyRestriction(appContext)
                 return false
@@ -370,6 +384,23 @@ class CloneRepositoryService : Service() {
                 action = ACTION_CANCEL_CLONE
             }
             ContextCompat.startForegroundService(context, intent)
+        }
+
+        private fun isConnected(context: Context): Boolean {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val network = cm.activeNetwork ?: return false
+            val caps = cm.getNetworkCapabilities(network) ?: return false
+            return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        }
+
+        private fun showOfflineRestriction(context: Context) {
+            Handler(Looper.getMainLooper()).post {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.clone_error_offline),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
         }
 
         private fun isNetworkAllowed(context: Context): Boolean {

@@ -17,6 +17,10 @@
     <string name="notification_clone_cancelled_detail">Клонирование %1$s отменено пользователем</string>
     <string name="notification_permission_required">Для фонового клонирования разрешите уведомления в настройках приложения</string>
     <string name="clone_wifi_only_error">Загрузка репозитория разрешена только по Wi‑Fi. Подключитесь к Wi‑Fi или отключите ограничение в настройках.</string>
+    <string name="clone_error_offline">Нет подключения к интернету. Невозможно начать клонирование.</string>
+    <string name="network_error_offline">Нет подключения к интернету</string>
+    <string name="network_error_server_unreachable">Сервер недоступен. Проверьте соединение.</string>
+    <string name="network_error_retry">Повторить</string>
 
     <!-- Settings Screen -->
     <string name="settings_file_preview">Просмотр файлов</string>

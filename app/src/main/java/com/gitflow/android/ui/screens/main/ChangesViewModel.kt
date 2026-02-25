@@ -37,7 +37,11 @@ data class ChangesUiState(
     /** Non-null while push is in progress; null otherwise. */
     val syncProgress: SyncProgress? = null,
     // Transient snackbar message — cleared after display
-    val message: String? = null
+    val message: String? = null,
+    /** Persistent network error banner; null when no error. */
+    val networkErrorMessage: String? = null,
+    /** Whether the failed network operation can be retried. */
+    val isRetryable: Boolean = false
 )
 
 class ChangesViewModel(
@@ -48,6 +52,9 @@ class ChangesViewModel(
 
     private fun str(id: Int): String = getApplication<Application>().getString(id)
     private fun str(id: Int, vararg args: Any): String = getApplication<Application>().getString(id, *args)
+
+    /** Stores the last failed network operation so the user can retry it. */
+    private var pendingRetry: (() -> Unit)? = null
 
     private val _uiState = MutableStateFlow(
         ChangesUiState(
@@ -201,41 +208,66 @@ class ChangesViewModel(
 
     fun push() {
         guard {
+            clearNetworkError()
             val result = gitRepository.pushWithProgress(repository) { progress ->
                 _uiState.value = _uiState.value.copy(syncProgress = progress)
             }
             _uiState.update { it.copy(syncProgress = null) }
-            val msg = if (result is GitResult.Success) {
-                str(R.string.changes_push_successful)
-            } else {
-                (result as? GitResult.Failure)?.message?.ifBlank { null } ?: str(R.string.changes_push_failed)
+            when (result) {
+                is GitResult.Success -> emit(str(R.string.changes_push_successful))
+                is GitResult.Failure.NetworkError -> setNetworkError(result) { push() }
+                is GitResult.Failure -> emit(result.message.ifBlank { null } ?: str(R.string.changes_push_failed))
             }
-            emit(msg)
         }
     }
 
     fun fetch() {
         guard {
+            clearNetworkError()
             val result = gitRepository.fetch(repository)
-            if (result is GitResult.Success) {
-                reloadChanges()
-                emit(str(R.string.changes_fetch_successful))
-            } else {
-                emit((result as? GitResult.Failure)?.message?.ifBlank { null } ?: str(R.string.changes_fetch_failed))
+            when (result) {
+                is GitResult.Success -> {
+                    reloadChanges()
+                    emit(str(R.string.changes_fetch_successful))
+                }
+                is GitResult.Failure.NetworkError -> setNetworkError(result) { fetch() }
+                is GitResult.Failure -> emit(result.message.ifBlank { null } ?: str(R.string.changes_fetch_failed))
             }
         }
     }
 
     fun pull() {
         guard {
+            clearNetworkError()
             val result = gitRepository.pull(repository)
-            if (result is GitResult.Success) {
-                reloadChanges()
-                emit(str(R.string.changes_pull_successful))
-            } else {
-                emit((result as? GitResult.Failure)?.message?.ifBlank { null } ?: str(R.string.changes_pull_failed))
+            when (result) {
+                is GitResult.Success -> {
+                    reloadChanges()
+                    emit(str(R.string.changes_pull_successful))
+                }
+                is GitResult.Failure.NetworkError -> setNetworkError(result) { pull() }
+                is GitResult.Failure -> emit(result.message.ifBlank { null } ?: str(R.string.changes_pull_failed))
             }
         }
+    }
+
+    fun retryNetworkOp() {
+        pendingRetry?.invoke()
+    }
+
+    fun dismissNetworkError() {
+        clearNetworkError()
+    }
+
+    private fun setNetworkError(error: GitResult.Failure.NetworkError, retry: () -> Unit) {
+        val msg = if (error.isOffline) str(R.string.network_error_offline) else str(R.string.network_error_server_unreachable)
+        pendingRetry = retry
+        _uiState.update { it.copy(networkErrorMessage = msg, isRetryable = true) }
+    }
+
+    private fun clearNetworkError() {
+        pendingRetry = null
+        _uiState.update { it.copy(networkErrorMessage = null, isRetryable = false) }
     }
 
     fun toggleFile(file: FileChange) {

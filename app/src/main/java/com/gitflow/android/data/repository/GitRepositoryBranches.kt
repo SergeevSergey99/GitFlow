@@ -5,11 +5,56 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.eclipse.jgit.api.CreateBranchCommand
 import org.eclipse.jgit.api.errors.RefAlreadyExistsException
+import org.eclipse.jgit.api.errors.TransportException
 import org.eclipse.jgit.api.CherryPickResult
 import org.eclipse.jgit.api.MergeResult
 import org.eclipse.jgit.api.ResetCommand
 import org.eclipse.jgit.lib.ProgressMonitor
 import org.eclipse.jgit.revwalk.RevWalk
+import java.net.ConnectException
+import java.net.NoRouteToHostException
+import java.net.SocketException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import javax.net.ssl.SSLException
+
+/**
+ * Inspects the exception cause chain and maps network-related exceptions to
+ * [GitResult.Failure.NetworkError], everything else to [GitResult.Failure.Generic].
+ */
+internal fun classifyNetworkException(e: Exception): GitResult.Failure {
+    var cause: Throwable? = e
+    while (cause != null) {
+        when (cause) {
+            is UnknownHostException,
+            is NoRouteToHostException ->
+                return GitResult.Failure.NetworkError(
+                    message = cause.message ?: "No internet connection",
+                    cause = e,
+                    isOffline = true
+                )
+            is ConnectException,
+            is SocketTimeoutException,
+            is SocketException,
+            is SSLException ->
+                return GitResult.Failure.NetworkError(
+                    message = cause.message ?: "Server unreachable",
+                    cause = e,
+                    isOffline = false
+                )
+        }
+        cause = cause.cause
+    }
+    // JGit TransportException without a recognised Java network cause
+    if (e is TransportException || e is org.eclipse.jgit.errors.TransportException) {
+        return GitResult.Failure.NetworkError(
+            message = e.message ?: "Network error",
+            cause = e,
+            isOffline = false
+        )
+    }
+    return GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+}
 
 private class JGitProgressMonitor(
     private val callback: (SyncProgress) -> Unit
@@ -129,7 +174,7 @@ internal suspend fun GitRepository.fetchImpl(repository: Repository): GitResult<
         refreshRepository(repository)
         GitResult.Success(Unit)
     } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+        classifyNetworkException(e)
     }
 }
 
@@ -149,7 +194,7 @@ internal suspend fun GitRepository.pullImpl(repository: Repository): GitResult<U
             else GitResult.Failure.Generic("Pull failed")
         }
     } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+        classifyNetworkException(e)
     }
 }
 
@@ -173,7 +218,7 @@ internal suspend fun GitRepository.pushImpl(repository: Repository): GitResult<U
             }
         }
     } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+        classifyNetworkException(e)
     }
 }
 
@@ -200,7 +245,7 @@ internal suspend fun GitRepository.pushWithProgressImpl(
             }
         }
     } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+        classifyNetworkException(e)
     }
 }
 

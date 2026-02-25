@@ -45,6 +45,17 @@ sealed class GitResult<out T> {
         data class Cancelled(
             override val message: String = "Operation cancelled"
         ) : Failure()
+
+        /**
+         * Network-level failure during a remote operation (push, pull, fetch, clone).
+         * [isOffline] = true means DNS/routing failure (no internet);
+         * false means the host was reached but connection was refused or timed out.
+         */
+        data class NetworkError(
+            override val message: String,
+            val cause: Throwable? = null,
+            val isOffline: Boolean = false
+        ) : Failure()
     }
 }
 
