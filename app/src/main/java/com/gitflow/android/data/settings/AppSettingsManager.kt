@@ -137,6 +137,15 @@ class AppSettingsManager(context: Context) {
         _colorThemeFlow.value = theme
     }
 
+    fun getLastRepositoryId(): String? {
+        return preferences.getString(KEY_LAST_REPOSITORY_ID, null)
+    }
+
+    fun setLastRepositoryId(id: String?) {
+        if (id == null) preferences.edit().remove(KEY_LAST_REPOSITORY_ID).apply()
+        else preferences.edit().putString(KEY_LAST_REPOSITORY_ID, id).apply()
+    }
+
     fun getDarkMode(): String {
         return preferences.getString(KEY_DARK_MODE, DARK_MODE_SYSTEM) ?: DARK_MODE_SYSTEM
     }
@@ -223,6 +232,7 @@ class AppSettingsManager(context: Context) {
         private const val KEY_GRAPH_PRESET = "graph_preset"
         private const val KEY_COLOR_THEME = "color_theme"
         private const val KEY_DARK_MODE = "dark_mode"
+        private const val KEY_LAST_REPOSITORY_ID = "last_repository_id"
 
         const val LANGUAGE_SYSTEM = "system"
         const val LANGUAGE_ENGLISH = "en"

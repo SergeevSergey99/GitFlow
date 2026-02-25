@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.io.File
 
 class MainViewModel(
     application: Application,
@@ -46,7 +47,8 @@ class MainViewModel(
 
     fun selectRepository(repo: Repository) {
         _selectedRepository.value = repo
-        _selectedTab.value = 1 // Switch to graph view
+        _selectedTab.value = 1
+        settingsManager.setLastRepositoryId(repo.id)
     }
 
     fun changeGraphPreset(preset: String) {
@@ -83,18 +85,41 @@ class MainViewModel(
     }
 
     fun updateSelectedRepositoryIfChanged(repositories: List<Repository>) {
-        val selected = _selectedRepository.value ?: return
+        val selected = _selectedRepository.value
+        if (selected == null) {
+            // Ждём непустого списка — при первой эмиссии список может быть пустым
+            if (repositories.isEmpty()) return
+            val lastId = settingsManager.getLastRepositoryId() ?: return
+            val repo = repositories.find { it.id == lastId }
+            if (repo != null && isValidGitRepo(repo.path)) {
+                _selectedRepository.value = repo
+                _selectedTab.value = 1
+            } else {
+                // Репозиторий удалён, недоступен или повреждён — сбрасываем
+                settingsManager.setLastRepositoryId(null)
+            }
+            return
+        }
         val updated = repositories.find { it.id == selected.id }
         when {
-            updated == null -> {
+            updated == null || !isValidGitRepo(updated.path) -> {
                 _selectedRepository.value = null
-                if (_selectedTab.value != 0) {
-                    _selectedTab.value = 0
-                }
+                settingsManager.setLastRepositoryId(null)
+                if (_selectedTab.value != 0) _selectedTab.value = 0
             }
             updated != selected -> {
                 _selectedRepository.value = updated
             }
         }
+    }
+
+    private fun isValidGitRepo(path: String): Boolean {
+        val dir = File(path)
+        if (!dir.isDirectory) return false
+        // Обычный репозиторий (.git папка или файл для worktree)
+        if (File(dir, ".git").exists()) return true
+        // Bare-репозиторий (HEAD лежит прямо в корне)
+        if (File(dir, "HEAD").exists() && File(dir, "objects").isDirectory) return true
+        return false
     }
 }
