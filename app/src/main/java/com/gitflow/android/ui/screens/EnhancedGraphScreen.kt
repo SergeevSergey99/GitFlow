@@ -53,6 +53,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -1000,12 +1001,13 @@ private fun GraphCommitRow(
                 }
 
                 // Показываем только ветки, где коммит является HEAD
+                val darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
                 commit.branchHeads.forEach { branchHead ->
-                    val branchColor = getBranchColor(branchHead)
+                    val branchColor = getBranchColor(branchHead, darkTheme)
                     Badge(
                         text = branchHead,
                         icon = Icons.Default.AccountTree,
-                        background = branchColor.copy(alpha = 0.15f),
+                        background = branchColor.copy(alpha = if (darkTheme) 0.25f else 0.15f),
                         foreground = branchColor,
                         config = config
                     )
@@ -1283,11 +1285,11 @@ private fun Badge(
 
 /* ============================ Branch Colors ============================ */
 
-private fun getBranchColor(branchName: String): Color {
-    // Генерируем стабильный контрастный цвет для каждой ветки
-    val colors = listOf(
+private fun getBranchColor(branchName: String, darkTheme: Boolean): Color {
+    // Тёмные цвета — для светлой темы (читаются как текст на светлом фоне)
+    val lightColors = listOf(
         Color(0xFF1B5E20), // Dark Green
-        Color(0xFF0D47A1), // Dark Blue  
+        Color(0xFF0D47A1), // Dark Blue
         Color(0xFFE65100), // Dark Orange
         Color(0xFF4A148C), // Dark Purple
         Color(0xFFAD1457), // Dark Pink
@@ -1299,8 +1301,23 @@ private fun getBranchColor(branchName: String): Color {
         Color(0xFF827717), // Dark Olive
         Color(0xFF616161)  // Dark Grey
     )
-    
-    // Выбираем цвет на основе хеша имени ветки
+    // Светлые цвета — для тёмной темы (читаются как текст на тёмном фоне)
+    val darkColors = listOf(
+        Color(0xFF81C784), // Light Green
+        Color(0xFF90CAF9), // Light Blue
+        Color(0xFFFFCC80), // Light Orange
+        Color(0xFFCE93D8), // Light Purple
+        Color(0xFFF48FB1), // Light Pink
+        Color(0xFF80DEEA), // Light Cyan
+        Color(0xFFFF8A65), // Light Deep Orange
+        Color(0xFFBCAAA4), // Light Brown
+        Color(0xFFB0BEC5), // Light Blue Grey
+        Color(0xFF9FA8DA), // Light Indigo
+        Color(0xFFDCE775), // Light Olive
+        Color(0xFFE0E0E0)  // Light Grey
+    )
+
+    val colors = if (darkTheme) darkColors else lightColors
     val index = branchName.hashCode().let { if (it < 0) -it else it } % colors.size
     return colors[index]
 }
