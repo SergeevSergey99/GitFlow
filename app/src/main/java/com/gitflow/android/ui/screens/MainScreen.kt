@@ -47,11 +47,12 @@ fun MainScreen(navController: NavController) {
     Scaffold(
         topBar = {
             TopAppBar(
+                expandedHeight = 48.dp,
                 title = {
                     selectedRepository?.let { repo ->
                         Text(
                             text = stringResource(R.string.main_screen_repo_info, repo.name, repo.currentBranch),
-                            fontSize = 14.sp,
+                            fontSize = 18.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
