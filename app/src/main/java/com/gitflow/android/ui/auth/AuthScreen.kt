@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,13 +16,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.koin.androidx.compose.koinViewModel
-import com.gitflow.android.data.auth.AuthManager
-import org.koin.compose.koinInject
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitUser
 
@@ -33,14 +28,11 @@ fun AuthScreen(
     onNavigateBack: () -> Unit,
     viewModel: AuthViewModel = koinViewModel()
 ) {
-    val context = LocalContext.current
-    val authManager: AuthManager = koinInject()
-    
     val githubUser by viewModel.githubUser.collectAsState()
     val gitlabUser by viewModel.gitlabUser.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
-    
+
     val oauthLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -49,16 +41,12 @@ fun AuthScreen(
             val state = result.data?.getStringExtra(OAuthActivity.RESULT_STATE)
             val provider = viewModel.currentProvider
             if (code != null && state != null && provider != null) {
-                viewModel.handleAuthCallback(provider, code, state, authManager)
+                viewModel.handleAuthCallback(provider, code, state)
             }
         } else {
             val error = result.data?.getStringExtra(OAuthActivity.RESULT_ERROR) ?: "Авторизация отменена"
             viewModel.setError(error)
         }
-    }
-    
-    LaunchedEffect(Unit) {
-        viewModel.initializeAuth(authManager)
     }
     
     Scaffold(
@@ -116,27 +104,23 @@ fun AuthScreen(
                 user = githubUser,
                 isLoading = isLoading,
                 onLogin = {
-                    viewModel.startAuth(GitProvider.GITHUB, authManager) { intent ->
-                        oauthLauncher.launch(intent)
-                    }
+                    viewModel.startAuth(GitProvider.GITHUB) { oauthLauncher.launch(it) }
                 },
                 onLogout = {
-                    viewModel.logout(GitProvider.GITHUB, authManager)
+                    viewModel.logout(GitProvider.GITHUB)
                 }
             )
-            
+
             // GitLab аккаунт
             AccountCard(
                 provider = GitProvider.GITLAB,
                 user = gitlabUser,
                 isLoading = isLoading,
                 onLogin = {
-                    viewModel.startAuth(GitProvider.GITLAB, authManager) { intent ->
-                        oauthLauncher.launch(intent)
-                    }
+                    viewModel.startAuth(GitProvider.GITLAB) { oauthLauncher.launch(it) }
                 },
                 onLogout = {
-                    viewModel.logout(GitProvider.GITLAB, authManager)
+                    viewModel.logout(GitProvider.GITLAB)
                 }
             )
             

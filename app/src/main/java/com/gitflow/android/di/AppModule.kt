@@ -26,7 +26,7 @@ val appModule = module {
     single<IGitRepository> { GitRepository(androidContext(), get()) }
 
     // ViewModels — static dependencies
-    viewModel { AuthViewModel() }
+    viewModel { AuthViewModel(get()) }
     viewModel { RemoteRepositoriesViewModel(get()) }
     viewModel { MainViewModel(androidApplication(), get()) }
     viewModel { RepositoryListViewModel(androidApplication(), get(), get()) }

@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class AuthViewModel : ViewModel() {
+class AuthViewModel(private val authManager: AuthManager) : ViewModel() {
 
     private val _githubUser = MutableStateFlow<GitUser?>(null)
     val githubUser: StateFlow<GitUser?> = _githubUser.asStateFlow()
@@ -30,16 +30,12 @@ class AuthViewModel : ViewModel() {
 
     private var pendingState: String? = null
 
-    fun initializeAuth(authManager: AuthManager) {
+    init {
         _githubUser.value = authManager.getCurrentUser(GitProvider.GITHUB)
         _gitlabUser.value = authManager.getCurrentUser(GitProvider.GITLAB)
     }
 
-    fun startAuth(
-        provider: GitProvider,
-        authManager: AuthManager,
-        launchIntent: (Intent) -> Unit
-    ) {
+    fun startAuth(provider: GitProvider, launchIntent: (Intent) -> Unit) {
         currentProvider = provider
         _errorMessage.value = null
         _isLoading.value = true
@@ -60,7 +56,7 @@ class AuthViewModel : ViewModel() {
         }
     }
 
-    fun handleAuthCallback(provider: GitProvider, code: String, state: String, authManager: AuthManager) {
+    fun handleAuthCallback(provider: GitProvider, code: String, state: String) {
         viewModelScope.launch {
             _isLoading.value = true
             _errorMessage.value = null
@@ -86,7 +82,7 @@ class AuthViewModel : ViewModel() {
         }
     }
 
-    fun logout(provider: GitProvider, authManager: AuthManager) {
+    fun logout(provider: GitProvider) {
         authManager.logout(provider)
         when (provider) {
             GitProvider.GITHUB -> _githubUser.value = null
