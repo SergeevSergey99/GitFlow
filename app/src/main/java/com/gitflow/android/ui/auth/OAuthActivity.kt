@@ -39,7 +39,8 @@ class OAuthActivity : ComponentActivity() {
 
         private val ALLOWED_HOSTS = setOf(
             "github.com",
-            "gitlab.com"
+            "gitlab.com",
+            "bitbucket.org"
         )
 
         internal fun isHostAllowed(host: String): Boolean {
@@ -128,7 +129,13 @@ fun OAuthScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
             title = {
-                Text("Авторизация ${if (provider == GitProvider.GITHUB) "GitHub" else "GitLab"}")
+                val providerName = when (provider) {
+                    GitProvider.GITHUB -> "GitHub"
+                    GitProvider.GITLAB -> "GitLab"
+                    GitProvider.BITBUCKET -> "Bitbucket"
+                    else -> provider.name
+                }
+                Text("Авторизация $providerName")
             },
             navigationIcon = {
                 IconButton(onClick = onClose) {

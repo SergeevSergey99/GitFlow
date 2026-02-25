@@ -34,25 +34,26 @@ class RemoteRepositoriesViewModel(private val authManager: AuthManager) : ViewMo
     private val _selectedProvider = MutableStateFlow<GitProvider?>(null)
     val selectedProvider: StateFlow<GitProvider?> = _selectedProvider.asStateFlow()
 
-    val isGitHubAuthenticated: Boolean get() = authManager.isAuthenticated(GitProvider.GITHUB)
-    val isGitLabAuthenticated: Boolean get() = authManager.isAuthenticated(GitProvider.GITLAB)
+    private val _authenticatedProviders = MutableStateFlow<List<GitProvider>>(emptyList())
+    val authenticatedProviders: StateFlow<List<GitProvider>> = _authenticatedProviders.asStateFlow()
 
     init {
-        initializeRepositories()
+        refreshAuthState()
     }
 
-    private fun initializeRepositories() {
-        try {
-            when {
-                authManager.isAuthenticated(GitProvider.GITHUB) -> selectProvider(GitProvider.GITHUB)
-                authManager.isAuthenticated(GitProvider.GITLAB) -> selectProvider(GitProvider.GITLAB)
-                else -> {
-                    _errorMessage.value = "Необходимо авторизоваться в GitHub или GitLab. Настройте OAuth конфигурацию в oauth.properties"
-                    _isLoading.value = false
-                }
+    /** Re-reads auth state — call when returning to this screen after account changes. */
+    fun refreshAuthState() {
+        val providers = GitProvider.entries.filter { authManager.isAuthenticated(it) }
+        _authenticatedProviders.value = providers
+
+        when {
+            providers.isEmpty() -> {
+                _errorMessage.value = "Необходимо авторизоваться в одном из Git-провайдеров. Перейдите в Настройки → Управление аккаунтами."
+                _isLoading.value = false
             }
-        } catch (e: Exception) {
-            _errorMessage.value = "Ошибка инициализации: ${e.message}"
+            _selectedProvider.value == null || !providers.contains(_selectedProvider.value) -> {
+                selectProvider(providers.first())
+            }
         }
     }
 

@@ -19,6 +19,12 @@ data class GitHubUser(
     val avatar_url: String?
 )
 
+data class GitHubEmail(
+    val email: String,
+    val primary: Boolean,
+    val verified: Boolean
+)
+
 data class GitHubRepository(
     val id: Long,
     val name: String,
@@ -46,6 +52,11 @@ interface GitHubApi {
     suspend fun getCurrentUser(
         @Header("Authorization") authorization: String
     ): Response<GitHubUser>
+
+    @GET("user/emails")
+    suspend fun getUserEmails(
+        @Header("Authorization") authorization: String
+    ): Response<List<GitHubEmail>>
     
     @GET("user/repos")
     suspend fun getUserRepositories(

@@ -186,8 +186,14 @@ data class GitUser(
 
 @Serializable
 enum class GitProvider {
-    GITHUB, GITLAB
+    GITHUB, GITLAB, BITBUCKET, GITEA, AZURE_DEVOPS
 }
+
+/** Credential bundle for PAT-based providers (Gitea, Azure DevOps). */
+data class PATCredentials(
+    val instanceUrl: String,   // e.g. "https://gitea.example.com" or "https://dev.azure.com/myorg"
+    val username: String
+)
 
 @Serializable
 data class GitRemoteRepository(

@@ -8,8 +8,19 @@
 github.client.id=your_github_client_id_here
 github.client.secret=your_github_client_secret_here
 
-# GitLab OAuth App Credentials  
+# GitLab OAuth App Credentials
 # Create app at: https://gitlab.com/-/profile/applications
 # Callback URL: gitflow://oauth/callback
 gitlab.client.id=your_gitlab_client_id_here
 gitlab.client.secret=your_gitlab_client_secret_here
+
+# Bitbucket OAuth Consumer Credentials
+# Create consumer at: https://bitbucket.org/account/settings/app-passwords/
+# (Account settings → OAuth → Add consumer)
+# Callback URL: gitflow://oauth/callback
+bitbucket.client.id=your_bitbucket_client_id_here
+bitbucket.client.secret=your_bitbucket_client_secret_here
+
+# ---- PAT-based providers (no app credentials needed) ----
+# Gitea / Forgejo: Users enter their instance URL and Personal Access Token in-app.
+# Azure DevOps:   Users enter their org URL and Personal Access Token in-app.

@@ -28,6 +28,9 @@ import com.gitflow.android.R
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitRemoteRepository
 import com.gitflow.android.data.settings.AppSettingsManager
+import com.gitflow.android.ui.auth.providerDisplayName
+import com.gitflow.android.ui.auth.providerIcon
+import com.gitflow.android.ui.auth.providerIconColor
 import com.gitflow.android.ui.components.CloneProgressOverlay
 import java.io.File
 import java.text.SimpleDateFormat
@@ -49,6 +52,12 @@ fun RemoteRepositoriesScreen(
     val errorMessage by viewModel.errorMessage.collectAsState()
     val selectedProvider by viewModel.selectedProvider.collectAsState()
     val isCloning by viewModel.isCloning.collectAsState()
+    val authenticatedProviders by viewModel.authenticatedProviders.collectAsState()
+
+    // Refresh auth state when the screen (re-)enters composition
+    LaunchedEffect(Unit) {
+        viewModel.refreshAuthState()
+    }
 
     data class PendingClone(val repository: GitRemoteRepository, val localPath: String)
     var pendingClone by remember { mutableStateOf<PendingClone?>(null) }
@@ -94,10 +103,9 @@ fun RemoteRepositoriesScreen(
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 ProviderTabs(
+                    authenticatedProviders = authenticatedProviders,
                     selectedProvider = selectedProvider,
-                    onProviderSelected = { viewModel.selectProvider(it) },
-                    isGitHubAuthenticated = viewModel.isGitHubAuthenticated,
-                    isGitLabAuthenticated = viewModel.isGitLabAuthenticated
+                    onProviderSelected = { viewModel.selectProvider(it) }
                 )
 
                 if (isLoading) {
@@ -154,79 +162,36 @@ fun RemoteRepositoriesScreen(
 
 @Composable
 fun ProviderTabs(
+    authenticatedProviders: List<GitProvider>,
     selectedProvider: GitProvider?,
-    onProviderSelected: (GitProvider) -> Unit,
-    isGitHubAuthenticated: Boolean,
-    isGitLabAuthenticated: Boolean
+    onProviderSelected: (GitProvider) -> Unit
 ) {
-    PrimaryTabRow(
-        selectedTabIndex = when (selectedProvider) {
-            GitProvider.GITHUB -> 0
-            GitProvider.GITLAB -> 1
-            null -> 0 // Вместо -1 используем 0 чтобы избежать падения
-        }
-    ) {
-        Tab(
-            selected = selectedProvider == GitProvider.GITHUB,
-            onClick = {
-                if (isGitHubAuthenticated) {
-                    onProviderSelected(GitProvider.GITHUB)
-                }
-            },
-            enabled = isGitHubAuthenticated
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+    if (authenticatedProviders.isEmpty()) return
+
+    val selectedIndex = authenticatedProviders.indexOf(selectedProvider).coerceAtLeast(0)
+    PrimaryTabRow(selectedTabIndex = selectedIndex) {
+        authenticatedProviders.forEach { provider ->
+            Tab(
+                selected = selectedProvider == provider,
+                onClick = { onProviderSelected(provider) }
             ) {
-                Icon(
-                    Icons.Default.Code,
-                    contentDescription = null,
-                    tint = if (isGitHubAuthenticated) Color(0xFF24292F) else Color.Gray
-                )
-                Text("GitHub")
-                if (!isGitHubAuthenticated) {
+                Row(
+                    modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     Icon(
-                        Icons.Default.Lock,
-                        contentDescription = stringResource(R.string.remote_repos_not_authorized),
-                        modifier = Modifier.size(16.dp),
-                        tint = Color.Gray
+                        providerIcon(provider),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = providerIconColor(provider)
+                    )
+                    Text(
+                        text = providerDisplayName(provider),
+                        style = MaterialTheme.typography.labelLarge
                     )
                 }
             }
-        }
-
-        Tab(
-            selected = selectedProvider == GitProvider.GITLAB,
-            onClick = {
-                if (isGitLabAuthenticated) {
-                    onProviderSelected(GitProvider.GITLAB)
-                }
-            },
-            enabled = isGitLabAuthenticated
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    Icons.Default.Storage,
-                    contentDescription = null,
-                    tint = if (isGitLabAuthenticated) Color(0xFFFC6D26) else Color.Gray
-                )
-                Text("GitLab")
-                if (!isGitLabAuthenticated) {
-                    Icon(
-                        Icons.Default.Lock,
-                        contentDescription = stringResource(R.string.remote_repos_not_authorized),
-                        modifier = Modifier.size(16.dp),
-                        tint = Color.Gray
-                    )
-                }
-            }
-
         }
     }
 }
@@ -367,16 +332,10 @@ fun RepositoryCard(
                         )
                     }
                     Icon(
-                        when (repository.provider) {
-                            GitProvider.GITHUB -> Icons.Default.Code
-                            GitProvider.GITLAB -> Icons.Default.Storage
-                        },
+                        providerIcon(repository.provider),
                         contentDescription = repository.provider.name,
                         modifier = Modifier.size(16.dp),
-                        tint = when (repository.provider) {
-                            GitProvider.GITHUB -> Color(0xFF24292F)
-                            GitProvider.GITLAB -> Color(0xFFFC6D26)
-                        }
+                        tint = providerIconColor(repository.provider)
                     )
                 }
             }

@@ -1,6 +1,7 @@
 package com.gitflow.android.data.auth
 
 import android.content.Context
+import com.gitflow.android.data.models.GitProvider
 import java.io.IOException
 import java.util.Properties
 import timber.log.Timber
@@ -10,6 +11,8 @@ object OAuthConfig {
     private var _githubClientSecret: String = ""
     private var _gitlabClientId: String = ""
     private var _gitlabClientSecret: String = ""
+    private var _bitbucketClientId: String = ""
+    private var _bitbucketClientSecret: String = ""
 
     const val REDIRECT_URI = "gitflow://oauth/callback"
 
@@ -17,6 +20,8 @@ object OAuthConfig {
     val githubClientSecret: String get() = _githubClientSecret
     val gitlabClientId: String get() = _gitlabClientId
     val gitlabClientSecret: String get() = _gitlabClientSecret
+    val bitbucketClientId: String get() = _bitbucketClientId
+    val bitbucketClientSecret: String get() = _bitbucketClientSecret
 
     fun initialize(context: Context) {
         loadFromAssets(context)
@@ -28,15 +33,20 @@ object OAuthConfig {
             context.assets.open("oauth.properties").use { inputStream ->
                 properties.load(inputStream)
             }
-
-            _githubClientId = properties.getProperty("github.client.id", "")
-            _githubClientSecret = properties.getProperty("github.client.secret", "")
-            _gitlabClientId = properties.getProperty("gitlab.client.id", "")
-            _gitlabClientSecret = properties.getProperty("gitlab.client.secret", "")
+            applyProperties(properties)
         } catch (e: IOException) {
-            Timber.w( "oauth.properties not found in assets: ${e.message}")
+            Timber.w("oauth.properties not found in assets: ${e.message}")
             loadFromEnvironmentOrFile(context)
         }
+    }
+
+    private fun applyProperties(properties: Properties) {
+        _githubClientId = properties.getProperty("github.client.id", "")
+        _githubClientSecret = properties.getProperty("github.client.secret", "")
+        _gitlabClientId = properties.getProperty("gitlab.client.id", "")
+        _gitlabClientSecret = properties.getProperty("gitlab.client.secret", "")
+        _bitbucketClientId = properties.getProperty("bitbucket.client.id", "")
+        _bitbucketClientSecret = properties.getProperty("bitbucket.client.secret", "")
     }
 
     private fun loadFromEnvironmentOrFile(context: Context) {
@@ -44,27 +54,33 @@ object OAuthConfig {
         _githubClientSecret = System.getenv("GITHUB_CLIENT_SECRET") ?: ""
         _gitlabClientId = System.getenv("GITLAB_CLIENT_ID") ?: ""
         _gitlabClientSecret = System.getenv("GITLAB_CLIENT_SECRET") ?: ""
+        _bitbucketClientId = System.getenv("BITBUCKET_CLIENT_ID") ?: ""
+        _bitbucketClientSecret = System.getenv("BITBUCKET_CLIENT_SECRET") ?: ""
 
-        if (_githubClientId.isEmpty() || _githubClientSecret.isEmpty() ||
-            _gitlabClientId.isEmpty() || _gitlabClientSecret.isEmpty()) {
-            try {
-                val properties = Properties()
-                context.openFileInput("oauth.properties").use { inputStream ->
-                    properties.load(inputStream)
-                }
-
-                if (_githubClientId.isEmpty()) _githubClientId = properties.getProperty("github.client.id", "")
-                if (_githubClientSecret.isEmpty()) _githubClientSecret = properties.getProperty("github.client.secret", "")
-                if (_gitlabClientId.isEmpty()) _gitlabClientId = properties.getProperty("gitlab.client.id", "")
-                if (_gitlabClientSecret.isEmpty()) _gitlabClientSecret = properties.getProperty("gitlab.client.secret", "")
-            } catch (e: IOException) {
-                Timber.w( "oauth.properties file not found: ${e.message}")
+        try {
+            val properties = Properties()
+            context.openFileInput("oauth.properties").use { inputStream ->
+                properties.load(inputStream)
             }
+            if (_githubClientId.isEmpty()) _githubClientId = properties.getProperty("github.client.id", "")
+            if (_githubClientSecret.isEmpty()) _githubClientSecret = properties.getProperty("github.client.secret", "")
+            if (_gitlabClientId.isEmpty()) _gitlabClientId = properties.getProperty("gitlab.client.id", "")
+            if (_gitlabClientSecret.isEmpty()) _gitlabClientSecret = properties.getProperty("gitlab.client.secret", "")
+            if (_bitbucketClientId.isEmpty()) _bitbucketClientId = properties.getProperty("bitbucket.client.id", "")
+            if (_bitbucketClientSecret.isEmpty()) _bitbucketClientSecret = properties.getProperty("bitbucket.client.secret", "")
+        } catch (e: IOException) {
+            Timber.w("oauth.properties file not found: ${e.message}")
         }
     }
 
-    fun isConfigured(): Boolean {
-        return _githubClientId.isNotEmpty() && _githubClientSecret.isNotEmpty() &&
-               _gitlabClientId.isNotEmpty() && _gitlabClientSecret.isNotEmpty()
+    /** Returns true if the given provider's OAuth credentials are available. */
+    fun isProviderConfigured(provider: GitProvider): Boolean = when (provider) {
+        GitProvider.GITHUB -> _githubClientId.isNotEmpty() && _githubClientSecret.isNotEmpty()
+        GitProvider.GITLAB -> _gitlabClientId.isNotEmpty() && _gitlabClientSecret.isNotEmpty()
+        GitProvider.BITBUCKET -> _bitbucketClientId.isNotEmpty() && _bitbucketClientSecret.isNotEmpty()
+        GitProvider.GITEA, GitProvider.AZURE_DEVOPS -> true // PAT-based, no app credentials needed
     }
+
+    /** Returns true if at least one OAuth provider is configured. */
+    fun isConfigured(): Boolean = GitProvider.entries.any { isProviderConfigured(it) }
 }

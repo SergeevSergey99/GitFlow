@@ -19,6 +19,15 @@ class AuthViewModel(private val authManager: AuthManager) : ViewModel() {
     private val _gitlabUser = MutableStateFlow<GitUser?>(null)
     val gitlabUser: StateFlow<GitUser?> = _gitlabUser.asStateFlow()
 
+    private val _bitbucketUser = MutableStateFlow<GitUser?>(null)
+    val bitbucketUser: StateFlow<GitUser?> = _bitbucketUser.asStateFlow()
+
+    private val _giteaUser = MutableStateFlow<GitUser?>(null)
+    val giteaUser: StateFlow<GitUser?> = _giteaUser.asStateFlow()
+
+    private val _azureUser = MutableStateFlow<GitUser?>(null)
+    val azureUser: StateFlow<GitUser?> = _azureUser.asStateFlow()
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
@@ -28,13 +37,15 @@ class AuthViewModel(private val authManager: AuthManager) : ViewModel() {
     var currentProvider: GitProvider? = null
         private set
 
-    private var pendingState: String? = null
-
     init {
         _githubUser.value = authManager.getCurrentUser(GitProvider.GITHUB)
         _gitlabUser.value = authManager.getCurrentUser(GitProvider.GITLAB)
+        _bitbucketUser.value = authManager.getCurrentUser(GitProvider.BITBUCKET)
+        _giteaUser.value = authManager.getCurrentUser(GitProvider.GITEA)
+        _azureUser.value = authManager.getCurrentUser(GitProvider.AZURE_DEVOPS)
     }
 
+    /** Starts the OAuth WebView flow for GitHub, GitLab, or Bitbucket. */
     fun startAuth(provider: GitProvider, launchIntent: (Intent) -> Unit) {
         currentProvider = provider
         _errorMessage.value = null
@@ -42,7 +53,6 @@ class AuthViewModel(private val authManager: AuthManager) : ViewModel() {
 
         try {
             val (authUrl, state) = authManager.getAuthUrl(provider)
-            pendingState = state
             val intent = Intent(authManager.context, OAuthActivity::class.java).apply {
                 putExtra(OAuthActivity.EXTRA_PROVIDER, provider.name)
                 putExtra(OAuthActivity.EXTRA_AUTH_URL, authUrl)
@@ -56,19 +66,15 @@ class AuthViewModel(private val authManager: AuthManager) : ViewModel() {
         }
     }
 
+    /** Handles the OAuth callback code from OAuthActivity (GitHub, GitLab, Bitbucket). */
     fun handleAuthCallback(provider: GitProvider, code: String, state: String) {
         viewModelScope.launch {
             _isLoading.value = true
             _errorMessage.value = null
-
             try {
                 val result = authManager.handleAuthCallback(provider, code, state)
-
                 if (result.success) {
-                    when (provider) {
-                        GitProvider.GITHUB -> _githubUser.value = result.user
-                        GitProvider.GITLAB -> _gitlabUser.value = result.user
-                    }
+                    setUserForProvider(provider, result.user)
                 } else {
                     _errorMessage.value = result.error ?: "Ошибка авторизации"
                 }
@@ -77,27 +83,52 @@ class AuthViewModel(private val authManager: AuthManager) : ViewModel() {
             } finally {
                 _isLoading.value = false
                 currentProvider = null
-                pendingState = null
+            }
+        }
+    }
+
+    /** Validates a Personal Access Token for Gitea or Azure DevOps. */
+    fun validatePAT(provider: GitProvider, instanceUrl: String, username: String, pat: String) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            _errorMessage.value = null
+            try {
+                val result = authManager.validateAndSavePAT(provider, instanceUrl, username, pat)
+                if (result.success) {
+                    setUserForProvider(provider, result.user)
+                } else {
+                    _errorMessage.value = result.error ?: "Ошибка проверки токена"
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Ошибка проверки токена: ${e.message}"
+            } finally {
+                _isLoading.value = false
             }
         }
     }
 
     fun logout(provider: GitProvider) {
         authManager.logout(provider)
-        when (provider) {
-            GitProvider.GITHUB -> _githubUser.value = null
-            GitProvider.GITLAB -> _gitlabUser.value = null
-        }
+        setUserForProvider(provider, null)
     }
 
     fun setError(error: String) {
         _errorMessage.value = error
         _isLoading.value = false
         currentProvider = null
-        pendingState = null
     }
 
     fun clearError() {
         _errorMessage.value = null
+    }
+
+    private fun setUserForProvider(provider: GitProvider, user: GitUser?) {
+        when (provider) {
+            GitProvider.GITHUB -> _githubUser.value = user
+            GitProvider.GITLAB -> _gitlabUser.value = user
+            GitProvider.BITBUCKET -> _bitbucketUser.value = user
+            GitProvider.GITEA -> _giteaUser.value = user
+            GitProvider.AZURE_DEVOPS -> _azureUser.value = user
+        }
     }
 }
