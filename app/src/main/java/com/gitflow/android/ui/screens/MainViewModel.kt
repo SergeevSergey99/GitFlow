@@ -107,6 +107,8 @@ class MainViewModel(
             _isRestoringSession.value = false
             return
         }
+        // Пустой список — временная эмиссия при выходе/возврате из экрана, игнорируем
+        if (repositories.isEmpty()) return
         val updated = repositories.find { it.id == selected.id }
         when {
             updated == null || !isValidGitRepo(updated.path) -> {
