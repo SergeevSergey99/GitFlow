@@ -89,7 +89,7 @@ class AuthViewModel(
 
         try {
             val (authUrl, state) = authManager.getAuthUrl(provider)
-            val intent = Intent(authManager.context, OAuthActivity::class.java).apply {
+            val intent = Intent(authManager.getContext(), OAuthActivity::class.java).apply {
                 putExtra(OAuthActivity.EXTRA_PROVIDER, provider.name)
                 putExtra(OAuthActivity.EXTRA_AUTH_URL, authUrl)
                 putExtra(OAuthActivity.EXTRA_REDIRECT_URI, "gitflow://oauth/callback")

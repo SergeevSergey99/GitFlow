@@ -8,6 +8,8 @@ import androidx.security.crypto.MasterKey
 import com.gitflow.android.data.models.*
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -15,7 +17,10 @@ import java.net.URI
 import java.net.URLEncoder
 import timber.log.Timber
 
-class AuthManager(val context: Context) {
+class AuthManager(private val context: Context) {
+
+    /** Safe read-only access to application context for callers outside this class. */
+    fun getContext(): Context = context.applicationContext
 
     private val preferences: SharedPreferences = createEncryptedPreferences()
     private val gson = Gson()
@@ -24,6 +29,13 @@ class AuthManager(val context: Context) {
     // ConcurrentHashMap: getAuthUrl and handleAuthCallback can run on different coroutines.
     private data class PendingAuth(val codeVerifier: String, val createdAt: Long = System.currentTimeMillis())
     private val pendingAuthStates = java.util.concurrent.ConcurrentHashMap<String, PendingAuth>()
+
+    // Mutexes prevent concurrent refresh races: if two coroutines simultaneously detect
+    // an expired token and both try to refresh, the second one would use an invalidated
+    // refresh_token and fail. The mutex ensures only one refresh runs at a time;
+    // the second coroutine re-checks the token after acquiring the lock and skips refresh.
+    private val gitlabRefreshMutex = Mutex()
+    private val bitbucketRefreshMutex = Mutex()
 
     init {
         OAuthConfig.initialize(context)
@@ -450,27 +462,31 @@ class AuthManager(val context: Context) {
     // Note: these functions do NOT wrap withContext(Dispatchers.IO) — they are always
     // called from within getRepositories which is already on Dispatchers.IO.
     // resolveCredentialsProvider (GitRepository) calls them from a suspend context too.
-    suspend fun refreshGitLabTokenIfNeeded(): Boolean {
-        val token = getToken(GitProvider.GITLAB) ?: return false
-        if (!isTokenExpired(token)) return true
-        val refreshToken = token.refreshToken ?: return false
-        return try {
+    //
+    // The Mutex prevents concurrent refresh races: if two coroutines simultaneously detect
+    // an expired token, the first one refreshes and saves a new token+refreshToken; the
+    // second coroutine acquires the lock after the first finishes, re-reads the token,
+    // finds it no longer expired, and returns true without a redundant network call.
+    internal suspend fun refreshGitLabTokenIfNeeded(): Boolean = gitlabRefreshMutex.withLock {
+        val token = getToken(GitProvider.GITLAB) ?: return@withLock false
+        if (!isTokenExpired(token)) return@withLock true   // already refreshed by another coroutine
+        val refreshToken = token.refreshToken ?: return@withLock false
+        try {
             val response = gitlabApi.refreshToken(
                 clientId = OAuthConfig.gitlabClientId,
                 clientSecret = OAuthConfig.gitlabClientSecret,
                 refreshToken = refreshToken,
                 redirectUri = OAuthConfig.REDIRECT_URI
             )
-            if (!response.isSuccessful) return false
-            val body = response.body() ?: return false
-            val newToken = OAuthToken(
+            if (!response.isSuccessful) return@withLock false
+            val body = response.body() ?: return@withLock false
+            saveToken(GitProvider.GITLAB, OAuthToken(
                 accessToken = body.access_token,
                 tokenType = body.token_type,
                 scope = body.scope,
                 refreshToken = body.refresh_token ?: refreshToken,
                 expiresAt = body.expires_in?.let { System.currentTimeMillis() + it * 1000L }
-            )
-            saveToken(GitProvider.GITLAB, newToken)
+            ))
             true
         } catch (e: Exception) {
             Timber.w(e, "Failed to refresh GitLab token")
@@ -478,25 +494,24 @@ class AuthManager(val context: Context) {
         }
     }
 
-    suspend fun refreshBitbucketTokenIfNeeded(): Boolean {
-        val token = getToken(GitProvider.BITBUCKET) ?: return false
-        if (!isTokenExpired(token)) return true
-        val refreshToken = token.refreshToken ?: return false
-        return try {
+    internal suspend fun refreshBitbucketTokenIfNeeded(): Boolean = bitbucketRefreshMutex.withLock {
+        val token = getToken(GitProvider.BITBUCKET) ?: return@withLock false
+        if (!isTokenExpired(token)) return@withLock true   // already refreshed by another coroutine
+        val refreshToken = token.refreshToken ?: return@withLock false
+        try {
             val basicAuth = "Basic " + Base64.encodeToString(
                 "${OAuthConfig.bitbucketClientId}:${OAuthConfig.bitbucketClientSecret}".toByteArray(),
                 Base64.NO_WRAP
             )
             val response = bitbucketTokenApi.refreshToken(basicAuth = basicAuth, refreshToken = refreshToken)
-            if (!response.isSuccessful) return false
-            val body = response.body() ?: return false
-            val newToken = OAuthToken(
+            if (!response.isSuccessful) return@withLock false
+            val body = response.body() ?: return@withLock false
+            saveToken(GitProvider.BITBUCKET, OAuthToken(
                 accessToken = body.access_token,
                 tokenType = body.token_type,
                 refreshToken = body.refresh_token ?: refreshToken,
                 expiresAt = body.expires_in?.let { System.currentTimeMillis() + it * 1000L }
-            )
-            saveToken(GitProvider.BITBUCKET, newToken)
+            ))
             true
         } catch (e: Exception) {
             Timber.w(e, "Failed to refresh Bitbucket token")
