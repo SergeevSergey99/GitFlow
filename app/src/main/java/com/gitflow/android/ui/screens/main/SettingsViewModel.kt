@@ -20,6 +20,8 @@ data class ConnectedAccount(
 
 data class SettingsUiState(
     val connectedAccounts: List<ConnectedAccount> = emptyList(),
+    val localAuthorName: String = "",
+    val localAuthorEmail: String = "",
     val wifiOnlyDownloads: Boolean = false,
     val currentLanguage: String = AppSettingsManager.LANGUAGE_SYSTEM,
     val customStoragePath: String? = null,
@@ -66,6 +68,8 @@ class SettingsViewModel(
         val customUri = settingsManager.getCustomStorageUri()
         _uiState.value = SettingsUiState(
             connectedAccounts = buildConnectedAccounts(),
+            localAuthorName = settingsManager.getLocalAuthorName(),
+            localAuthorEmail = settingsManager.getLocalAuthorEmail(),
             wifiOnlyDownloads = settingsManager.isWifiOnlyDownloadsEnabled(),
             currentLanguage = settingsManager.getLanguage(),
             customStoragePath = customUri,
@@ -80,6 +84,16 @@ class SettingsViewModel(
     /** Re-read auth users — called on screen resume in case the auth screen changed them. */
     fun refreshUsers() {
         _uiState.update { it.copy(connectedAccounts = buildConnectedAccounts()) }
+    }
+
+    fun setLocalAuthorName(name: String) {
+        settingsManager.setLocalAuthorName(name)
+        _uiState.update { it.copy(localAuthorName = name) }
+    }
+
+    fun setLocalAuthorEmail(email: String) {
+        settingsManager.setLocalAuthorEmail(email)
+        _uiState.update { it.copy(localAuthorEmail = email) }
     }
 
     fun setWifiOnlyDownloads(enabled: Boolean) {

@@ -139,6 +139,13 @@ fun SettingsScreen(
                 onManageAccountsClick = { navController.navigate("auth") }
             )
 
+            LocalAccountSection(
+                authorName = uiState.localAuthorName,
+                authorEmail = uiState.localAuthorEmail,
+                onNameChanged = viewModel::setLocalAuthorName,
+                onEmailChanged = viewModel::setLocalAuthorEmail
+            )
+
             ThemeSettingsSection(
                 selectedColorTheme = selectedColorTheme,
                 onThemeClick = { showThemeDialog = true },
@@ -494,6 +501,78 @@ private fun FilePreviewSettingsEditor(
                 },
                 modifier = Modifier.fillMaxWidth()
             )
+        }
+    }
+}
+
+@Composable
+private fun LocalAccountSection(
+    authorName: String,
+    authorEmail: String,
+    onNameChanged: (String) -> Unit,
+    onEmailChanged: (String) -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    Icons.Default.Person,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "Локальный автор",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            }
+
+            Text(
+                text = "Имя и email, используемые при создании коммитов, если аккаунт не определён по remote URL",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            OutlinedTextField(
+                value = authorName,
+                onValueChange = onNameChanged,
+                label = { Text("Имя") },
+                placeholder = { Text("Иван Иванов") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                leadingIcon = { Icon(Icons.Default.Badge, contentDescription = null) }
+            )
+
+            OutlinedTextField(
+                value = authorEmail,
+                onValueChange = onEmailChanged,
+                label = { Text("Email") },
+                placeholder = { Text("ivan@example.com") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                leadingIcon = { Icon(Icons.Default.AlternateEmail, contentDescription = null) }
+            )
+
+            if (authorName.isNotBlank() && authorEmail.isNotBlank()) {
+                Text(
+                    text = "Будет использоваться: $authorName <$authorEmail>",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            } else {
+                Text(
+                    text = "Заполните оба поля, чтобы задать автора по умолчанию",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

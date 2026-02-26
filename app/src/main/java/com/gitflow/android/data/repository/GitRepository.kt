@@ -3,6 +3,7 @@ package com.gitflow.android.data.repository
 import android.content.Context
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.*
+import com.gitflow.android.data.settings.AppSettingsManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -143,7 +144,8 @@ class CloneProgressCallback(private val trackingKey: String? = null) : ProgressM
 
 class GitRepository(
     internal val context: Context,
-    internal val authManager: AuthManager
+    internal val authManager: AuthManager,
+    internal val settingsManager: AppSettingsManager
 ) : IGitRepository {
 
     internal val dataStore = RepositoryDataStore(context)
@@ -347,6 +349,12 @@ class GitRepository(
             }
             if (name.isNotBlank() && email.isNotBlank()) return name to email
         }
+
+        // Final fallback: local author settings from app preferences
+        val localName  = settingsManager.getLocalAuthorName()
+        val localEmail = settingsManager.getLocalAuthorEmail()
+        if (localName.isNotBlank() && localEmail.isNotBlank()) return localName to localEmail
+
         return null
     }
 

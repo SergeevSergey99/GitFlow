@@ -163,6 +163,16 @@ class AppSettingsManager(context: Context) {
         preferences.edit().putString(KEY_LANGUAGE, language).apply()
     }
 
+    fun getLocalAuthorName(): String = preferences.getString(KEY_LOCAL_AUTHOR_NAME, "") ?: ""
+    fun setLocalAuthorName(name: String) {
+        preferences.edit().putString(KEY_LOCAL_AUTHOR_NAME, name.trim()).apply()
+    }
+
+    fun getLocalAuthorEmail(): String = preferences.getString(KEY_LOCAL_AUTHOR_EMAIL, "") ?: ""
+    fun setLocalAuthorEmail(email: String) {
+        preferences.edit().putString(KEY_LOCAL_AUTHOR_EMAIL, email.trim()).apply()
+    }
+
     fun getCustomStorageUri(): String? {
         return preferences.getString(KEY_CUSTOM_STORAGE_URI, null)
     }
@@ -233,6 +243,8 @@ class AppSettingsManager(context: Context) {
         private const val KEY_COLOR_THEME = "color_theme"
         private const val KEY_DARK_MODE = "dark_mode"
         private const val KEY_LAST_REPOSITORY_ID = "last_repository_id"
+        private const val KEY_LOCAL_AUTHOR_NAME  = "local_author_name"
+        private const val KEY_LOCAL_AUTHOR_EMAIL = "local_author_email"
 
         const val LANGUAGE_SYSTEM = "system"
         const val LANGUAGE_ENGLISH = "en"

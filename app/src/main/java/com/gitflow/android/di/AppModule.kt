@@ -23,7 +23,7 @@ val appModule = module {
     // Singletons
     single { AuthManager(androidContext()) }
     single { AppSettingsManager(androidContext()) }
-    single<IGitRepository> { GitRepository(androidContext(), get()) }
+    single<IGitRepository> { GitRepository(androidContext(), get(), get()) }
 
     // ViewModels — static dependencies
     viewModel { AuthViewModel(get()) }
