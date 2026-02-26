@@ -136,14 +136,9 @@ fun SettingsScreen(
         ) {
             AccountSection(
                 connectedAccounts = uiState.connectedAccounts,
+                localAuthorName = uiState.localAuthorName,
+                localAuthorEmail = uiState.localAuthorEmail,
                 onManageAccountsClick = { navController.navigate("auth") }
-            )
-
-            LocalAccountSection(
-                authorName = uiState.localAuthorName,
-                authorEmail = uiState.localAuthorEmail,
-                onNameChanged = viewModel::setLocalAuthorName,
-                onEmailChanged = viewModel::setLocalAuthorEmail
             )
 
             ThemeSettingsSection(
@@ -506,89 +501,17 @@ private fun FilePreviewSettingsEditor(
 }
 
 @Composable
-private fun LocalAccountSection(
-    authorName: String,
-    authorEmail: String,
-    onNameChanged: (String) -> Unit,
-    onEmailChanged: (String) -> Unit
-) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    Icons.Default.Person,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = "Локальный автор",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp
-                )
-            }
-
-            Text(
-                text = "Имя и email, используемые при создании коммитов, если аккаунт не определён по remote URL",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            OutlinedTextField(
-                value = authorName,
-                onValueChange = onNameChanged,
-                label = { Text("Имя") },
-                placeholder = { Text("Иван Иванов") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Default.Badge, contentDescription = null) }
-            )
-
-            OutlinedTextField(
-                value = authorEmail,
-                onValueChange = onEmailChanged,
-                label = { Text("Email") },
-                placeholder = { Text("ivan@example.com") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                leadingIcon = { Icon(Icons.Default.AlternateEmail, contentDescription = null) }
-            )
-
-            if (authorName.isNotBlank() && authorEmail.isNotBlank()) {
-                Text(
-                    text = "Будет использоваться: $authorName <$authorEmail>",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            } else {
-                Text(
-                    text = "Заполните оба поля, чтобы задать автора по умолчанию",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun AccountSection(
     connectedAccounts: List<ConnectedAccount>,
+    localAuthorName: String,
+    localAuthorEmail: String,
     onManageAccountsClick: () -> Unit
 ) {
     val hasAnyAuth = connectedAccounts.isNotEmpty()
-    Card(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
+    val hasLocalAuthor = localAuthorName.isNotBlank() && localAuthorEmail.isNotBlank()
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = stringResource(R.string.settings_account),
                 fontWeight = FontWeight.Bold,
@@ -596,36 +519,61 @@ private fun AccountSection(
             )
             Spacer(modifier = Modifier.height(12.dp))
 
-            if (hasAnyAuth) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    connectedAccounts.forEach { account ->
-                        UserAccountRow(account = account)
-                    }
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+            // Local author row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Surface(
+                    modifier = Modifier.size(40.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer
                 ) {
-                    Surface(
-                        modifier = Modifier.size(48.dp),
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primaryContainer
-                    ) {
-                        Icon(
-                            Icons.Default.Person,
-                            contentDescription = null,
-                            modifier = Modifier.padding(12.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text(stringResource(R.string.settings_guest_user), fontWeight = FontWeight.Medium)
+                    Icon(
+                        Icons.Default.Person,
+                        contentDescription = null,
+                        modifier = Modifier.padding(8.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    if (hasLocalAuthor) {
                         Text(
-                            stringResource(R.string.settings_not_signed_in),
+                            text = localAuthorName,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = localAuthorEmail,
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    } else {
+                        Text(
+                            text = "Автор не задан",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                // Mini provider icons
+                if (hasAnyAuth) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        connectedAccounts.forEach { account ->
+                            Surface(
+                                modifier = Modifier.size(24.dp),
+                                shape = CircleShape,
+                                color = providerIconColor(account.user.provider).copy(alpha = 0.15f)
+                            ) {
+                                Icon(
+                                    providerIcon(account.user.provider),
+                                    contentDescription = providerDisplayName(account.user.provider),
+                                    modifier = Modifier.padding(4.dp),
+                                    tint = providerIconColor(account.user.provider)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -637,13 +585,13 @@ private fun AccountSection(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Icon(
-                    if (hasAnyAuth) Icons.Default.Settings else Icons.AutoMirrored.Filled.Login,
+                    Icons.Default.Settings,
                     contentDescription = null,
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    if (hasAnyAuth)
+                    if (hasAnyAuth || hasLocalAuthor)
                         stringResource(R.string.settings_manage_accounts)
                     else
                         stringResource(R.string.settings_sign_in)

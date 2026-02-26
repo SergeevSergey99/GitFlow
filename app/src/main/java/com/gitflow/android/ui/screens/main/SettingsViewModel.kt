@@ -83,17 +83,13 @@ class SettingsViewModel(
 
     /** Re-read auth users — called on screen resume in case the auth screen changed them. */
     fun refreshUsers() {
-        _uiState.update { it.copy(connectedAccounts = buildConnectedAccounts()) }
-    }
-
-    fun setLocalAuthorName(name: String) {
-        settingsManager.setLocalAuthorName(name)
-        _uiState.update { it.copy(localAuthorName = name) }
-    }
-
-    fun setLocalAuthorEmail(email: String) {
-        settingsManager.setLocalAuthorEmail(email)
-        _uiState.update { it.copy(localAuthorEmail = email) }
+        _uiState.update {
+            it.copy(
+                connectedAccounts = buildConnectedAccounts(),
+                localAuthorName = settingsManager.getLocalAuthorName(),
+                localAuthorEmail = settingsManager.getLocalAuthorEmail()
+            )
+        }
     }
 
     fun setWifiOnlyDownloads(enabled: Boolean) {

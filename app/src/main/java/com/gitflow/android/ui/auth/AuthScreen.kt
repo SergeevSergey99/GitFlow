@@ -44,6 +44,8 @@ fun AuthScreen(
     val azureUser by viewModel.azureUser.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    val localAuthorName by viewModel.localAuthorName.collectAsState()
+    val localAuthorEmail by viewModel.localAuthorEmail.collectAsState()
 
     val oauthLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -107,6 +109,13 @@ fun AuthScreen(
                 text = "Подключите ваши Git аккаунты для доступа к частным репозиториям",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            LocalAuthorCard(
+                authorName = localAuthorName,
+                authorEmail = localAuthorEmail,
+                onNameChanged = viewModel::setLocalAuthorName,
+                onEmailChanged = viewModel::setLocalAuthorEmail
             )
 
             // OAuth providers
@@ -309,6 +318,86 @@ fun AccountCard(
                 onLoginPAT(instanceUrl, username, pat)
             }
         )
+    }
+}
+
+@Composable
+private fun LocalAuthorCard(
+    authorName: String,
+    authorEmail: String,
+    onNameChanged: (String) -> Unit,
+    onEmailChanged: (String) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Surface(
+                    modifier = Modifier.size(40.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Icon(
+                        Icons.Default.Person,
+                        contentDescription = null,
+                        modifier = Modifier.padding(8.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Локальный автор",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Используется при коммитах когда аккаунт не определён",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            OutlinedTextField(
+                value = authorName,
+                onValueChange = onNameChanged,
+                label = { Text("Имя") },
+                placeholder = { Text("Иван Иванов") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                leadingIcon = {
+                    Icon(Icons.Default.Badge, contentDescription = null)
+                }
+            )
+
+            OutlinedTextField(
+                value = authorEmail,
+                onValueChange = onEmailChanged,
+                label = { Text("Email") },
+                placeholder = { Text("ivan@example.com") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                leadingIcon = {
+                    Icon(Icons.Default.AlternateEmail, contentDescription = null)
+                }
+            )
+
+            if (authorName.isNotBlank() && authorEmail.isNotBlank()) {
+                Text(
+                    text = "$authorName <$authorEmail>",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
     }
 }
 

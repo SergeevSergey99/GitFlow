@@ -6,12 +6,16 @@ import androidx.lifecycle.viewModelScope
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitUser
+import com.gitflow.android.data.settings.AppSettingsManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class AuthViewModel(private val authManager: AuthManager) : ViewModel() {
+class AuthViewModel(
+    private val authManager: AuthManager,
+    private val settingsManager: AppSettingsManager
+) : ViewModel() {
 
     private val _githubUser = MutableStateFlow<GitUser?>(null)
     val githubUser: StateFlow<GitUser?> = _githubUser.asStateFlow()
@@ -34,6 +38,12 @@ class AuthViewModel(private val authManager: AuthManager) : ViewModel() {
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    private val _localAuthorName = MutableStateFlow(settingsManager.getLocalAuthorName())
+    val localAuthorName: StateFlow<String> = _localAuthorName.asStateFlow()
+
+    private val _localAuthorEmail = MutableStateFlow(settingsManager.getLocalAuthorEmail())
+    val localAuthorEmail: StateFlow<String> = _localAuthorEmail.asStateFlow()
+
     var currentProvider: GitProvider? = null
         private set
 
@@ -43,6 +53,32 @@ class AuthViewModel(private val authManager: AuthManager) : ViewModel() {
         _bitbucketUser.value = authManager.getCurrentUser(GitProvider.BITBUCKET)
         _giteaUser.value = authManager.getCurrentUser(GitProvider.GITEA)
         _azureUser.value = authManager.getCurrentUser(GitProvider.AZURE_DEVOPS)
+
+        // Auto-populate local author from first connected provider if not yet set
+        if (settingsManager.getLocalAuthorName().isBlank()) {
+            val firstUser = GitProvider.entries
+                .mapNotNull { authManager.getCurrentUser(it) }
+                .firstOrNull()
+            if (firstUser != null) {
+                val name = firstUser.name?.takeIf { it.isNotBlank() } ?: firstUser.login
+                val email = firstUser.email?.takeIf { it.isNotBlank() }
+                    ?: "${firstUser.login}@users.noreply.github.com"
+                settingsManager.setLocalAuthorName(name)
+                settingsManager.setLocalAuthorEmail(email)
+                _localAuthorName.value = name
+                _localAuthorEmail.value = email
+            }
+        }
+    }
+
+    fun setLocalAuthorName(name: String) {
+        settingsManager.setLocalAuthorName(name)
+        _localAuthorName.value = name
+    }
+
+    fun setLocalAuthorEmail(email: String) {
+        settingsManager.setLocalAuthorEmail(email)
+        _localAuthorEmail.value = email
     }
 
     /** Starts the OAuth WebView flow for GitHub, GitLab, or Bitbucket. */
