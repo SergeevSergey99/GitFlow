@@ -471,4 +471,33 @@
     <string name="clone_progress_failed">Ошибка клонирования: %1$s</string>
     <string name="clone_progress_failed_generic">Ошибка клонирования</string>
     <string name="clone_progress_cancelled">Клонирование отменено</string>
+
+    <!-- Auth errors -->
+    <string name="auth_error_invalid_state">Недействительный или устаревший OAuth-запрос</string>
+    <string name="auth_error_state_expired">OAuth-запрос устарел, попробуйте снова</string>
+    <string name="auth_error_token_fetch_failed">Не удалось получить токен: %1$d</string>
+    <string name="auth_error_user_fetch_failed">Не удалось получить информацию о пользователе: %1$d</string>
+    <string name="auth_error_empty_response">Пустой ответ от сервера</string>
+    <string name="auth_error_github">Ошибка авторизации GitHub</string>
+    <string name="auth_error_gitlab">Ошибка авторизации GitLab</string>
+    <string name="auth_error_bitbucket">Ошибка авторизации Bitbucket</string>
+    <string name="auth_error_token_fetch_bitbucket">Не удалось получить токен Bitbucket: %1$d</string>
+    <string name="auth_error_user_fetch_bitbucket">Не удалось получить информацию о пользователе Bitbucket</string>
+    <string name="auth_error_pat_not_supported">%1$s не поддерживает PAT-авторизацию</string>
+    <string name="auth_error_pat_validation">Ошибка проверки токена</string>
+    <string name="auth_error_gitea_connect">Не удалось подключиться к Gitea: %1$d</string>
+    <string name="auth_error_azure_connect">Не удалось подключиться к Azure DevOps: %1$d</string>
+    <string name="auth_error_gitlab_connect">Не удалось подключиться к GitLab (%1$s): %2$d</string>
+    <string name="auth_error_gitlab_session_expired">Сессия GitLab истекла. Пожалуйста, войдите снова в Настройки → Управление аккаунтами.</string>
+    <string name="auth_error_bitbucket_session_expired">Сессия Bitbucket истекла. Пожалуйста, войдите снова в Настройки → Управление аккаунтами.</string>
+    <string name="auth_error_token_not_found">Токен не найден для %1$s</string>
+    <string name="auth_error_gitea_instance_not_found">Instance URL не найден для Gitea</string>
+    <string name="auth_error_azure_org_not_found">Organization URL не найден для Azure DevOps</string>
+    <string name="auth_error_github_repos">Ошибка получения репозиториев GitHub: %1$d</string>
+    <string name="auth_error_gitlab_projects">Ошибка получения проектов GitLab: %1$d</string>
+    <string name="auth_error_bitbucket_workspaces">Ошибка получения воркспейсов Bitbucket: %1$d</string>
+    <string name="auth_error_gitea_repos">Ошибка получения репозиториев Gitea: %1$d</string>
+    <string name="auth_error_azure_projects">Ошибка получения проектов Azure DevOps: %1$d</string>
+    <string name="auth_error_authorization">Ошибка авторизации</string>
+    <string name="auth_warning_scopes_limited">Авторизация выдана с ограниченными правами. Некоторые функции могут быть недоступны.</string>
 </resources>

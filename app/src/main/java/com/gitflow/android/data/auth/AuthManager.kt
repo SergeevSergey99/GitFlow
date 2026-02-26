@@ -16,6 +16,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.net.URI
 import java.net.URLEncoder
 import timber.log.Timber
+import com.gitflow.android.R
 
 class AuthManager(private val context: Context) {
 
@@ -96,6 +97,7 @@ class AuthManager(private val context: Context) {
         // Instance URLs for PAT providers
         private const val KEY_GITEA_INSTANCE_URL = "gitea_instance_url"
         private const val KEY_AZURE_DEVOPS_ORG_URL = "azure_devops_org_url"
+        private const val KEY_GITLAB_INSTANCE_URL = "gitlab_instance_url"
     }
 
     // ---------------------------------------------------------------------------
@@ -133,6 +135,10 @@ class AuthManager(private val context: Context) {
 
     private val azureProfileApi: AzureDevOpsProfileApi by lazy {
         buildRetrofit("https://app.vssps.visualstudio.com/").create(AzureDevOpsProfileApi::class.java)
+    }
+
+    private val azureIdentityApi: AzureDevOpsIdentityApi by lazy {
+        buildRetrofit("https://dev.azure.com/").create(AzureDevOpsIdentityApi::class.java)
     }
 
     private fun buildRetrofit(baseUrl: String): Retrofit {
@@ -208,10 +214,10 @@ class AuthManager(private val context: Context) {
     suspend fun handleAuthCallback(provider: GitProvider, code: String, state: String): AuthResult = withContext(Dispatchers.IO) {
         try {
             val pending = pendingAuthStates.remove(state)
-                ?: return@withContext AuthResult(success = false, error = "Invalid or expired OAuth state")
+                ?: return@withContext AuthResult(success = false, error = context.getString(R.string.auth_error_invalid_state))
 
             if (System.currentTimeMillis() - pending.createdAt > PKCE_STATE_TTL_MS) {
-                return@withContext AuthResult(success = false, error = "OAuth state expired, please try again")
+                return@withContext AuthResult(success = false, error = context.getString(R.string.auth_error_state_expired))
             }
 
             when (provider) {
@@ -222,7 +228,7 @@ class AuthManager(private val context: Context) {
                     AuthResult(success = false, error = "$provider uses PAT authentication")
             }
         } catch (e: Exception) {
-            AuthResult(success = false, error = e.message ?: "Ошибка авторизации")
+            AuthResult(success = false, error = e.message ?: context.getString(R.string.auth_error_authorization))
         }
     }
 
@@ -238,10 +244,10 @@ class AuthManager(private val context: Context) {
                 )
             )
             if (!tokenResponse.isSuccessful) {
-                return AuthResult(success = false, error = "Не удалось получить токен: ${tokenResponse.code()}")
+                return AuthResult(success = false, error = context.getString(R.string.auth_error_token_fetch_failed, tokenResponse.code()))
             }
             val oauthResponse = tokenResponse.body()
-                ?: return AuthResult(success = false, error = "Empty token response")
+                ?: return AuthResult(success = false, error = context.getString(R.string.auth_error_empty_response))
 
             val token = OAuthToken(
                 accessToken = oauthResponse.access_token,
@@ -249,12 +255,18 @@ class AuthManager(private val context: Context) {
                 scope = oauthResponse.scope
             )
 
+            // Warn if required scopes are missing
+            val grantedScopes = oauthResponse.scope?.split(",")?.map { it.trim() } ?: emptyList()
+            if (!grantedScopes.any { it == "repo" || it == "public_repo" }) {
+                Timber.w("GitHub OAuth: 'repo' scope not granted. Granted: ${oauthResponse.scope}")
+            }
+
             val userResponse = githubApi.getCurrentUser("Bearer ${token.accessToken}")
             if (!userResponse.isSuccessful) {
-                return AuthResult(success = false, error = "Не удалось получить информацию о пользователе: ${userResponse.code()}")
+                return AuthResult(success = false, error = context.getString(R.string.auth_error_user_fetch_failed, userResponse.code()))
             }
             val githubUser = userResponse.body()
-                ?: return AuthResult(success = false, error = "Empty user response")
+                ?: return AuthResult(success = false, error = context.getString(R.string.auth_error_empty_response))
 
             // Try to get primary email if not returned by /user
             val email = githubUser.email ?: fetchGitHubPrimaryEmail(token.accessToken)
@@ -271,7 +283,7 @@ class AuthManager(private val context: Context) {
             saveUser(GitProvider.GITHUB, user)
             return AuthResult(success = true, user = user, token = token)
         } catch (e: Exception) {
-            return AuthResult(success = false, error = e.message ?: "Ошибка авторизации GitHub")
+            return AuthResult(success = false, error = e.message ?: context.getString(R.string.auth_error_github))
         }
     }
 
@@ -304,10 +316,10 @@ class AuthManager(private val context: Context) {
                 codeVerifier = codeVerifier
             )
             if (!tokenResponse.isSuccessful) {
-                return AuthResult(success = false, error = "Не удалось получить токен")
+                return AuthResult(success = false, error = context.getString(R.string.auth_error_token_fetch_failed, tokenResponse.code()))
             }
             val oauthResponse = tokenResponse.body()
-                ?: return AuthResult(success = false, error = "Empty token response")
+                ?: return AuthResult(success = false, error = context.getString(R.string.auth_error_empty_response))
             val token = OAuthToken(
                 accessToken = oauthResponse.access_token,
                 tokenType = oauthResponse.token_type,
@@ -315,12 +327,19 @@ class AuthManager(private val context: Context) {
                 refreshToken = oauthResponse.refresh_token,
                 expiresAt = oauthResponse.expires_in?.let { System.currentTimeMillis() + (it * 1000L) }
             )
+
+            // Warn if required scopes are missing
+            val grantedScopes = oauthResponse.scope?.split(" ")?.map { it.trim() } ?: emptyList()
+            if ("read_user" !in grantedScopes || "read_repository" !in grantedScopes) {
+                Timber.w("GitLab OAuth: expected 'read_user read_repository' scopes. Granted: ${oauthResponse.scope}")
+            }
+
             val userResponse = gitlabApi.getCurrentUser("Bearer ${token.accessToken}")
             if (!userResponse.isSuccessful) {
-                return AuthResult(success = false, error = "Не удалось получить информацию о пользователе")
+                return AuthResult(success = false, error = context.getString(R.string.auth_error_user_fetch_failed, userResponse.code()))
             }
             val gitlabUser = userResponse.body()
-                ?: return AuthResult(success = false, error = "Empty user response")
+                ?: return AuthResult(success = false, error = context.getString(R.string.auth_error_empty_response))
             val user = GitUser(
                 id = gitlabUser.id,
                 login = gitlabUser.username,
@@ -333,7 +352,7 @@ class AuthManager(private val context: Context) {
             saveUser(GitProvider.GITLAB, user)
             return AuthResult(success = true, user = user, token = token)
         } catch (e: Exception) {
-            return AuthResult(success = false, error = e.message ?: "Ошибка авторизации GitLab")
+            return AuthResult(success = false, error = e.message ?: context.getString(R.string.auth_error_gitlab))
         }
     }
 
@@ -350,10 +369,10 @@ class AuthManager(private val context: Context) {
                 codeVerifier = codeVerifier
             )
             if (!tokenResponse.isSuccessful) {
-                return AuthResult(success = false, error = "Не удалось получить токен Bitbucket: ${tokenResponse.code()}")
+                return AuthResult(success = false, error = context.getString(R.string.auth_error_token_fetch_bitbucket, tokenResponse.code()))
             }
             val oauthResponse = tokenResponse.body()
-                ?: return AuthResult(success = false, error = "Empty token response")
+                ?: return AuthResult(success = false, error = context.getString(R.string.auth_error_empty_response))
             val token = OAuthToken(
                 accessToken = oauthResponse.access_token,
                 tokenType = oauthResponse.token_type,
@@ -362,13 +381,13 @@ class AuthManager(private val context: Context) {
             )
             val userResponse = bitbucketApi.getCurrentUser("Bearer ${token.accessToken}")
             if (!userResponse.isSuccessful) {
-                return AuthResult(success = false, error = "Не удалось получить информацию о пользователе Bitbucket")
+                return AuthResult(success = false, error = context.getString(R.string.auth_error_user_fetch_bitbucket))
             }
             val bbUser = userResponse.body()
-                ?: return AuthResult(success = false, error = "Empty user response")
+                ?: return AuthResult(success = false, error = context.getString(R.string.auth_error_empty_response))
             val email = fetchBitbucketPrimaryEmail(token.accessToken)
             val user = GitUser(
-                id = bbUser.account_id.hashCode().toLong(),
+                id = bbUser.account_id.toDeterministicId(),
                 login = bbUser.username ?: bbUser.display_name,
                 name = bbUser.display_name,
                 email = email,
@@ -379,7 +398,7 @@ class AuthManager(private val context: Context) {
             saveUser(GitProvider.BITBUCKET, user)
             return AuthResult(success = true, user = user, token = token)
         } catch (e: Exception) {
-            return AuthResult(success = false, error = e.message ?: "Ошибка авторизации Bitbucket")
+            return AuthResult(success = false, error = e.message ?: context.getString(R.string.auth_error_bitbucket))
         }
     }
 
@@ -401,10 +420,11 @@ class AuthManager(private val context: Context) {
             when (provider) {
                 GitProvider.GITEA -> validateGiteaPAT(instanceUrl.trimEnd('/'), username, pat)
                 GitProvider.AZURE_DEVOPS -> validateAzurePAT(instanceUrl.trimEnd('/'), username, pat)
-                else -> AuthResult(success = false, error = "$provider не поддерживает PAT-авторизацию через этот метод")
+                GitProvider.GITLAB -> validateGitLabPAT(instanceUrl.trimEnd('/'), pat)
+                else -> AuthResult(success = false, error = context.getString(R.string.auth_error_pat_not_supported, provider.name))
             }
         } catch (e: Exception) {
-            AuthResult(success = false, error = e.message ?: "Ошибка проверки токена")
+            AuthResult(success = false, error = e.message ?: context.getString(R.string.auth_error_pat_validation))
         }
     }
 
@@ -413,16 +433,18 @@ class AuthManager(private val context: Context) {
         val authHeader = "token $pat"
         val response = giteaApi.getCurrentUser(url = userUrl, authorization = authHeader)
         if (!response.isSuccessful) {
-            return AuthResult(success = false, error = "Не удалось подключиться к Gitea: ${response.code()}")
+            return AuthResult(success = false, error = context.getString(R.string.auth_error_gitea_connect, response.code()))
         }
         val giteaUser = response.body()
-            ?: return AuthResult(success = false, error = "Пустой ответ от сервера")
+            ?: return AuthResult(success = false, error = context.getString(R.string.auth_error_empty_response))
         val user = GitUser(
             id = giteaUser.id,
             login = giteaUser.login,
             name = giteaUser.full_name?.takeIf { it.isNotBlank() } ?: giteaUser.login,
             email = giteaUser.email,
-            avatarUrl = giteaUser.avatar_url,
+            avatarUrl = giteaUser.avatar_url?.let { url ->
+                if (url.startsWith("/")) "$instanceUrl$url" else url
+            },
             provider = GitProvider.GITEA
         )
         val token = OAuthToken(accessToken = pat)
@@ -436,16 +458,22 @@ class AuthManager(private val context: Context) {
         val basicAuth = "Basic " + Base64.encodeToString(":$pat".toByteArray(), Base64.NO_WRAP)
         val response = azureProfileApi.getProfile(url = AZURE_PROFILE_URL, authorization = basicAuth)
         if (!response.isSuccessful) {
-            return AuthResult(success = false, error = "Не удалось подключиться к Azure DevOps: ${response.code()}")
+            return AuthResult(success = false, error = context.getString(R.string.auth_error_azure_connect, response.code()))
         }
         val profile = response.body()
-            ?: return AuthResult(success = false, error = "Пустой ответ от сервера")
+            ?: return AuthResult(success = false, error = context.getString(R.string.auth_error_empty_response))
+        // Attempt to fetch avatar image and encode as data URI
+        val avatarDataUri = fetchAzureAvatarDataUri(
+            orgUrl = orgUrl,
+            profileId = profile.id,
+            basicAuth = basicAuth
+        )
         val user = GitUser(
-            id = profile.id.hashCode().toLong(),
+            id = profile.id.toDeterministicId(),
             login = profile.publicAlias ?: username,
             name = profile.displayName,
             email = profile.emailAddress,
-            avatarUrl = null,
+            avatarUrl = avatarDataUri,
             provider = GitProvider.AZURE_DEVOPS
         )
         val token = OAuthToken(accessToken = pat)
@@ -453,6 +481,57 @@ class AuthManager(private val context: Context) {
         saveUser(GitProvider.AZURE_DEVOPS, user)
         preferences.edit().putString(KEY_AZURE_DEVOPS_ORG_URL, orgUrl).apply()
         return AuthResult(success = true, user = user, token = token)
+    }
+
+    private suspend fun validateGitLabPAT(instanceUrl: String, pat: String): AuthResult {
+        // Build a one-shot Retrofit client for the specific instance URL
+        val api = buildRetrofit("$instanceUrl/").create(GitLabApi::class.java)
+        val response = api.getCurrentUser("Bearer $pat")
+        if (!response.isSuccessful) {
+            return AuthResult(
+                success = false,
+                error = context.getString(R.string.auth_error_gitlab_connect, instanceUrl, response.code())
+            )
+        }
+        val glUser = response.body()
+            ?: return AuthResult(success = false, error = context.getString(R.string.auth_error_empty_response))
+        val user = GitUser(
+            id = glUser.id,
+            login = glUser.username,
+            name = glUser.name,
+            email = glUser.email,
+            avatarUrl = glUser.avatar_url,
+            provider = GitProvider.GITLAB
+        )
+        val token = OAuthToken(accessToken = pat)
+        saveToken(GitProvider.GITLAB, token)
+        saveUser(GitProvider.GITLAB, user)
+        preferences.edit().putString(KEY_GITLAB_INSTANCE_URL, instanceUrl).apply()
+        return AuthResult(success = true, user = user, token = token)
+    }
+
+    /**
+     * Fetches the Azure DevOps identity image and returns it as a data URI
+     * ("data:image/png;base64,...") so Coil can display it without additional auth.
+     * Returns null on any failure to keep avatar optional.
+     */
+    private suspend fun fetchAzureAvatarDataUri(
+        orgUrl: String,
+        profileId: String,
+        basicAuth: String
+    ): String? {
+        return try {
+            val url = "${orgUrl.trimEnd('/')}/_api/_common/identityImage?id=$profileId"
+            val response = azureIdentityApi.getIdentityImage(url = url, authorization = basicAuth)
+            if (!response.isSuccessful) return null
+            val bytes = response.body()?.bytes() ?: return null
+            if (bytes.isEmpty()) return null
+            val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+            "data:image/png;base64,$base64"
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to fetch Azure DevOps avatar")
+            null
+        }
     }
 
     // ---------------------------------------------------------------------------
@@ -527,33 +606,33 @@ class AuthManager(private val context: Context) {
         when (provider) {
             GitProvider.GITLAB -> {
                 if (!refreshGitLabTokenIfNeeded()) {
-                    throw IllegalStateException("Сессия GitLab истекла. Пожалуйста, войдите снова в Настройки → Управление аккаунтами.")
+                    throw IllegalStateException(context.getString(R.string.auth_error_gitlab_session_expired))
                 }
-                val token = getToken(provider) ?: throw IllegalStateException("Токен не найден для $provider")
+                val token = getToken(provider) ?: throw IllegalStateException(context.getString(R.string.auth_error_token_not_found, provider.name))
                 getGitLabRepositories("Bearer ${token.accessToken}")
             }
             GitProvider.BITBUCKET -> {
                 if (!refreshBitbucketTokenIfNeeded()) {
-                    throw IllegalStateException("Сессия Bitbucket истекла. Пожалуйста, войдите снова в Настройки → Управление аккаунтами.")
+                    throw IllegalStateException(context.getString(R.string.auth_error_bitbucket_session_expired))
                 }
-                val token = getToken(provider) ?: throw IllegalStateException("Токен не найден для $provider")
+                val token = getToken(provider) ?: throw IllegalStateException(context.getString(R.string.auth_error_token_not_found, provider.name))
                 getBitbucketRepositories("Bearer ${token.accessToken}")
             }
             GitProvider.GITEA -> {
-                val token = getToken(provider) ?: throw IllegalStateException("Токен не найден для $provider")
+                val token = getToken(provider) ?: throw IllegalStateException(context.getString(R.string.auth_error_token_not_found, provider.name))
                 val instanceUrl = preferences.getString(KEY_GITEA_INSTANCE_URL, null)
-                    ?: throw IllegalStateException("Instance URL не найден для Gitea")
+                    ?: throw IllegalStateException(context.getString(R.string.auth_error_gitea_instance_not_found))
                 getGiteaRepositories("token ${token.accessToken}", instanceUrl)
             }
             GitProvider.AZURE_DEVOPS -> {
-                val token = getToken(provider) ?: throw IllegalStateException("Токен не найден для $provider")
+                val token = getToken(provider) ?: throw IllegalStateException(context.getString(R.string.auth_error_token_not_found, provider.name))
                 val orgUrl = preferences.getString(KEY_AZURE_DEVOPS_ORG_URL, null)
-                    ?: throw IllegalStateException("Organization URL не найден для Azure DevOps")
+                    ?: throw IllegalStateException(context.getString(R.string.auth_error_azure_org_not_found))
                 val basicAuth = "Basic " + Base64.encodeToString(":${token.accessToken}".toByteArray(), Base64.NO_WRAP)
                 getAzureRepositories(basicAuth, orgUrl)
             }
             GitProvider.GITHUB -> {
-                val token = getToken(provider) ?: throw IllegalStateException("Токен не найден для $provider")
+                val token = getToken(provider) ?: throw IllegalStateException(context.getString(R.string.auth_error_token_not_found, provider.name))
                 getGitHubRepositories("Bearer ${token.accessToken}")
             }
         }
@@ -569,7 +648,7 @@ class AuthManager(private val context: Context) {
                 body.forEach { repositories.add(it.toGitRemoteRepository()) }
                 if (body.size < 100) break
             } else {
-                if (page == 1) throw IllegalStateException("Ошибка получения репозиториев GitHub: ${response.code()}")
+                if (page == 1) throw IllegalStateException(context.getString(R.string.auth_error_github_repos, response.code()))
                 break
             }
         }
@@ -607,7 +686,7 @@ class AuthManager(private val context: Context) {
         if (projectsResponse.isSuccessful) {
             projectsResponse.body()?.forEach { repositories.add(it.toGitRemoteRepository()) }
         } else {
-            throw IllegalStateException("Ошибка получения проектов GitLab: ${projectsResponse.code()}")
+            throw IllegalStateException(context.getString(R.string.auth_error_gitlab_projects, projectsResponse.code()))
         }
         // Group projects
         try {
@@ -634,7 +713,7 @@ class AuthManager(private val context: Context) {
         val repositories = mutableListOf<GitRemoteRepository>()
         val workspacesResponse = bitbucketApi.getWorkspaces(authHeader)
         if (!workspacesResponse.isSuccessful) {
-            throw IllegalStateException("Ошибка получения воркспейсов Bitbucket: ${workspacesResponse.code()}")
+            throw IllegalStateException(context.getString(R.string.auth_error_bitbucket_workspaces, workspacesResponse.code()))
         }
         val workspaces = workspacesResponse.body()?.values ?: emptyList()
         if (workspaces.isEmpty()) {
@@ -675,7 +754,7 @@ class AuthManager(private val context: Context) {
                 data.forEach { repositories.add(it.toGitRemoteRepository(instanceUrl)) }
                 if (data.size < 50) break
             } else {
-                if (page == 1) throw IllegalStateException("Ошибка получения репозиториев Gitea: ${response.code()}")
+                if (page == 1) throw IllegalStateException(context.getString(R.string.auth_error_gitea_repos, response.code()))
                 break
             }
         }
@@ -687,7 +766,7 @@ class AuthManager(private val context: Context) {
         val projectsUrl = "$orgUrl/_apis/projects?api-version=7.0"
         val projectsResponse = azureApi.getProjects(url = projectsUrl, authorization = basicAuth)
         if (!projectsResponse.isSuccessful) {
-            throw IllegalStateException("Ошибка получения проектов Azure DevOps: ${projectsResponse.code()}")
+            throw IllegalStateException(context.getString(R.string.auth_error_azure_projects, projectsResponse.code()))
         }
         val projects = projectsResponse.body()?.value ?: emptyList()
         val user = getCurrentUser(GitProvider.AZURE_DEVOPS)
@@ -729,7 +808,20 @@ class AuthManager(private val context: Context) {
     fun getInstanceUrl(provider: GitProvider): String? = when (provider) {
         GitProvider.GITEA -> preferences.getString(KEY_GITEA_INSTANCE_URL, null)
         GitProvider.AZURE_DEVOPS -> preferences.getString(KEY_AZURE_DEVOPS_ORG_URL, null)
+        GitProvider.GITLAB -> preferences.getString(KEY_GITLAB_INSTANCE_URL, null)
         else -> null
+    }
+
+    /** Returns the expiry state of the stored token for [provider]. */
+    fun getTokenInfo(provider: GitProvider): TokenInfo {
+        val token = getToken(provider) ?: return TokenInfo(TokenStatus.EXPIRED)
+        val expiresAt = token.expiresAt ?: return TokenInfo(TokenStatus.NEVER_EXPIRES)
+        val minutesLeft = (expiresAt - System.currentTimeMillis()) / 60_000L
+        return when {
+            minutesLeft <= 0   -> TokenInfo(TokenStatus.EXPIRED)
+            minutesLeft <= 60  -> TokenInfo(TokenStatus.EXPIRING_SOON, minutesLeft)
+            else               -> TokenInfo(TokenStatus.VALID, minutesLeft)
+        }
     }
 
     fun logout(provider: GitProvider) {
@@ -739,6 +831,7 @@ class AuthManager(private val context: Context) {
         when (provider) {
             GitProvider.GITEA -> editor.remove(KEY_GITEA_INSTANCE_URL)
             GitProvider.AZURE_DEVOPS -> editor.remove(KEY_AZURE_DEVOPS_ORG_URL)
+            GitProvider.GITLAB -> editor.remove(KEY_GITLAB_INSTANCE_URL)
             else -> {}
         }
         editor.apply()
@@ -778,6 +871,16 @@ class AuthManager(private val context: Context) {
     // ---------------------------------------------------------------------------
     // Private helpers
     // ---------------------------------------------------------------------------
+
+    /** Maps any string to a stable 32-bit integer encoded as Long, for use as numeric IDs
+     *  when the server returns non-integer IDs (e.g. Bitbucket account_id UUID, Azure GUID).
+     *  Uses CRC32 which gives identical results for identical input strings across JVM runs.
+     */
+    private fun String.toDeterministicId(): Long {
+        val crc = java.util.zip.CRC32()
+        crc.update(this.toByteArray())
+        return crc.value
+    }
 
     private fun isTokenExpired(token: OAuthToken): Boolean {
         val expiresAt = token.expiresAt ?: return false

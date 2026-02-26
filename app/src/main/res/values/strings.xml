@@ -471,4 +471,33 @@
     <string name="clone_progress_failed">Clone failed: %1$s</string>
     <string name="clone_progress_failed_generic">Clone failed</string>
     <string name="clone_progress_cancelled">Clone cancelled</string>
+
+    <!-- Auth errors -->
+    <string name="auth_error_invalid_state">Invalid or expired OAuth state</string>
+    <string name="auth_error_state_expired">OAuth state expired, please try again</string>
+    <string name="auth_error_token_fetch_failed">Failed to get token: %1$d</string>
+    <string name="auth_error_user_fetch_failed">Failed to get user info: %1$d</string>
+    <string name="auth_error_empty_response">Empty response from server</string>
+    <string name="auth_error_github">GitHub authorization error</string>
+    <string name="auth_error_gitlab">GitLab authorization error</string>
+    <string name="auth_error_bitbucket">Bitbucket authorization error</string>
+    <string name="auth_error_token_fetch_bitbucket">Failed to get Bitbucket token: %1$d</string>
+    <string name="auth_error_user_fetch_bitbucket">Failed to get Bitbucket user info</string>
+    <string name="auth_error_pat_not_supported">%1$s does not support PAT authentication</string>
+    <string name="auth_error_pat_validation">Token validation error</string>
+    <string name="auth_error_gitea_connect">Failed to connect to Gitea: %1$d</string>
+    <string name="auth_error_azure_connect">Failed to connect to Azure DevOps: %1$d</string>
+    <string name="auth_error_gitlab_connect">Failed to connect to GitLab (%1$s): %2$d</string>
+    <string name="auth_error_gitlab_session_expired">GitLab session expired. Please sign in again in Settings → Manage Accounts.</string>
+    <string name="auth_error_bitbucket_session_expired">Bitbucket session expired. Please sign in again in Settings → Manage Accounts.</string>
+    <string name="auth_error_token_not_found">Token not found for %1$s</string>
+    <string name="auth_error_gitea_instance_not_found">Instance URL not found for Gitea</string>
+    <string name="auth_error_azure_org_not_found">Organization URL not found for Azure DevOps</string>
+    <string name="auth_error_github_repos">Error fetching GitHub repositories: %1$d</string>
+    <string name="auth_error_gitlab_projects">Error fetching GitLab projects: %1$d</string>
+    <string name="auth_error_bitbucket_workspaces">Error fetching Bitbucket workspaces: %1$d</string>
+    <string name="auth_error_gitea_repos">Error fetching Gitea repositories: %1$d</string>
+    <string name="auth_error_azure_projects">Error fetching Azure DevOps projects: %1$d</string>
+    <string name="auth_error_authorization">Authorization error</string>
+    <string name="auth_warning_scopes_limited">Authorization granted with limited permissions. Some features may be unavailable.</string>
 </resources>

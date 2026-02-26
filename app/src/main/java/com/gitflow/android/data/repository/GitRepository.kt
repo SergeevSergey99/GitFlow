@@ -262,7 +262,7 @@ class GitRepository(
                 // GitHub: token as username, empty password
                 UsernamePasswordCredentialsProvider(token, "")
             }
-            host.contains("gitlab.com", ignoreCase = true) -> {
+            host.contains("gitlab.com", ignoreCase = true) || isGitLabHost(host) -> {
                 authManager.refreshGitLabTokenIfNeeded()
                 val token = authManager.getAccessToken(GitProvider.GITLAB)
                     ?.takeIf { it.isNotBlank() } ?: return null
@@ -296,6 +296,13 @@ class GitRepository(
     /** Returns true if [host] matches the Gitea instance URL stored during PAT login. */
     private fun isGiteaHost(host: String): Boolean {
         val instanceUrl = authManager.getInstanceUrl(GitProvider.GITEA) ?: return false
+        val instanceHost = runCatching { URI(instanceUrl).host }.getOrNull() ?: return false
+        return host.equals(instanceHost, ignoreCase = true)
+    }
+
+    /** Returns true if [host] matches the self-hosted GitLab instance URL stored during PAT login. */
+    private fun isGitLabHost(host: String): Boolean {
+        val instanceUrl = authManager.getInstanceUrl(GitProvider.GITLAB) ?: return false
         val instanceHost = runCatching { URI(instanceUrl).host }.getOrNull() ?: return false
         return host.equals(instanceHost, ignoreCase = true)
     }

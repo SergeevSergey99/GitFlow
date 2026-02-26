@@ -1,5 +1,6 @@
 package com.gitflow.android.data.auth
 
+import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -61,4 +62,14 @@ interface AzureDevOpsProfileApi {
         @Url url: String,
         @Header("Authorization") authorization: String
     ): Response<AzureProfile>
+}
+
+/** Used to fetch the user's avatar image bytes from Azure DevOps. */
+interface AzureDevOpsIdentityApi {
+    @GET
+    @Headers("Accept: image/png")
+    suspend fun getIdentityImage(
+        @Url url: String,
+        @Header("Authorization") authorization: String
+    ): Response<ResponseBody>
 }

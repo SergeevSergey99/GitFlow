@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitUser
+import com.gitflow.android.data.models.TokenInfo
 import com.gitflow.android.data.settings.AppSettingsManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -157,6 +158,8 @@ class AuthViewModel(
     fun clearError() {
         _errorMessage.value = null
     }
+
+    fun getTokenInfo(provider: GitProvider): TokenInfo = authManager.getTokenInfo(provider)
 
     private fun setUserForProvider(provider: GitProvider, user: GitUser?) {
         when (provider) {

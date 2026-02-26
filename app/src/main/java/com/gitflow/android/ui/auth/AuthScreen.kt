@@ -30,6 +30,8 @@ import coil3.compose.AsyncImage
 import org.koin.androidx.compose.koinViewModel
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitUser
+import com.gitflow.android.data.models.TokenInfo
+import com.gitflow.android.data.models.TokenStatus
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -123,6 +125,7 @@ fun AuthScreen(
                 provider = GitProvider.GITHUB,
                 user = githubUser,
                 isLoading = isLoading,
+                tokenInfo = if (githubUser != null) viewModel.getTokenInfo(GitProvider.GITHUB) else null,
                 onLoginOAuth = { viewModel.startAuth(GitProvider.GITHUB) { oauthLauncher.launch(it) } },
                 onLogout = { viewModel.logout(GitProvider.GITHUB) }
             )
@@ -131,7 +134,11 @@ fun AuthScreen(
                 provider = GitProvider.GITLAB,
                 user = gitlabUser,
                 isLoading = isLoading,
+                tokenInfo = if (gitlabUser != null) viewModel.getTokenInfo(GitProvider.GITLAB) else null,
                 onLoginOAuth = { viewModel.startAuth(GitProvider.GITLAB) { oauthLauncher.launch(it) } },
+                onLoginPAT = { instanceUrl, _, pat ->
+                    viewModel.validatePAT(GitProvider.GITLAB, instanceUrl, "", pat)
+                },
                 onLogout = { viewModel.logout(GitProvider.GITLAB) }
             )
 
@@ -139,6 +146,7 @@ fun AuthScreen(
                 provider = GitProvider.BITBUCKET,
                 user = bitbucketUser,
                 isLoading = isLoading,
+                tokenInfo = if (bitbucketUser != null) viewModel.getTokenInfo(GitProvider.BITBUCKET) else null,
                 onLoginOAuth = { viewModel.startAuth(GitProvider.BITBUCKET) { oauthLauncher.launch(it) } },
                 onLogout = { viewModel.logout(GitProvider.BITBUCKET) }
             )
@@ -148,6 +156,7 @@ fun AuthScreen(
                 provider = GitProvider.GITEA,
                 user = giteaUser,
                 isLoading = isLoading,
+                tokenInfo = if (giteaUser != null) viewModel.getTokenInfo(GitProvider.GITEA) else null,
                 onLoginPAT = { instanceUrl, username, pat ->
                     viewModel.validatePAT(GitProvider.GITEA, instanceUrl, username, pat)
                 },
@@ -158,6 +167,7 @@ fun AuthScreen(
                 provider = GitProvider.AZURE_DEVOPS,
                 user = azureUser,
                 isLoading = isLoading,
+                tokenInfo = if (azureUser != null) viewModel.getTokenInfo(GitProvider.AZURE_DEVOPS) else null,
                 onLoginPAT = { instanceUrl, _, pat ->
                     // Azure DevOps doesn't use username — org is encoded in the URL
                     viewModel.validatePAT(GitProvider.AZURE_DEVOPS, instanceUrl, "", pat)
@@ -209,6 +219,7 @@ fun AccountCard(
     provider: GitProvider,
     user: GitUser?,
     isLoading: Boolean,
+    tokenInfo: TokenInfo? = null,
     onLoginOAuth: (() -> Unit)? = null,
     onLoginPAT: ((instanceUrl: String, username: String, pat: String) -> Unit)? = null,
     onLogout: () -> Unit
@@ -269,39 +280,87 @@ fun AccountCard(
                 }
 
                 if (user != null) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = "Подключен",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        TextButton(
-                            onClick = onLogout,
-                            enabled = !isLoading
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text("Отключить")
+                            Icon(
+                                Icons.Default.CheckCircle,
+                                contentDescription = "Подключен",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            TextButton(
+                                onClick = onLogout,
+                                enabled = !isLoading
+                            ) {
+                                Text("Отключить")
+                            }
+                        }
+                        // Token expiry badge (only for OAuth tokens with expiry)
+                        if (tokenInfo != null && tokenInfo.status != TokenStatus.NEVER_EXPIRES) {
+                            val (badgeColor, badgeText) = when (tokenInfo.status) {
+                                TokenStatus.VALID -> MaterialTheme.colorScheme.primaryContainer to "Токен активен"
+                                TokenStatus.EXPIRING_SOON -> MaterialTheme.colorScheme.tertiaryContainer to
+                                    "Истекает через ${tokenInfo.minutesUntilExpiry}м"
+                                TokenStatus.EXPIRED -> MaterialTheme.colorScheme.errorContainer to "Истёк"
+                                TokenStatus.NEVER_EXPIRES -> MaterialTheme.colorScheme.primaryContainer to ""
+                            }
+                            if (badgeText.isNotEmpty()) {
+                                Surface(
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                    color = badgeColor
+                                ) {
+                                    Text(
+                                        text = badgeText,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
                         }
                     }
                 } else {
-                    Button(
-                        onClick = {
-                            when {
-                                onLoginOAuth != null -> onLoginOAuth()
-                                onLoginPAT != null -> showPATDialog = true
+                    if (onLoginOAuth != null && onLoginPAT != null) {
+                        // Both OAuth and PAT available (e.g. GitLab)
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Button(
+                                onClick = onLoginOAuth,
+                                enabled = !isLoading,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("GitLab.com")
                             }
-                        },
-                        enabled = !isLoading
-                    ) {
-                        if (isLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Text("Подключить")
+                            OutlinedButton(
+                                onClick = { showPATDialog = true },
+                                enabled = !isLoading,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Self-hosted")
+                            }
+                        }
+                    } else {
+                        Button(
+                            onClick = {
+                                when {
+                                    onLoginOAuth != null -> onLoginOAuth()
+                                    onLoginPAT != null -> showPATDialog = true
+                                }
+                            },
+                            enabled = !isLoading
+                        ) {
+                            if (isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Text("Подключить")
+                            }
                         }
                     }
                 }
@@ -408,9 +467,15 @@ private fun PATLoginDialog(
     onConfirm: (instanceUrl: String, username: String, pat: String) -> Unit
 ) {
     val isAzure = provider == GitProvider.AZURE_DEVOPS
+    val isGitLab = provider == GitProvider.GITLAB
+    val requiresUsername = !isAzure && !isGitLab  // Only Gitea needs explicit username
 
     var instanceUrl by remember {
-        mutableStateOf(if (isAzure) "https://dev.azure.com/myorg" else "https://")
+        mutableStateOf(when {
+            isAzure -> "https://dev.azure.com/myorg"
+            isGitLab -> "https://gitlab.example.com"
+            else -> "https://"
+        })
     }
     var username by remember { mutableStateOf("") }
     var pat by remember { mutableStateOf("") }
@@ -426,16 +491,16 @@ private fun PATLoginDialog(
                 OutlinedTextField(
                     value = instanceUrl,
                     onValueChange = { instanceUrl = it },
-                    label = { Text(if (isAzure) "URL организации" else "URL экземпляра") },
+                    label = { Text(when { isAzure -> "URL организации"; isGitLab -> "URL инстанса"; else -> "URL экземпляра" }) },
                     placeholder = {
-                        Text(if (isAzure) "https://dev.azure.com/myorg" else "https://gitea.example.com")
+                        Text(when { isAzure -> "https://dev.azure.com/myorg"; isGitLab -> "https://gitlab.example.com"; else -> "https://gitea.example.com" })
                     },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
                 )
 
-                if (!isAzure) {
+                if (requiresUsername) {
                     OutlinedTextField(
                         value = username,
                         onValueChange = { username = it },
@@ -464,10 +529,11 @@ private fun PATLoginDialog(
                 )
 
                 Text(
-                    text = if (isAzure)
-                        "Создайте PAT на: dev.azure.com → User settings → Personal access tokens"
-                    else
-                        "Создайте PAT на: ${instanceUrl.trimEnd('/')}/user/settings/applications",
+                    text = when {
+                        isAzure -> "Создайте PAT на: dev.azure.com → User settings → Personal access tokens"
+                        isGitLab -> "Создайте PAT на: ${instanceUrl.trimEnd('/')}/-/user_settings/personal_access_tokens"
+                        else -> "Создайте PAT на: ${instanceUrl.trimEnd('/')}/user/settings/applications"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -476,7 +542,7 @@ private fun PATLoginDialog(
         confirmButton = {
             Button(
                 onClick = { onConfirm(instanceUrl.trim(), username.trim(), pat.trim()) },
-                enabled = instanceUrl.isNotBlank() && pat.isNotBlank() && (isAzure || username.isNotBlank())
+                enabled = instanceUrl.isNotBlank() && pat.isNotBlank() && (isAzure || isGitLab || username.isNotBlank())
             ) {
                 Text("Подключить")
             }

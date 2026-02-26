@@ -219,3 +219,13 @@ data class AuthResult(
     val token: OAuthToken? = null,
     val error: String? = null
 )
+
+/** Describes the validity state of an OAuth token for a given provider. */
+enum class TokenStatus { VALID, EXPIRING_SOON, EXPIRED, NEVER_EXPIRES }
+
+/** Result of checking a token's expiry state. */
+data class TokenInfo(
+    val status: TokenStatus,
+    /** Minutes remaining until expiry (null for non-expiring tokens or expired ones). */
+    val minutesUntilExpiry: Long? = null
+)
