@@ -45,8 +45,18 @@ internal fun classifyNetworkException(e: Exception): GitResult.Failure {
         }
         cause = cause.cause
     }
-    // JGit TransportException without a recognised Java network cause
+    // JGit TransportException — check for auth failure before treating as generic network error
+    val msgLower = e.message?.lowercase() ?: ""
     if (e is TransportException || e is org.eclipse.jgit.errors.TransportException) {
+        if (msgLower.contains("not authorized") ||
+            msgLower.contains("authentication required") ||
+            msgLower.contains("invalid credentials") ||
+            msgLower.contains("invalid username or password")) {
+            return GitResult.Failure.AuthRequired(
+                message = e.message ?: "Authentication required",
+                cause = e
+            )
+        }
         return GitResult.Failure.NetworkError(
             message = e.message ?: "Network error",
             cause = e,

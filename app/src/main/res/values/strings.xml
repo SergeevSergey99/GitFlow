@@ -500,4 +500,13 @@
     <string name="auth_error_azure_projects">Error fetching Azure DevOps projects: %1$d</string>
     <string name="auth_error_authorization">Authorization error</string>
     <string name="auth_warning_scopes_limited">Authorization granted with limited permissions. Some features may be unavailable.</string>
+
+    <!-- Auth session expiry notifications and banner -->
+    <string name="auth_notification_channel_name">Account Alerts</string>
+    <string name="auth_notification_channel_description">Notifications about session expiry</string>
+    <string name="auth_notification_session_expired_title">Session expired</string>
+    <string name="auth_notification_gitlab_expired">GitLab session expired. Tap to sign in again.</string>
+    <string name="auth_notification_bitbucket_expired">Bitbucket session expired. Tap to sign in again.</string>
+    <string name="auth_session_expired_banner">Session expired. Please sign in again.</string>
+    <string name="auth_sign_in_button">Sign In</string>
 </resources>

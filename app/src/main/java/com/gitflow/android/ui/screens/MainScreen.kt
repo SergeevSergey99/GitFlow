@@ -133,7 +133,8 @@ fun MainScreen(navController: NavController) {
                 }
                 MainTab.CHANGES -> ChangesScreen(
                     repository = selectedRepository,
-                    gitRepository = gitRepository
+                    gitRepository = gitRepository,
+                    onGoToSettings = { viewModel.selectTab(MainTab.SETTINGS) }
                 )
                 MainTab.SETTINGS -> SettingsScreen(
                     selectedGraphPreset = selectedGraphPreset,

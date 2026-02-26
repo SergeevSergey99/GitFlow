@@ -18,6 +18,8 @@ import java.net.URLEncoder
 import timber.log.Timber
 import com.gitflow.android.R
 
+enum class RefreshResult { OK, NETWORK_ERROR, AUTH_EXPIRED }
+
 class AuthManager(private val context: Context) {
 
     /** Safe read-only access to application context for callers outside this class. */
@@ -546,10 +548,10 @@ class AuthManager(private val context: Context) {
     // an expired token, the first one refreshes and saves a new token+refreshToken; the
     // second coroutine acquires the lock after the first finishes, re-reads the token,
     // finds it no longer expired, and returns true without a redundant network call.
-    internal suspend fun refreshGitLabTokenIfNeeded(): Boolean = gitlabRefreshMutex.withLock {
-        val token = getToken(GitProvider.GITLAB) ?: return@withLock false
-        if (!isTokenExpired(token)) return@withLock true   // already refreshed by another coroutine
-        val refreshToken = token.refreshToken ?: return@withLock false
+    internal suspend fun refreshGitLabTokenIfNeeded(): RefreshResult = gitlabRefreshMutex.withLock {
+        val token = getToken(GitProvider.GITLAB) ?: return@withLock RefreshResult.NETWORK_ERROR
+        if (!isTokenExpired(token)) return@withLock RefreshResult.OK   // already refreshed by another coroutine
+        val refreshToken = token.refreshToken ?: return@withLock RefreshResult.AUTH_EXPIRED
         try {
             val response = gitlabApi.refreshToken(
                 clientId = OAuthConfig.gitlabClientId,
@@ -557,8 +559,8 @@ class AuthManager(private val context: Context) {
                 refreshToken = refreshToken,
                 redirectUri = OAuthConfig.REDIRECT_URI
             )
-            if (!response.isSuccessful) return@withLock false
-            val body = response.body() ?: return@withLock false
+            if (!response.isSuccessful) return@withLock if (response.code() == 401) RefreshResult.AUTH_EXPIRED else RefreshResult.NETWORK_ERROR
+            val body = response.body() ?: return@withLock RefreshResult.NETWORK_ERROR
             saveToken(GitProvider.GITLAB, OAuthToken(
                 accessToken = body.access_token,
                 tokenType = body.token_type,
@@ -566,35 +568,35 @@ class AuthManager(private val context: Context) {
                 refreshToken = body.refresh_token ?: refreshToken,
                 expiresAt = body.expires_in?.let { System.currentTimeMillis() + it * 1000L }
             ))
-            true
+            RefreshResult.OK
         } catch (e: Exception) {
             Timber.w(e, "Failed to refresh GitLab token")
-            false
+            RefreshResult.NETWORK_ERROR
         }
     }
 
-    internal suspend fun refreshBitbucketTokenIfNeeded(): Boolean = bitbucketRefreshMutex.withLock {
-        val token = getToken(GitProvider.BITBUCKET) ?: return@withLock false
-        if (!isTokenExpired(token)) return@withLock true   // already refreshed by another coroutine
-        val refreshToken = token.refreshToken ?: return@withLock false
+    internal suspend fun refreshBitbucketTokenIfNeeded(): RefreshResult = bitbucketRefreshMutex.withLock {
+        val token = getToken(GitProvider.BITBUCKET) ?: return@withLock RefreshResult.NETWORK_ERROR
+        if (!isTokenExpired(token)) return@withLock RefreshResult.OK   // already refreshed by another coroutine
+        val refreshToken = token.refreshToken ?: return@withLock RefreshResult.AUTH_EXPIRED
         try {
             val basicAuth = "Basic " + Base64.encodeToString(
                 "${OAuthConfig.bitbucketClientId}:${OAuthConfig.bitbucketClientSecret}".toByteArray(),
                 Base64.NO_WRAP
             )
             val response = bitbucketTokenApi.refreshToken(basicAuth = basicAuth, refreshToken = refreshToken)
-            if (!response.isSuccessful) return@withLock false
-            val body = response.body() ?: return@withLock false
+            if (!response.isSuccessful) return@withLock if (response.code() == 401) RefreshResult.AUTH_EXPIRED else RefreshResult.NETWORK_ERROR
+            val body = response.body() ?: return@withLock RefreshResult.NETWORK_ERROR
             saveToken(GitProvider.BITBUCKET, OAuthToken(
                 accessToken = body.access_token,
                 tokenType = body.token_type,
                 refreshToken = body.refresh_token ?: refreshToken,
                 expiresAt = body.expires_in?.let { System.currentTimeMillis() + it * 1000L }
             ))
-            true
+            RefreshResult.OK
         } catch (e: Exception) {
             Timber.w(e, "Failed to refresh Bitbucket token")
-            false
+            RefreshResult.NETWORK_ERROR
         }
     }
 
@@ -605,14 +607,14 @@ class AuthManager(private val context: Context) {
     suspend fun getRepositories(provider: GitProvider): List<GitRemoteRepository> = withContext(Dispatchers.IO) {
         when (provider) {
             GitProvider.GITLAB -> {
-                if (!refreshGitLabTokenIfNeeded()) {
+                if (refreshGitLabTokenIfNeeded() != RefreshResult.OK) {
                     throw IllegalStateException(context.getString(R.string.auth_error_gitlab_session_expired))
                 }
                 val token = getToken(provider) ?: throw IllegalStateException(context.getString(R.string.auth_error_token_not_found, provider.name))
                 getGitLabRepositories("Bearer ${token.accessToken}")
             }
             GitProvider.BITBUCKET -> {
-                if (!refreshBitbucketTokenIfNeeded()) {
+                if (refreshBitbucketTokenIfNeeded() != RefreshResult.OK) {
                     throw IllegalStateException(context.getString(R.string.auth_error_bitbucket_session_expired))
                 }
                 val token = getToken(provider) ?: throw IllegalStateException(context.getString(R.string.auth_error_token_not_found, provider.name))
@@ -796,6 +798,9 @@ class AuthManager(private val context: Context) {
         // isTokenExpired returns false when expiresAt == null (GitHub/Gitea/Azure PATs).
         return !isTokenExpired(token)
     }
+
+    /** Returns true if the user has a stored token for this provider, regardless of expiry. */
+    fun isLoggedIn(provider: GitProvider): Boolean = getToken(provider) != null
 
     fun getCurrentUser(provider: GitProvider): GitUser? {
         val key = userKey(provider)

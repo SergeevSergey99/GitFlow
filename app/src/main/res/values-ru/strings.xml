@@ -500,4 +500,13 @@
     <string name="auth_error_azure_projects">Ошибка получения проектов Azure DevOps: %1$d</string>
     <string name="auth_error_authorization">Ошибка авторизации</string>
     <string name="auth_warning_scopes_limited">Авторизация выдана с ограниченными правами. Некоторые функции могут быть недоступны.</string>
+
+    <!-- Auth session expiry notifications and banner -->
+    <string name="auth_notification_channel_name">Уведомления аккаунта</string>
+    <string name="auth_notification_channel_description">Уведомления об истечении сессии</string>
+    <string name="auth_notification_session_expired_title">Сессия истекла</string>
+    <string name="auth_notification_gitlab_expired">Сессия GitLab истекла. Нажмите, чтобы войти снова.</string>
+    <string name="auth_notification_bitbucket_expired">Сессия Bitbucket истекла. Нажмите, чтобы войти снова.</string>
+    <string name="auth_session_expired_banner">Сессия истекла. Пожалуйста, войдите снова.</string>
+    <string name="auth_sign_in_button">Войти</string>
 </resources>

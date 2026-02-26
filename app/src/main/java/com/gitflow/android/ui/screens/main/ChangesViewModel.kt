@@ -41,7 +41,9 @@ data class ChangesUiState(
     /** Persistent network error banner; null when no error. */
     val networkErrorMessage: String? = null,
     /** Whether the failed network operation can be retried. */
-    val isRetryable: Boolean = false
+    val isRetryable: Boolean = false,
+    /** True if the last remote operation failed due to an expired session. */
+    val needsReAuth: Boolean = false
 )
 
 class ChangesViewModel(
@@ -215,6 +217,7 @@ class ChangesViewModel(
             _uiState.update { it.copy(syncProgress = null) }
             when (result) {
                 is GitResult.Success -> emit(str(R.string.changes_push_successful))
+                is GitResult.Failure.AuthRequired -> setReAuthRequired()
                 is GitResult.Failure.NetworkError -> setNetworkError(result) { push() }
                 is GitResult.Failure -> emit(result.message.ifBlank { null } ?: str(R.string.changes_push_failed))
             }
@@ -230,6 +233,7 @@ class ChangesViewModel(
                     reloadChanges()
                     emit(str(R.string.changes_fetch_successful))
                 }
+                is GitResult.Failure.AuthRequired -> setReAuthRequired()
                 is GitResult.Failure.NetworkError -> setNetworkError(result) { fetch() }
                 is GitResult.Failure -> emit(result.message.ifBlank { null } ?: str(R.string.changes_fetch_failed))
             }
@@ -245,6 +249,7 @@ class ChangesViewModel(
                     reloadChanges()
                     emit(str(R.string.changes_pull_successful))
                 }
+                is GitResult.Failure.AuthRequired -> setReAuthRequired()
                 is GitResult.Failure.NetworkError -> setNetworkError(result) { pull() }
                 is GitResult.Failure -> emit(result.message.ifBlank { null } ?: str(R.string.changes_pull_failed))
             }
@@ -265,9 +270,17 @@ class ChangesViewModel(
         _uiState.update { it.copy(networkErrorMessage = msg, isRetryable = true) }
     }
 
+    private fun setReAuthRequired() {
+        _uiState.update { it.copy(needsReAuth = true, networkErrorMessage = str(R.string.auth_session_expired_banner)) }
+    }
+
+    fun dismissReAuth() {
+        _uiState.update { it.copy(needsReAuth = false, networkErrorMessage = null) }
+    }
+
     private fun clearNetworkError() {
         pendingRetry = null
-        _uiState.update { it.copy(networkErrorMessage = null, isRetryable = false) }
+        _uiState.update { it.copy(networkErrorMessage = null, isRetryable = false, needsReAuth = false) }
     }
 
     fun toggleFile(file: FileChange) {

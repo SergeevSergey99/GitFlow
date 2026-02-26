@@ -56,6 +56,12 @@ sealed class GitResult<out T> {
             val cause: Throwable? = null,
             val isOffline: Boolean = false
         ) : Failure()
+
+        /** Authentication failure during push/pull/fetch — token rejected by the server. */
+        data class AuthRequired(
+            override val message: String,
+            val cause: Throwable? = null
+        ) : Failure()
     }
 }
 

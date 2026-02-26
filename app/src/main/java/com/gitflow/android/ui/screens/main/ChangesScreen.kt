@@ -57,7 +57,8 @@ import java.util.Locale
 @Composable
 fun ChangesScreen(
     repository: Repository?,
-    gitRepository: IGitRepository
+    gitRepository: IGitRepository,
+    onGoToSettings: () -> Unit = {}
 ) {
     if (repository == null) {
         EmptyStateMessage(stringResource(R.string.changes_select_repo))
@@ -191,15 +192,24 @@ fun ChangesScreen(
             )
         }
 
-        // Network error banner with retry
-        uiState.networkErrorMessage?.let { errorMsg ->
-            NetworkErrorBanner(
-                message = errorMsg,
-                isRetryable = uiState.isRetryable,
-                onRetry = viewModel::retryNetworkOp,
-                onDismiss = viewModel::dismissNetworkError,
+        // Re-auth banner (session expired)
+        if (uiState.needsReAuth) {
+            ReAuthBanner(
+                onSignIn = { viewModel.dismissReAuth(); onGoToSettings() },
+                onDismiss = viewModel::dismissReAuth,
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
+        } else {
+            // Network error banner with retry
+            uiState.networkErrorMessage?.let { errorMsg ->
+                NetworkErrorBanner(
+                    message = errorMsg,
+                    isRetryable = uiState.isRetryable,
+                    onRetry = viewModel::retryNetworkOp,
+                    onDismiss = viewModel::dismissNetworkError,
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                )
+            }
         }
     }
 
@@ -1621,6 +1631,55 @@ private fun NetworkErrorBanner(
                         fontSize = 13.sp
                     )
                 }
+            }
+            IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReAuthBanner(
+    onSignIn: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                Icons.Default.Lock,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                text = stringResource(R.string.auth_session_expired_banner),
+                modifier = Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onErrorContainer,
+                fontSize = 13.sp
+            )
+            TextButton(onClick = onSignIn, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                Text(
+                    stringResource(R.string.auth_sign_in_button),
+                    color = MaterialTheme.colorScheme.error,
+                    fontSize = 13.sp
+                )
             }
             IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
                 Icon(
