@@ -118,6 +118,18 @@ class AuthManager(private val context: Context) {
         buildRetrofit(GITLAB_API_URL).create(GitLabApi::class.java)
     }
 
+    private fun gitLabApiForCurrentSession(): GitLabApi {
+        val instanceUrl = preferences.getString(KEY_GITLAB_INSTANCE_URL, null)
+            ?.trim()
+            ?.trimEnd('/')
+            .orEmpty()
+        return if (instanceUrl.isNotEmpty()) {
+            buildRetrofit("$instanceUrl/").create(GitLabApi::class.java)
+        } else {
+            gitlabApi
+        }
+    }
+
     private val bitbucketTokenApi: BitbucketApi by lazy {
         buildRetrofit(BITBUCKET_BASE_URL).create(BitbucketApi::class.java)
     }
@@ -352,6 +364,8 @@ class AuthManager(private val context: Context) {
             )
             saveToken(GitProvider.GITLAB, token)
             saveUser(GitProvider.GITLAB, user)
+            // OAuth flow here is gitlab.com; ensure stale self-hosted URL is not reused.
+            preferences.edit().remove(KEY_GITLAB_INSTANCE_URL).apply()
             return AuthResult(success = true, user = user, token = token)
         } catch (e: Exception) {
             return AuthResult(success = false, error = e.message ?: context.getString(R.string.auth_error_gitlab))
@@ -611,7 +625,7 @@ class AuthManager(private val context: Context) {
                     throw IllegalStateException(context.getString(R.string.auth_error_gitlab_session_expired))
                 }
                 val token = getToken(provider) ?: throw IllegalStateException(context.getString(R.string.auth_error_token_not_found, provider.name))
-                getGitLabRepositories("Bearer ${token.accessToken}")
+                getGitLabRepositories("Bearer ${token.accessToken}", gitLabApiForCurrentSession())
             }
             GitProvider.BITBUCKET -> {
                 if (refreshBitbucketTokenIfNeeded() != RefreshResult.OK) {
@@ -681,10 +695,13 @@ class AuthManager(private val context: Context) {
         return repositories.distinctBy { it.id }
     }
 
-    private suspend fun getGitLabRepositories(authHeader: String): List<GitRemoteRepository> {
+    private suspend fun getGitLabRepositories(
+        authHeader: String,
+        api: GitLabApi
+    ): List<GitRemoteRepository> {
         val repositories = mutableListOf<GitRemoteRepository>()
         // User projects
-        val projectsResponse = gitlabApi.getUserProjects(authHeader)
+        val projectsResponse = api.getUserProjects(authHeader)
         if (projectsResponse.isSuccessful) {
             projectsResponse.body()?.forEach { repositories.add(it.toGitRemoteRepository()) }
         } else {
@@ -692,11 +709,11 @@ class AuthManager(private val context: Context) {
         }
         // Group projects
         try {
-            val groupsResponse = gitlabApi.getUserGroups(authHeader)
+            val groupsResponse = api.getUserGroups(authHeader)
             if (groupsResponse.isSuccessful) {
                 groupsResponse.body()?.forEach { group ->
                     try {
-                        val groupRepos = gitlabApi.getGroupProjects(authHeader, group.id)
+                        val groupRepos = api.getGroupProjects(authHeader, group.id)
                         if (groupRepos.isSuccessful) {
                             groupRepos.body()?.forEach { repositories.add(it.toGitRemoteRepository()) }
                         }
@@ -866,7 +883,8 @@ class AuthManager(private val context: Context) {
         try {
             when {
                 host.contains("github.com", ignoreCase = true) -> fetchGitHubRepositorySize(path)
-                host.contains("gitlab.com", ignoreCase = true) -> fetchGitLabRepositorySize(path)
+                host.contains("gitlab.com", ignoreCase = true) -> fetchGitLabRepositorySize(path, gitlabApi)
+                isCurrentGitLabHost(host) -> fetchGitLabRepositorySize(path, gitLabApiForCurrentSession())
                 host.contains("bitbucket.org", ignoreCase = true) -> null // no public size API
                 else -> null
             }
@@ -940,6 +958,12 @@ class AuthManager(private val context: Context) {
         }
     }
 
+    private fun isCurrentGitLabHost(host: String): Boolean {
+        val instanceUrl = preferences.getString(KEY_GITLAB_INSTANCE_URL, null) ?: return false
+        val instanceHost = runCatching { URI(instanceUrl).host }.getOrNull() ?: return false
+        return host.equals(instanceHost, ignoreCase = true)
+    }
+
     private suspend fun fetchGitHubRepositorySize(path: String): Long? {
         val segments = path.split('/').filter { it.isNotBlank() }
         if (segments.size < 2) return null
@@ -959,7 +983,7 @@ class AuthManager(private val context: Context) {
         return body?.size?.toLong()?.let { it * 1024L }
     }
 
-    private suspend fun fetchGitLabRepositorySize(path: String): Long? {
+    private suspend fun fetchGitLabRepositorySize(path: String, api: GitLabApi): Long? {
         val segments = path.split('/').filter { it.isNotBlank() }.toMutableList()
         if (segments.isEmpty()) return null
         segments[segments.lastIndex] = segments[segments.lastIndex].removeSuffix(".git")
@@ -967,11 +991,11 @@ class AuthManager(private val context: Context) {
         if (projectPath.isBlank()) return null
         val encodedPath = URLEncoder.encode(projectPath, "UTF-8")
         val authHeader = getAccessToken(GitProvider.GITLAB)?.let { "Bearer $it" }
-        val response = gitlabApi.getProject(authorization = authHeader, projectId = encodedPath, statistics = true)
+        val response = api.getProject(authorization = authHeader, projectId = encodedPath, statistics = true)
         val body = when {
             response.isSuccessful -> response.body()
             authHeader != null -> {
-                val fallback = gitlabApi.getProject(authorization = null, projectId = encodedPath, statistics = true)
+                val fallback = api.getProject(authorization = null, projectId = encodedPath, statistics = true)
                 if (fallback.isSuccessful) fallback.body() else null
             }
             else -> null

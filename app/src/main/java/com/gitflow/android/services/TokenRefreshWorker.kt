@@ -12,6 +12,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
+import androidx.work.ListenableWorker
 import androidx.work.WorkerParameters
 import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
@@ -33,7 +34,7 @@ class TokenRefreshWorker(
 
     private val authManager: AuthManager by inject()
 
-    override suspend fun doWork(): Result {
+    override suspend fun doWork(): ListenableWorker.Result {
         var allSucceeded = true
 
         if (authManager.isLoggedIn(GitProvider.GITLAB)) {
@@ -68,7 +69,11 @@ class TokenRefreshWorker(
             }
         }
 
-        return if (allSucceeded) Result.success() else Result.retry()
+        return if (allSucceeded) {
+            ListenableWorker.Result.success()
+        } else {
+            ListenableWorker.Result.retry()
+        }
     }
 
     private fun showSessionExpiredNotification(provider: GitProvider) {
