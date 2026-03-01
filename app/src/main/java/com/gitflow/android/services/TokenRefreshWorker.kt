@@ -17,7 +17,7 @@ import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.auth.RefreshResult
 import com.gitflow.android.data.models.GitProvider
-import com.gitflow.android.ui.MainActivity
+import com.gitflow.android.MainActivity
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import timber.log.Timber
