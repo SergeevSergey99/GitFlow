@@ -27,28 +27,28 @@ internal suspend fun GitRepository.addRepositoryImpl(path: String): GitResult<Re
             return@withContext GitResult.Failure.Generic("Directory is not a Git repository: $path")
         }
 
-        val git = Git.open(repoDir)
-        val name = repoDir.name
-        val currentBranch = git.repository.branch
-        val lastCommit = getLastCommitTime(git)
-        val branches = getBranchesInternal(git)
-        val hasRemoteOrigin = git.remoteList().call().any { it.name == "origin" }
-        val (aheadCount, _) = calculateAheadBehind(git)
+        Git.open(repoDir).use { git ->
+            val name = repoDir.name
+            val currentBranch = git.repository.branch
+            val lastCommit = getLastCommitTime(git)
+            val branches = getBranchesInternal(git)
+            val hasRemoteOrigin = git.remoteList().call().any { it.name == "origin" }
+            val (aheadCount, _) = calculateAheadBehind(git)
 
-        val repository = Repository(
-            id = UUID.randomUUID().toString(),
-            name = name,
-            path = path,
-            lastUpdated = lastCommit,
-            currentBranch = currentBranch,
-            totalBranches = branches.size,
-            hasRemoteOrigin = hasRemoteOrigin,
-            pendingPushCommits = aheadCount
-        )
+            val repository = Repository(
+                id = UUID.randomUUID().toString(),
+                name = name,
+                path = path,
+                lastUpdated = lastCommit,
+                currentBranch = currentBranch,
+                totalBranches = branches.size,
+                hasRemoteOrigin = hasRemoteOrigin,
+                pendingPushCommits = aheadCount
+            )
 
-        dataStore.addRepository(repository)
-        git.close()
-        GitResult.Success(repository)
+            dataStore.addRepository(repository)
+            GitResult.Success(repository)
+        }
     } catch (e: Exception) {
         GitResult.Failure.Generic(e.message ?: "Unknown error", e)
     }
@@ -62,34 +62,33 @@ internal suspend fun GitRepository.createRepositoryImpl(name: String, localPath:
         }
 
         repoDir.mkdirs()
-        val git = Git.init().setDirectory(repoDir).call()
+        Git.init().setDirectory(repoDir).call().use { git ->
+            File(repoDir, "README.md").writeText("# $name\n\nThis repository was created with GitFlow Android.")
+            git.add().addFilepattern("README.md").call()
+            git.commit()
+                .setMessage("Initial commit")
+                .setAuthor("GitFlow Android", "gitflow@android.local")
+                .call()
 
-        File(repoDir, "README.md").writeText("# $name\n\nThis repository was created with GitFlow Android.")
-        git.add().addFilepattern("README.md").call()
-        git.commit()
-            .setMessage("Initial commit")
-            .setAuthor("GitFlow Android", "gitflow@android.local")
-            .call()
+            val currentBranch = git.repository.branch
+            val lastCommit = getLastCommitTime(git)
+            val branches = getBranchesInternal(git)
+            val (aheadCount, _) = calculateAheadBehind(git)
 
-        val currentBranch = git.repository.branch
-        val lastCommit = getLastCommitTime(git)
-        val branches = getBranchesInternal(git)
-        val (aheadCount, _) = calculateAheadBehind(git)
+            val repository = Repository(
+                id = UUID.randomUUID().toString(),
+                name = name,
+                path = repoDir.absolutePath,
+                lastUpdated = lastCommit,
+                currentBranch = currentBranch,
+                totalBranches = branches.size,
+                hasRemoteOrigin = false,
+                pendingPushCommits = aheadCount
+            )
 
-        val repository = Repository(
-            id = UUID.randomUUID().toString(),
-            name = name,
-            path = repoDir.absolutePath,
-            lastUpdated = lastCommit,
-            currentBranch = currentBranch,
-            totalBranches = branches.size,
-            hasRemoteOrigin = false,
-            pendingPushCommits = aheadCount
-        )
-
-        dataStore.addRepository(repository)
-        git.close()
-        GitResult.Success(repository)
+            dataStore.addRepository(repository)
+            GitResult.Success(repository)
+        }
     } catch (e: Exception) {
         GitResult.Failure.Generic(e.message ?: "Unknown error", e)
     }
@@ -131,26 +130,27 @@ internal suspend fun GitRepository.cloneRepositoryImpl(
             }
         }
 
-        val currentBranch = git.repository.branch
-        val lastCommit = getLastCommitTime(git)
-        val branches = getBranchesInternal(git)
-        val hasRemoteOrigin = git.remoteList().call().any { it.name == "origin" }
-        val (aheadCount, _) = calculateAheadBehind(git)
+        git.use {
+            val currentBranch = it.repository.branch
+            val lastCommit = getLastCommitTime(it)
+            val branches = getBranchesInternal(it)
+            val hasRemoteOrigin = it.remoteList().call().any { remote -> remote.name == "origin" }
+            val (aheadCount, _) = calculateAheadBehind(it)
 
-        val repository = Repository(
-            id = UUID.randomUUID().toString(),
-            name = targetDir.name,
-            path = targetDir.absolutePath,
-            lastUpdated = lastCommit,
-            currentBranch = currentBranch,
-            totalBranches = branches.size,
-            hasRemoteOrigin = hasRemoteOrigin,
-            pendingPushCommits = aheadCount
-        )
+            val repository = Repository(
+                id = UUID.randomUUID().toString(),
+                name = targetDir.name,
+                path = targetDir.absolutePath,
+                lastUpdated = lastCommit,
+                currentBranch = currentBranch,
+                totalBranches = branches.size,
+                hasRemoteOrigin = hasRemoteOrigin,
+                pendingPushCommits = aheadCount
+            )
 
-        dataStore.addRepository(repository)
-        git.close()
-        GitResult.Success(repository)
+            dataStore.addRepository(repository)
+            GitResult.Success(repository)
+        }
     } catch (e: Exception) {
         GitResult.Failure.Generic(e.message ?: "Unknown error", e)
     }
