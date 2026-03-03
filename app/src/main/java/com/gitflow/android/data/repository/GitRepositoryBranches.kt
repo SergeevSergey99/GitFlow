@@ -9,6 +9,8 @@ import org.eclipse.jgit.api.errors.TransportException
 import org.eclipse.jgit.api.CherryPickResult
 import org.eclipse.jgit.api.MergeResult
 import org.eclipse.jgit.api.ResetCommand
+import org.eclipse.jgit.transport.PushResult
+import org.eclipse.jgit.transport.RemoteRefUpdate
 import org.eclipse.jgit.lib.ProgressMonitor
 import org.eclipse.jgit.revwalk.RevWalk
 import java.net.ConnectException
@@ -88,6 +90,32 @@ private class JGitProgressMonitor(
         callback(SyncProgress(currentTask, total, total))
     }
     override fun isCancelled(): Boolean = false
+}
+
+private fun evaluatePushResult(results: Iterable<PushResult>): GitResult<Unit> {
+    val failedUpdates = mutableListOf<String>()
+    var hasUpdates = false
+
+    for (result in results) {
+        for (update in result.remoteUpdates) {
+            hasUpdates = true
+            when (update.status) {
+                RemoteRefUpdate.Status.OK,
+                RemoteRefUpdate.Status.UP_TO_DATE -> Unit
+                else -> {
+                    val remoteName = update.remoteName ?: update.srcRef ?: "<unknown>"
+                    val details = update.message?.takeIf { it.isNotBlank() } ?: update.status.name
+                    failedUpdates += "$remoteName: $details"
+                }
+            }
+        }
+    }
+
+    return when {
+        !hasUpdates -> GitResult.Success(Unit)
+        failedUpdates.isEmpty() -> GitResult.Success(Unit)
+        else -> GitResult.Failure.Generic("Push failed: ${failedUpdates.joinToString("; ")}")
+    }
 }
 
 internal suspend fun GitRepository.getBranchesImpl(repository: Repository): List<Branch> = withContext(Dispatchers.IO) {
@@ -220,11 +248,12 @@ internal suspend fun GitRepository.pushImpl(repository: Repository): GitResult<U
             val pushCommand = g.push()
             credentials?.let { pushCommand.setCredentialsProvider(it) }
             val result = pushCommand.call()
-            if (result.any { it.messages.isEmpty() }) {
-                refreshRepository(repository)
-                GitResult.Success(Unit)
-            } else {
-                GitResult.Failure.Generic("Push failed")
+            when (val pushResult = evaluatePushResult(result)) {
+                is GitResult.Success -> {
+                    refreshRepository(repository)
+                    GitResult.Success(Unit)
+                }
+                is GitResult.Failure -> pushResult
             }
         }
     } catch (e: Exception) {
@@ -247,11 +276,12 @@ internal suspend fun GitRepository.pushWithProgressImpl(
             credentials?.let { pushCommand.setCredentialsProvider(it) }
             pushCommand.setProgressMonitor(JGitProgressMonitor(onProgress))
             val result = pushCommand.call()
-            if (result.any { it.messages.isEmpty() }) {
-                refreshRepository(repository)
-                GitResult.Success(Unit)
-            } else {
-                GitResult.Failure.Generic("Push failed")
+            when (val pushResult = evaluatePushResult(result)) {
+                is GitResult.Success -> {
+                    refreshRepository(repository)
+                    GitResult.Success(Unit)
+                }
+                is GitResult.Failure -> pushResult
             }
         }
     } catch (e: Exception) {
