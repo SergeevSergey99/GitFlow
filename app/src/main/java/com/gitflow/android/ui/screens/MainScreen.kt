@@ -42,9 +42,27 @@ fun MainScreen(navController: NavController) {
     var showOperationsSheet by remember { mutableStateOf(false) }
     var showBranchDialog by remember { mutableStateOf(false) }
 
+    // Number of commits the current branch is behind its upstream (i.e. pullable), shown in
+    // the header before the branch name — same source the Changes tab uses for "Pull (N)".
+    var pendingPullCount by remember { mutableStateOf(0) }
+
     // Обновляем выбранный репозиторий если он изменился в списке
     LaunchedEffect(repositories) {
         viewModel.updateSelectedRepositoryIfChanged(repositories)
+    }
+
+    LaunchedEffect(selectedRepository) {
+        val repo = selectedRepository
+        pendingPullCount = if (repo != null) {
+            try {
+                gitRepository.getBranches(repo)
+                    .firstOrNull { it.isLocal && it.name == repo.currentBranch }?.behind ?: 0
+            } catch (_: Exception) {
+                0
+            }
+        } else {
+            0
+        }
     }
 
     Scaffold(
@@ -53,11 +71,29 @@ fun MainScreen(navController: NavController) {
                 expandedHeight = 48.dp,
                 title = {
                     selectedRepository?.let { repo ->
-                        Text(
-                            text = stringResource(R.string.main_screen_repo_info, repo.name, repo.currentBranch),
-                            fontSize = 18.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "${repo.name}  •  ",
+                                fontSize = 18.sp,
+                                maxLines = 1,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (pendingPullCount > 0) {
+                                Text(
+                                    text = "↓$pendingPullCount ",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Text(
+                                text = repo.currentBranch,
+                                fontSize = 18.sp,
+                                maxLines = 1,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 },
                 actions = {

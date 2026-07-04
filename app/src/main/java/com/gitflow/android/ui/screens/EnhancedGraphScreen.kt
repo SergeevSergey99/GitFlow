@@ -233,6 +233,7 @@ fun EnhancedGraphView(
                 GraphCanvas(
                     graphData = graphData,
                     config = config,
+                    currentBranch = repository.currentBranch,
                     hasMoreCommits = hasMoreCommits && !isLoading,
                     onLoadMore = { currentPageSize += 50 },
                     onCommitClick = { commit ->
@@ -747,6 +748,7 @@ private fun SearchResultsList(
 private fun GraphCanvas(
     graphData: GraphData,
     config: GraphConfig,
+    currentBranch: String,
     hasMoreCommits: Boolean,
     onLoadMore: () -> Unit,
     onCommitClick: (Commit) -> Unit,
@@ -771,6 +773,7 @@ private fun GraphCanvas(
                 forkInfo = forkInfo,
                 maxLanes = graphData.maxLane,
                 config = config,
+                isCurrent = currentBranch.isNotEmpty() && commit.branchHeads.contains(currentBranch),
                 horizontalScrollState = horizontalScrollState,
                 onClick = { onCommitClick(commit) },
                 onLongPress = { onCommitLongPress(commit) }
@@ -833,6 +836,7 @@ private fun GraphCommitRow(
     forkInfo: ForkInfo?,
     maxLanes: Int,
     config: GraphConfig,
+    isCurrent: Boolean,
     horizontalScrollState: androidx.compose.foundation.ScrollState,
     onClick: () -> Unit,
     onLongPress: () -> Unit
@@ -846,6 +850,11 @@ private fun GraphCommitRow(
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongPress
+            )
+            // Subtle tint marks the HEAD commit of the current local branch.
+            .then(
+                if (isCurrent) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                else Modifier
             )
             .padding(horizontal = config.rowPadding),
         verticalAlignment = Alignment.CenterVertically
