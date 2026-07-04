@@ -114,8 +114,17 @@ fun EnhancedGraphView(
     var currentPageSize by remember(repository.id) { mutableStateOf(50) }
     var hasMoreCommits by remember { mutableStateOf(true) }
 
-    // Загружаем коммиты при смене репозитория или размера страницы
-    LaunchedEffect(repository.id, currentPageSize) {
+    // Reload commits when the page size changes or when the repository's branch/commit state
+    // changes (branch created/deleted → totalBranches; checkout → currentBranch; new commit or
+    // pull → lastUpdated). Keying only on repository.id missed these, so a freshly created
+    // branch showed no badge / no HEAD highlight until the tab was re-entered.
+    LaunchedEffect(
+        repository.id,
+        repository.currentBranch,
+        repository.totalBranches,
+        repository.lastUpdated,
+        currentPageSize
+    ) {
         isLoading = true
         commits = gitRepository.getCommits(repository, page = 0, pageSize = currentPageSize)
         hasMoreCommits = commits.size >= currentPageSize
