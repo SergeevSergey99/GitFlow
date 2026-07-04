@@ -388,6 +388,18 @@
     <string name="branches_created">Branch %1$s created</string>
     <string name="branches_deleted">Branch %1$s deleted</string>
     <string name="branches_no_branches">No branches found</string>
+    <string name="branches_actions_menu">Branch actions</string>
+    <string name="branches_action_merge">Merge into current</string>
+    <string name="branches_action_rebase">Rebase current onto this</string>
+    <string name="branches_confirm">Confirm</string>
+    <string name="branches_merge_confirm_title">Merge branch?</string>
+    <string name="branches_merge_confirm_text">Merge \"%1$s\" into the current branch \"%2$s\"?</string>
+    <string name="branches_rebase_confirm_title">Rebase current branch?</string>
+    <string name="branches_rebase_confirm_text">Rebase the current branch \"%2$s\" onto \"%1$s\"? This rewrites local commit history.</string>
+    <string name="branches_banner_merging">Merge in progress. Resolve conflicts in the Changes tab, then commit the merge.</string>
+    <string name="branches_banner_rebasing">Rebase paused. Resolve conflicts in the Changes tab, then tap Continue.</string>
+    <string name="branches_banner_continue">Continue</string>
+    <string name="branches_banner_abort">Abort</string>
 
     <!-- DeleteRepositoryDialog -->
     <string name="delete_repo_title">Delete Repository</string>

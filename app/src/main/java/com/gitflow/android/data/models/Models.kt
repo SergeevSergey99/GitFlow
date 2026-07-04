@@ -93,6 +93,18 @@ enum class ConflictResolutionStrategy {
     THEIRS
 }
 
+/**
+ * Simplified in-progress git operation for a repository, derived from JGit's RepositoryState.
+ * Used by the UI to decide which "abort" action (if any) to offer after a conflicted
+ * merge/rebase, and to detect a still-pending operation when a screen is re-opened.
+ */
+enum class RepoOperationState {
+    NONE,
+    MERGING,
+    REBASING,
+    OTHER
+}
+
 // New models for diff viewer
 @Serializable
 data class FileDiff(

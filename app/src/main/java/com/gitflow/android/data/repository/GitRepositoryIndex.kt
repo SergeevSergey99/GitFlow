@@ -242,7 +242,11 @@ internal suspend fun GitRepository.commitImpl(repository: Repository, message: S
         val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
         git.use { g ->
             val status = g.status().call()
-            if (status.added.isEmpty() && status.changed.isEmpty() && status.removed.isEmpty()) {
+            // A merge in progress (MERGE_HEAD present) can be committed even when the index
+            // matches HEAD — e.g. a conflict resolved entirely to "ours". Only block the
+            // "nothing staged" case for a normal, non-merge commit.
+            val mergeInProgress = g.repository.readMergeHeads()?.isNotEmpty() == true
+            if (!mergeInProgress && status.added.isEmpty() && status.changed.isEmpty() && status.removed.isEmpty()) {
                 // inline use{} allows non-local return to withContext
                 return@withContext GitResult.Failure.NoStagedChanges()
             }

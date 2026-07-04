@@ -2,6 +2,22 @@
 
 Все заметные изменения проекта фиксируются здесь.
 
+## 2026-07-04 (2)
+
+### Added — Merge / rebase веток (P2)
+- `IGitRepository` + `GitRepository`: `mergeBranch`, `abortMerge`, `rebaseCurrentOnto`, `rebaseContinue`, `rebaseAbort`, `getRepositoryState`.
+- `GitRepositoryBranches.kt`: реализации через JGit (`merge().include(ref)`, `rebase().setUpstream/CONTINUE/ABORT`); конфликты возвращаются как `GitResult.Failure.Conflict` с путями; abort merge — hard-reset к HEAD; `getRepositoryState` мапит `RepositoryState` в `RepoOperationState` (NONE/MERGING/REBASING/OTHER).
+- Новый enum `RepoOperationState` в `Models.kt`.
+- `BranchesViewModel`: `mergeBranch`/`rebaseOnto`/`continueRebase`/`abortOperation`, поле `operationState`, сигнал `mutationSignal`. Единый `runOp` с guard + перезагрузкой состояния.
+- `BranchManagementDialog`: меню действий на ветке (Merge/Rebase) с диалогами подтверждения; баннер при незавершённой операции (Continue для rebase / Abort) с указанием разрешить конфликты в Changes; inline-карточка успеха.
+- **Убрано авто-закрытие диалога** (P1.5): вместо `LaunchedEffect(uiState.message)`, закрывавшего диалог на любое сообщение, — сигнал `mutationSignal` обновляет состояние репозитория в `MainScreen` без закрытия. Диалог закрывается только явно. Это необходимо для сценария «merge/rebase с конфликтом».
+
+### Fixed
+- `commitImpl` (найдено тестом): merge-коммит больше не блокируется как `NoStagedChanges`, если конфликт разрешён целиком в OURS (дерево совпадает с HEAD) — при наличии `MERGE_HEAD` коммит разрешён.
+
+### Added — тесты
+- `GitRepositoryMergeRebaseTest`: fast-forward merge, конфликт merge → `Conflict` + состояние MERGING, abort merge; rebase clean replay, rebase-конфликт → REBASING, rebase abort; commit после merge-резолва в OURS (регресс на фикс `commitImpl`).
+
 ## 2026-07-04
 
 ### Fixed — P0 критичные (release / данные / безопасность)

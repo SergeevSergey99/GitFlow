@@ -46,6 +46,12 @@ interface IGitRepository {
     suspend fun checkoutBranch(repository: Repository, branchName: String, isLocal: Boolean): GitResult<Unit>
     suspend fun createBranch(repository: Repository, branchName: String, checkout: Boolean): GitResult<Unit>
     suspend fun deleteBranch(repository: Repository, branchName: String, force: Boolean): GitResult<Unit>
+    suspend fun mergeBranch(repository: Repository, branchName: String): GitResult<Unit>
+    suspend fun abortMerge(repository: Repository): GitResult<Unit>
+    suspend fun rebaseCurrentOnto(repository: Repository, branchName: String): GitResult<Unit>
+    suspend fun rebaseContinue(repository: Repository): GitResult<Unit>
+    suspend fun rebaseAbort(repository: Repository): GitResult<Unit>
+    suspend fun getRepositoryState(repository: Repository): RepoOperationState
     suspend fun fetch(repository: Repository): GitResult<Unit>
     suspend fun pull(repository: Repository): GitResult<Unit>
     suspend fun push(repository: Repository): GitResult<Unit>

@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.gitflow.android.data.models.Branch
 import com.gitflow.android.data.models.GitResult
+import com.gitflow.android.data.models.RepoOperationState
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.IGitRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,7 +19,11 @@ data class BranchesUiState(
     val isLoading: Boolean = false,
     val operationInProgress: Boolean = false,
     val message: String? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    /** In-progress git operation (merge/rebase) whose conflicts are awaiting resolution. */
+    val operationState: RepoOperationState = RepoOperationState.NONE,
+    /** Incremented on every successful mutation so the host can refresh without closing the dialog. */
+    val mutationSignal: Int = 0
 )
 
 class BranchesViewModel(
@@ -38,28 +43,19 @@ class BranchesViewModel(
 
     fun loadBranches() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            _uiState.update { it.copy(isLoading = true) }
             val branches = gitRepository.getBranches(repository)
-            _uiState.update { it.copy(branches = branches, isLoading = false) }
+            val state = gitRepository.getRepositoryState(repository)
+            _uiState.update { it.copy(branches = branches, operationState = state, isLoading = false) }
         }
     }
 
     fun checkoutBranch(branch: Branch) {
-        if (!guard()) return
-        viewModelScope.launch {
-            _uiState.update { it.copy(operationInProgress = true, errorMessage = null) }
-            val result = gitRepository.checkoutBranch(repository, branch.name, branch.isLocal)
-            when (result) {
-                is GitResult.Success -> {
-                    _uiState.update { it.copy(message = "Switched to ${branch.name}") }
-                    loadBranches()
-                }
-                is GitResult.Failure -> {
-                    _uiState.update { it.copy(errorMessage = result.message) }
-                }
+        runOp {
+            when (val result = gitRepository.checkoutBranch(repository, branch.name, branch.isLocal)) {
+                is GitResult.Success -> succeed("Switched to ${branch.name}")
+                is GitResult.Failure -> fail(result.message)
             }
-            isProcessing = false
-            _uiState.update { it.copy(operationInProgress = false) }
         }
     }
 
@@ -68,55 +64,100 @@ class BranchesViewModel(
             _uiState.update { it.copy(errorMessage = "Branch name cannot be empty") }
             return
         }
-        if (!guard()) return
-        viewModelScope.launch {
-            _uiState.update { it.copy(operationInProgress = true, errorMessage = null) }
-            val result = gitRepository.createBranch(repository, name.trim(), checkout)
-            when (result) {
-                is GitResult.Success -> {
-                    _uiState.update { it.copy(message = "Branch $name created") }
-                    loadBranches()
-                }
-                is GitResult.Failure -> {
-                    _uiState.update { it.copy(errorMessage = result.message) }
-                }
+        runOp {
+            when (val result = gitRepository.createBranch(repository, name.trim(), checkout)) {
+                is GitResult.Success -> succeed("Branch $name created")
+                is GitResult.Failure -> fail(result.message)
             }
-            isProcessing = false
-            _uiState.update { it.copy(operationInProgress = false) }
         }
     }
 
     fun deleteBranch(branch: Branch, force: Boolean) {
-        if (!guard()) return
-        viewModelScope.launch {
-            _uiState.update { it.copy(operationInProgress = true, errorMessage = null) }
-            val result = gitRepository.deleteBranch(repository, branch.name, force)
-            when (result) {
-                is GitResult.Success -> {
-                    _uiState.update { it.copy(message = "Branch ${branch.name} deleted") }
-                    loadBranches()
-                }
-                is GitResult.Failure -> {
-                    _uiState.update { it.copy(errorMessage = result.message) }
-                }
+        runOp {
+            when (val result = gitRepository.deleteBranch(repository, branch.name, force)) {
+                is GitResult.Success -> succeed("Branch ${branch.name} deleted")
+                is GitResult.Failure -> fail(result.message)
             }
-            isProcessing = false
-            _uiState.update { it.copy(operationInProgress = false) }
         }
     }
 
-    fun clearMessage() {
-        _uiState.update { it.copy(message = null) }
+    fun mergeBranch(branch: Branch) {
+        runOp {
+            when (val result = gitRepository.mergeBranch(repository, branch.name)) {
+                is GitResult.Success -> succeed("Merged ${branch.name} into current branch")
+                is GitResult.Failure.Conflict -> conflict("Merge conflicts — resolve them in Changes, then commit the merge")
+                is GitResult.Failure -> fail(result.message)
+            }
+        }
     }
 
-    fun clearError() {
-        _uiState.update { it.copy(errorMessage = null) }
+    fun rebaseOnto(branch: Branch) {
+        runOp {
+            when (val result = gitRepository.rebaseCurrentOnto(repository, branch.name)) {
+                is GitResult.Success -> succeed("Rebased current branch onto ${branch.name}")
+                is GitResult.Failure.Conflict -> conflict("Rebase paused on conflicts — resolve in Changes, then Continue")
+                is GitResult.Failure -> fail(result.message)
+            }
+        }
     }
 
-    private fun guard(): Boolean {
-        if (isProcessing) return false
+    fun continueRebase() {
+        runOp {
+            when (val result = gitRepository.rebaseContinue(repository)) {
+                is GitResult.Success -> succeed("Rebase completed")
+                is GitResult.Failure.Conflict -> conflict("Still conflicts — resolve in Changes, then Continue")
+                is GitResult.Failure -> fail(result.message)
+            }
+        }
+    }
+
+    /** Aborts whichever operation (merge or rebase) is currently in progress. */
+    fun abortOperation() {
+        runOp {
+            val result = when (_uiState.value.operationState) {
+                RepoOperationState.REBASING -> gitRepository.rebaseAbort(repository)
+                else -> gitRepository.abortMerge(repository)
+            }
+            when (result) {
+                is GitResult.Success -> succeed("Operation aborted")
+                is GitResult.Failure -> fail(result.message)
+            }
+        }
+    }
+
+    fun clearMessage() = _uiState.update { it.copy(message = null) }
+    fun clearError() = _uiState.update { it.copy(errorMessage = null) }
+
+    // ---------------------------------------------------------------------------
+    // Internal helpers
+    // ---------------------------------------------------------------------------
+
+    /** Runs [block] under the single-operation guard, then reloads branch + operation state. */
+    private fun runOp(block: suspend () -> Unit) {
+        if (isProcessing) return
         isProcessing = true
-        return true
+        viewModelScope.launch {
+            _uiState.update { it.copy(operationInProgress = true, errorMessage = null, message = null) }
+            try {
+                block()
+            } finally {
+                isProcessing = false
+                _uiState.update { it.copy(operationInProgress = false) }
+                loadBranches()
+            }
+        }
     }
 
+    private fun succeed(msg: String) {
+        _uiState.update { it.copy(message = msg, mutationSignal = it.mutationSignal + 1) }
+    }
+
+    /** A conflict left an operation in progress: surface guidance and signal a state change. */
+    private fun conflict(msg: String) {
+        _uiState.update { it.copy(errorMessage = msg, mutationSignal = it.mutationSignal + 1) }
+    }
+
+    private fun fail(msg: String) {
+        _uiState.update { it.copy(errorMessage = msg) }
+    }
 }

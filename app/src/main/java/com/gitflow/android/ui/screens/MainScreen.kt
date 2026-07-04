@@ -173,8 +173,9 @@ fun MainScreen(navController: NavController) {
                 repository = repo,
                 currentBranch = repo.currentBranch,
                 onDismiss = { showBranchDialog = false },
+                // Refresh the underlying repo state after a mutation, but let the dialog stay
+                // open — merge/rebase conflicts require the user to remain and act on them.
                 onBranchChanged = {
-                    showBranchDialog = false
                     viewModel.refreshRepositories()
                 }
             )

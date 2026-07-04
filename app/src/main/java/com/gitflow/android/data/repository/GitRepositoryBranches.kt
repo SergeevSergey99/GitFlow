@@ -7,8 +7,13 @@ import org.eclipse.jgit.api.CreateBranchCommand
 import org.eclipse.jgit.api.errors.RefAlreadyExistsException
 import org.eclipse.jgit.api.errors.TransportException
 import org.eclipse.jgit.api.CherryPickResult
+import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.api.MergeResult
+import org.eclipse.jgit.api.RebaseCommand
+import org.eclipse.jgit.api.RebaseResult
 import org.eclipse.jgit.api.ResetCommand
+import org.eclipse.jgit.lib.Constants
+import org.eclipse.jgit.lib.RepositoryState
 import org.eclipse.jgit.transport.PushResult
 import org.eclipse.jgit.transport.RemoteRefUpdate
 import org.eclipse.jgit.lib.ProgressMonitor
@@ -397,5 +402,145 @@ internal suspend fun GitRepository.mergeCommitIntoCurrentBranchImpl(repository: 
         }
     } catch (e: Exception) {
         GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Merge / rebase a branch into the current branch
+// ---------------------------------------------------------------------------
+
+internal suspend fun GitRepository.mergeBranchImpl(repository: Repository, branchName: String): GitResult<Unit> = withContext(Dispatchers.IO) {
+    try {
+        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
+        git.use { g ->
+            val mergeCommand = g.merge().setCommit(true)
+            // Prefer a named ref so the merge commit message references the branch.
+            val ref = g.repository.findRef(branchName)
+            if (ref != null) {
+                mergeCommand.include(ref)
+            } else {
+                val objectId = g.repository.resolve(branchName)
+                    ?: return@withContext GitResult.Failure.Generic("Cannot resolve branch: $branchName")
+                mergeCommand.include(objectId)
+            }
+            val result = mergeCommand.call()
+            when (result.mergeStatus) {
+                MergeResult.MergeStatus.FAST_FORWARD,
+                MergeResult.MergeStatus.ALREADY_UP_TO_DATE,
+                MergeResult.MergeStatus.MERGED,
+                MergeResult.MergeStatus.MERGED_NOT_COMMITTED -> {
+                    refreshRepository(repository)
+                    GitResult.Success(Unit)
+                }
+                MergeResult.MergeStatus.CONFLICTING -> {
+                    val paths = result.conflicts?.keys?.toList() ?: emptyList()
+                    GitResult.Failure.Conflict(
+                        message = "Merge produced conflicts: ${paths.joinToString(", ").ifEmpty { "see working tree" }}",
+                        paths = paths
+                    )
+                }
+                else -> GitResult.Failure.Generic("Merge failed: ${result.mergeStatus}")
+            }
+        }
+    } catch (e: Exception) {
+        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+    }
+}
+
+internal suspend fun GitRepository.abortMergeImpl(repository: Repository): GitResult<Unit> = withContext(Dispatchers.IO) {
+    try {
+        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
+        git.use { g ->
+            // JGit has no "merge --abort"; a hard reset to HEAD clears MERGE_HEAD and the
+            // conflicted working tree, returning the repo to a clean state.
+            g.reset().setMode(ResetCommand.ResetType.HARD).setRef(Constants.HEAD).call()
+        }
+        refreshRepository(repository)
+        GitResult.Success(Unit)
+    } catch (e: Exception) {
+        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+    }
+}
+
+internal suspend fun GitRepository.rebaseCurrentOntoImpl(repository: Repository, branchName: String): GitResult<Unit> = withContext(Dispatchers.IO) {
+    try {
+        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
+        git.use { g ->
+            val result = g.rebase().setUpstream(branchName).call()
+            interpretRebaseResult(result, repository, g)
+        }
+    } catch (e: Exception) {
+        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+    }
+}
+
+internal suspend fun GitRepository.rebaseContinueImpl(repository: Repository): GitResult<Unit> = withContext(Dispatchers.IO) {
+    try {
+        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
+        git.use { g ->
+            val result = g.rebase().setOperation(RebaseCommand.Operation.CONTINUE).call()
+            interpretRebaseResult(result, repository, g)
+        }
+    } catch (e: Exception) {
+        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+    }
+}
+
+internal suspend fun GitRepository.rebaseAbortImpl(repository: Repository): GitResult<Unit> = withContext(Dispatchers.IO) {
+    try {
+        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
+        git.use { g ->
+            g.rebase().setOperation(RebaseCommand.Operation.ABORT).call()
+        }
+        refreshRepository(repository)
+        GitResult.Success(Unit)
+    } catch (e: Exception) {
+        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+    }
+}
+
+/** Maps a [RebaseResult] to a [GitResult], refreshing repo metadata on a clean finish. */
+private suspend fun GitRepository.interpretRebaseResult(
+    result: RebaseResult,
+    repository: Repository,
+    git: Git
+): GitResult<Unit> {
+    return when (result.status) {
+        RebaseResult.Status.OK,
+        RebaseResult.Status.UP_TO_DATE,
+        RebaseResult.Status.FAST_FORWARD -> {
+            refreshRepository(repository)
+            GitResult.Success(Unit)
+        }
+        RebaseResult.Status.STOPPED,
+        RebaseResult.Status.CONFLICTS -> {
+            // Read conflicting paths from the working tree rather than RebaseResult, keeping
+            // the source of truth consistent with the merge path and ChangesScreen.
+            val paths = runCatching { git.status().call().conflicting.toList() }.getOrDefault(emptyList())
+            GitResult.Failure.Conflict(
+                message = "Rebase stopped on conflicts: ${paths.joinToString(", ").ifEmpty { "see working tree" }}",
+                paths = paths
+            )
+        }
+        RebaseResult.Status.UNCOMMITTED_CHANGES ->
+            GitResult.Failure.Generic("Commit or stash your changes before rebasing")
+        else -> GitResult.Failure.Generic("Rebase failed: ${result.status}")
+    }
+}
+
+internal suspend fun GitRepository.getRepositoryStateImpl(repository: Repository): RepoOperationState = withContext(Dispatchers.IO) {
+    try {
+        val git = openRepository(repository.path) ?: return@withContext RepoOperationState.NONE
+        git.use { g ->
+            when (g.repository.repositoryState) {
+                RepositoryState.MERGING, RepositoryState.MERGING_RESOLVED -> RepoOperationState.MERGING
+                RepositoryState.REBASING, RepositoryState.REBASING_REBASING,
+                RepositoryState.REBASING_MERGE, RepositoryState.REBASING_INTERACTIVE -> RepoOperationState.REBASING
+                RepositoryState.SAFE, RepositoryState.BARE -> RepoOperationState.NONE
+                else -> RepoOperationState.OTHER
+            }
+        }
+    } catch (e: Exception) {
+        RepoOperationState.NONE
     }
 }

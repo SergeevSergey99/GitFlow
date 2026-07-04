@@ -225,17 +225,22 @@
 - [ ] **`collectAsState()` без lifecycle-awareness во всех 10 файлах.** Единообразно, но flow
   продолжают собираться в фоне. Добавить `androidx.lifecycle:lifecycle-runtime-compose` и
   перейти на `collectAsStateWithLifecycle()` одним проходом.
-- [ ] **`LaunchedEffect(uiState.message)` — одинаковый триггер, разное поведение:**
-  в `BranchManagementDialog.kt:47` закрывает диалог, в `ChangesScreen.kt:93` показывает
-  snackbar. При добавлении merge/rebase (см. Фичи) авто-закрытие сломает сценарий
-  «merge с конфликтом» — заменить на явные события (`sealed class` event / отдельное поле
-  `closeDialog: Boolean`), а не сигналить строкой сообщения.
+- [x] **`LaunchedEffect(uiState.message)` — авто-закрытие диалога** _(2026-07-04)_ В
+  `BranchManagementDialog` заменено на сигнал `mutationSignal`: успех обновляет состояние
+  репозитория без закрытия диалога, диалог закрывается только явно. Разблокировало сценарий
+  «merge/rebase с конфликтом». (В `ChangesScreen.kt:93` snackbar-логика не трогалась.)
 
 ---
 
 ## P2 — фичи (по убыванию ценности)
 
-### 1. Merge / rebase веток из `BranchManagementDialog`
+### 1. Merge / rebase веток из `BranchManagementDialog` — ✅ ВЫПОЛНЕНО 2026-07-04
+
+> Реализовано: `mergeBranch`/`rebaseCurrentOnto`/`abortMerge`/`rebaseAbort`/`rebaseContinue`/
+> `getRepositoryState` в репозитории (+ тесты `GitRepositoryMergeRebaseTest`), меню действий и
+> баннер операции в диалоге, фикс авто-закрытия и `commitImpl` (MERGE_HEAD). Конфликты
+> переиспользуют резолвер в `ChangesScreen`. Оставшиеся доработки ветки — rename и push
+> отдельной ветки (см. «Мелочи» ниже). Историческое описание плана — ниже.
 
 - `IGitRepository`: `suspend fun mergeBranch(repository, branchName): GitResult<Unit>`,
   `suspend fun rebaseOntoBranch(repository, branchName): GitResult<Unit>`,
@@ -251,12 +256,11 @@
   авто-закрытие диалога (см. P1.5, последний пункт).
 - `mergeCommitIntoCurrentBranch` уже существует — merge ветки делается поверх него
   (ветка = её HEAD-коммит), но статусы конфликтов нужно прокинуть наружу.
-- **Баг, найденный тестом (2026-07-04):** `commitImpl` определяет «нечего коммитить»
-  через `status.added/changed/removed`. Если merge-конфликт разрешён целиком в OURS,
-  дерево совпадает с HEAD и эти множества пусты → `commitImpl` вернёт `NoStagedChanges`
-  и заблокирует легитимный merge-коммит (в git он допустим, т.к. есть `MERGE_HEAD`).
-  Фикс перед включением merge из UI: в `commitImpl` при наличии `MERGE_HEAD`
-  (`repository.readMergeHeads() != null`) разрешать коммит даже без изменений в индексе.
+- **[x] Баг, найденный тестом (2026-07-04, исправлено):** `commitImpl` определял «нечего
+  коммитить» через `status.added/changed/removed` и блокировал merge-коммит, разрешённый
+  целиком в OURS (дерево == HEAD). Исправлено: при наличии `MERGE_HEAD`
+  (`repository.readMergeHeads()?.isNotEmpty()`) коммит разрешён. Покрыто тестом
+  `commit_afterMergeResolvedToOurs_succeeds`.
 
 ### 2. Клонирование одной ветки (быстрая экономия трафика)
 

@@ -388,6 +388,18 @@
     <string name="branches_created">Ветка %1$s создана</string>
     <string name="branches_deleted">Ветка %1$s удалена</string>
     <string name="branches_no_branches">Ветки не найдены</string>
+    <string name="branches_actions_menu">Действия с веткой</string>
+    <string name="branches_action_merge">Влить в текущую</string>
+    <string name="branches_action_rebase">Rebase текущей на эту</string>
+    <string name="branches_confirm">Подтвердить</string>
+    <string name="branches_merge_confirm_title">Слить ветку?</string>
+    <string name="branches_merge_confirm_text">Влить «%1$s» в текущую ветку «%2$s»?</string>
+    <string name="branches_rebase_confirm_title">Rebase текущей ветки?</string>
+    <string name="branches_rebase_confirm_text">Перебазировать текущую ветку «%2$s» на «%1$s»? Это перепишет локальную историю коммитов.</string>
+    <string name="branches_banner_merging">Идёт слияние. Разрешите конфликты во вкладке «Изменения», затем закоммитьте merge.</string>
+    <string name="branches_banner_rebasing">Rebase приостановлен. Разрешите конфликты во вкладке «Изменения», затем нажмите «Продолжить».</string>
+    <string name="branches_banner_continue">Продолжить</string>
+    <string name="branches_banner_abort">Отменить</string>
 
     <!-- DeleteRepositoryDialog -->
     <string name="delete_repo_title">Удаление репозитория</string>

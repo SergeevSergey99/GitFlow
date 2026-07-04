@@ -21,6 +21,7 @@ import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 import com.gitflow.android.R
 import com.gitflow.android.data.models.Branch
+import com.gitflow.android.data.models.RepoOperationState
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.ui.screens.main.BranchesViewModel
 
@@ -43,12 +44,21 @@ fun BranchManagementDialog(
     var checkoutOnCreate by remember { mutableStateOf(true) }
 
     var branchToDelete by remember { mutableStateOf<Branch?>(null) }
+    var mergeTarget by remember { mutableStateOf<Branch?>(null) }
+    var rebaseTarget by remember { mutableStateOf<Branch?>(null) }
 
-    LaunchedEffect(uiState.message) {
-        if (uiState.message != null) {
+    // Refresh the host repo state after any successful mutation, but keep the dialog open —
+    // conflicts from merge/rebase need the user to stay here (and then resolve in Changes).
+    LaunchedEffect(uiState.mutationSignal) {
+        if (uiState.mutationSignal > 0) {
             onBranchChanged()
-            viewModel.clearMessage()
         }
+    }
+
+    // Re-read branch and merge/rebase state each time the dialog opens, so a merge/rebase
+    // resolved elsewhere (e.g. in the Changes screen) is reflected here on reopen.
+    LaunchedEffect(Unit) {
+        viewModel.loadBranches()
     }
 
     Dialog(
@@ -139,6 +149,50 @@ fun BranchManagementDialog(
                     }
                 }
 
+                // Success feedback (merge/rebase/checkout/etc.)
+                if (uiState.message != null) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                uiState.message!!,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            IconButton(onClick = { viewModel.clearMessage() }, modifier = Modifier.size(20.dp)) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Merge/rebase in progress — direct the user to resolve in Changes, offer abort/continue.
+                if (uiState.operationState == RepoOperationState.MERGING ||
+                    uiState.operationState == RepoOperationState.REBASING
+                ) {
+                    OperationBanner(
+                        state = uiState.operationState,
+                        enabled = !uiState.operationInProgress,
+                        onContinue = { viewModel.continueRebase() },
+                        onAbort = { viewModel.abortOperation() }
+                    )
+                }
+
                 val localBranches = uiState.branches
                     .filter { it.isLocal && it.name.contains(searchQuery, ignoreCase = true) }
                 val remoteBranches = uiState.branches
@@ -174,7 +228,9 @@ fun BranchManagementDialog(
                                     branch = branch,
                                     currentBranch = currentBranch,
                                     onCheckout = { viewModel.checkoutBranch(branch) },
-                                    onDelete = { branchToDelete = branch }
+                                    onDelete = { branchToDelete = branch },
+                                    onMerge = { mergeTarget = branch },
+                                    onRebase = { rebaseTarget = branch }
                                 )
                             }
                         }
@@ -196,7 +252,9 @@ fun BranchManagementDialog(
                                     branch = branch,
                                     currentBranch = currentBranch,
                                     onCheckout = { viewModel.checkoutBranch(branch) },
-                                    onDelete = null
+                                    onDelete = null,
+                                    onMerge = { mergeTarget = branch },
+                                    onRebase = { rebaseTarget = branch }
                                 )
                             }
                         }
@@ -279,6 +337,32 @@ fun BranchManagementDialog(
             onDismiss = { branchToDelete = null }
         )
     }
+
+    // Merge confirmation dialog
+    mergeTarget?.let { branch ->
+        MergeRebaseConfirmDialog(
+            title = stringResource(R.string.branches_merge_confirm_title),
+            text = stringResource(R.string.branches_merge_confirm_text, branch.name, currentBranch),
+            onConfirm = {
+                viewModel.mergeBranch(branch)
+                mergeTarget = null
+            },
+            onDismiss = { mergeTarget = null }
+        )
+    }
+
+    // Rebase confirmation dialog
+    rebaseTarget?.let { branch ->
+        MergeRebaseConfirmDialog(
+            title = stringResource(R.string.branches_rebase_confirm_title),
+            text = stringResource(R.string.branches_rebase_confirm_text, branch.name, currentBranch),
+            onConfirm = {
+                viewModel.rebaseOnto(branch)
+                rebaseTarget = null
+            },
+            onDismiss = { rebaseTarget = null }
+        )
+    }
 }
 
 @Composable
@@ -297,9 +381,12 @@ private fun BranchRow(
     branch: Branch,
     currentBranch: String,
     onCheckout: () -> Unit,
-    onDelete: (() -> Unit)?
+    onDelete: (() -> Unit)?,
+    onMerge: () -> Unit,
+    onRebase: () -> Unit
 ) {
     val isCurrent = branch.name == currentBranch
+    var menuExpanded by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -360,7 +447,108 @@ private fun BranchRow(
                 )
             }
         }
+        if (!isCurrent) {
+            Box {
+                IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        Icons.Default.MoreVert,
+                        contentDescription = stringResource(R.string.branches_actions_menu),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.branches_action_merge)) },
+                        onClick = {
+                            menuExpanded = false
+                            onMerge()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.branches_action_rebase)) },
+                        onClick = {
+                            menuExpanded = false
+                            onRebase()
+                        }
+                    )
+                }
+            }
+        }
     }
+}
+
+@Composable
+private fun OperationBanner(
+    state: RepoOperationState,
+    enabled: Boolean,
+    onContinue: () -> Unit,
+    onAbort: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+        )
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                stringResource(
+                    if (state == RepoOperationState.REBASING) R.string.branches_banner_rebasing
+                    else R.string.branches_banner_merging
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onTertiaryContainer
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                if (state == RepoOperationState.REBASING) {
+                    TextButton(onClick = onContinue, enabled = enabled) {
+                        Text(stringResource(R.string.branches_banner_continue))
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                TextButton(onClick = onAbort, enabled = enabled) {
+                    Text(
+                        stringResource(R.string.branches_banner_abort),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MergeRebaseConfirmDialog(
+    title: String,
+    text: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(text) },
+        confirmButton = {
+            Button(onClick = onConfirm) {
+                Text(stringResource(R.string.branches_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.graph_commit_cancel))
+            }
+        }
+    )
 }
 
 @Composable
