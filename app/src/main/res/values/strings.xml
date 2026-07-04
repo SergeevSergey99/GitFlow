@@ -412,6 +412,7 @@
     <string name="branches_actions_menu">Branch actions</string>
     <string name="branches_action_merge">Merge into current</string>
     <string name="branches_action_rebase">Rebase current onto this</string>
+    <string name="branches_action_delete">Delete branch</string>
     <string name="branches_confirm">Confirm</string>
     <string name="branches_merge_confirm_title">Merge branch?</string>
     <string name="branches_merge_confirm_text">Merge \"%1$s\" into the current branch \"%2$s\"?</string>

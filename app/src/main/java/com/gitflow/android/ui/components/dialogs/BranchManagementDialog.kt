@@ -454,16 +454,6 @@ private fun BranchRow(
                 modifier = Modifier.size(20.dp)
             )
         }
-        if (!isCurrent && branch.isLocal && onDelete != null) {
-            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
         if (!isCurrent) {
             Box {
                 IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(32.dp)) {
@@ -491,6 +481,30 @@ private fun BranchRow(
                             onRebase()
                         }
                     )
+                    // Delete is available for local branches only.
+                    val delete = onDelete
+                    if (branch.isLocal && delete != null) {
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    stringResource(R.string.branches_action_delete),
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                delete()
+                            }
+                        )
+                    }
                 }
             }
         }
