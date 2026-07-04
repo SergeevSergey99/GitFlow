@@ -150,8 +150,11 @@
 `AuthManager`/`AppSettingsManager` (final-классы, которые нельзя сконструировать в тесте
 из-за Keystore). Git-операции гоняются на реальном JGit-репозитории во временной папке
 (`TemporaryFolder`); идентичность коммита берётся из git config, поэтому моки в git-сценариях
-не участвуют. `@Config(manifest = Config.NONE)` важен — иначе Robolectric поднимет
-`GitFlowApplication.onCreate` (startKoin + WorkManager). Зависимости добавлены в `build.gradle.kts`.
+не участвуют. **Важно:** `@Config(application = Application::class)` — иначе Robolectric поднимет
+реальный `GitFlowApplication.onCreate` (startKoin + WorkManager), и тесты падают с
+`KoinApplicationAlreadyStartedException` / `WorkManager is not initialized`. (`manifest = Config.NONE`
+эту проблему НЕ решает — с ресурсами от AGP кастомный Application всё равно используется.)
+Зависимости добавлены в `build.gradle.kts`.
 
 - [x] single/batch stage/unstage (`GitRepositoryIndexTest`); _(2026-07-04)_
 - [x] reset/discard file changes (tracked → revert, untracked → delete); _(2026-07-04)_

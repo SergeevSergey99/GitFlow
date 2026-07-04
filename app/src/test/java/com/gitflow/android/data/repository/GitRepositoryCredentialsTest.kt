@@ -1,5 +1,6 @@
 package com.gitflow.android.data.repository
 
+import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.gitflow.android.data.auth.AuthManager
@@ -22,7 +23,9 @@ import org.robolectric.annotation.Config
  * subdomains, never for a look-alike host that merely contains the provider domain as a substring.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], manifest = Config.NONE)
+// Force a stock Application: the real GitFlowApplication.onCreate() starts Koin/WorkManager,
+// which throw under Robolectric and are not needed here.
+@Config(sdk = [34], application = Application::class)
 class GitRepositoryCredentialsTest {
 
     private lateinit var authManager: AuthManager

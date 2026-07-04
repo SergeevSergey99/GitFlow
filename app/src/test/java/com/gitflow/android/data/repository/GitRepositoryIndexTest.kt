@@ -1,5 +1,6 @@
 package com.gitflow.android.data.repository
 
+import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.gitflow.android.data.auth.AuthManager
@@ -34,7 +35,10 @@ import java.io.File
  * mocked [AuthManager] / [AppSettingsManager] are never consulted for these flows.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34], manifest = Config.NONE)
+// Force a stock Application: the real GitFlowApplication.onCreate() calls startKoin() and
+// WorkManager.getInstance(), which throw under Robolectric (Koin already started across tests,
+// WorkManager not initialized). These tests don't need either.
+@Config(sdk = [34], application = Application::class)
 class GitRepositoryIndexTest {
 
     @get:Rule
