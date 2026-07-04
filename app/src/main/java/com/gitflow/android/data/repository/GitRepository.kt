@@ -256,19 +256,19 @@ class GitRepository(
         val host = parsedUri?.host ?: return null
 
         return when {
-            host.contains("github.com", ignoreCase = true) -> {
+            hostMatches(host, "github.com") -> {
                 val token = authManager.getAccessToken(GitProvider.GITHUB)
                     ?.takeIf { it.isNotBlank() } ?: return null
                 // GitHub: token as username, empty password
                 UsernamePasswordCredentialsProvider(token, "")
             }
-            host.contains("gitlab.com", ignoreCase = true) || isGitLabHost(host) -> {
+            hostMatches(host, "gitlab.com") || isGitLabHost(host) -> {
                 authManager.refreshGitLabTokenIfNeeded()
                 val token = authManager.getAccessToken(GitProvider.GITLAB)
                     ?.takeIf { it.isNotBlank() } ?: return null
                 UsernamePasswordCredentialsProvider("oauth2", token)
             }
-            host.contains("bitbucket.org", ignoreCase = true) -> {
+            hostMatches(host, "bitbucket.org") -> {
                 authManager.refreshBitbucketTokenIfNeeded()
                 val token = authManager.getAccessToken(GitProvider.BITBUCKET)
                     ?.takeIf { it.isNotBlank() } ?: return null
@@ -282,8 +282,8 @@ class GitRepository(
                     ?.login?.takeIf { it.isNotBlank() } ?: "git"
                 UsernamePasswordCredentialsProvider(username, token)
             }
-            host.contains("dev.azure.com", ignoreCase = true) ||
-            host.contains("visualstudio.com", ignoreCase = true) -> {
+            hostMatches(host, "dev.azure.com") ||
+            hostMatches(host, "visualstudio.com") -> {
                 val token = authManager.getAccessToken(GitProvider.AZURE_DEVOPS)
                     ?.takeIf { it.isNotBlank() } ?: return null
                 // Azure DevOps PAT: empty username, PAT as password
@@ -292,6 +292,14 @@ class GitRepository(
             else -> null
         }
     }
+
+    /**
+     * Strict host match: true only when [host] equals [domain] exactly or is a
+     * subdomain of it. Prevents credential leaks to look-alike hosts such as
+     * "github.com.attacker.com", which a naive `contains("github.com")` would accept.
+     */
+    private fun hostMatches(host: String, domain: String): Boolean =
+        host.equals(domain, ignoreCase = true) || host.endsWith(".$domain", ignoreCase = true)
 
     /** Returns true if [host] matches the Gitea instance URL stored during PAT login. */
     private fun isGiteaHost(host: String): Boolean {
@@ -319,18 +327,18 @@ class GitRepository(
         val originRemote = remoteConfigs.firstOrNull { it.name == "origin" } ?: remoteConfigs.firstOrNull()
         val remoteUri = originRemote?.urIs?.firstOrNull()
 
-        val remoteUriString = remoteUri?.toString()?.lowercase(Locale.ROOT)
-        val provider = remoteUriString?.let { uri ->
+        val remoteHost = remoteUri?.host?.lowercase(Locale.ROOT)
+        val provider = remoteHost?.let { host ->
             when {
-                uri.contains("github.com") -> GitProvider.GITHUB
-                uri.contains("gitlab.com") -> GitProvider.GITLAB
-                uri.contains("bitbucket.org") -> GitProvider.BITBUCKET
-                uri.contains("dev.azure.com") || uri.contains("visualstudio.com") -> GitProvider.AZURE_DEVOPS
+                hostMatches(host, "github.com") -> GitProvider.GITHUB
+                hostMatches(host, "gitlab.com") -> GitProvider.GITLAB
+                hostMatches(host, "bitbucket.org") -> GitProvider.BITBUCKET
+                hostMatches(host, "dev.azure.com") || hostMatches(host, "visualstudio.com") -> GitProvider.AZURE_DEVOPS
                 else -> {
                     // Gitea: match against stored instance URL
                     val giteaHost = authManager.getInstanceUrl(GitProvider.GITEA)
                         ?.let { runCatching { URI(it).host }.getOrNull()?.lowercase(Locale.ROOT) }
-                    if (giteaHost != null && uri.contains(giteaHost)) GitProvider.GITEA else null
+                    if (giteaHost != null && host.equals(giteaHost, ignoreCase = true)) GitProvider.GITEA else null
                 }
             }
         }

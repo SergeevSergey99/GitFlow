@@ -15,10 +15,19 @@
 - [x] Внедрён Koin 4.0 DI: `di/AppModule.kt`, синглтоны + все ViewModels; удалены все Factory-классы; `koinViewModel()` / `koinInject()` на всех экранах.
 - [x] Исправлены compiler warnings: AutoMirrored icons, Compose API (`HorizontalDivider`, `PrimaryTabRow`), OAuthActivity deprecated `onReceivedError`, Koin DSL import.
 - [x] Allowlist хостов в OAuth WebView (`OAuthActivity.isHostAllowed`), state-проверка (CSRF), PKCE.
+- [x] **P0.1** R8 keep-правила для всех auth-DTO (`data.auth.**`) — release больше не ломает Bitbucket/Gitea/Azure. _(2026-07-04)_
+- [x] **P0.2** Backup/data-extraction rules + fallback пересоздания `EncryptedSharedPreferences` — нет краш-лупа после restore. _(2026-07-04)_
+- [x] **P0.3** Строгий `hostMatches` в `GitRepository`/`AuthManager` — нет утечки токена на look-alike хост. _(2026-07-04)_
+- [x] **P0.5** OAuth WebView: перехват redirect в `shouldOverrideUrlLoading`, `isForMainFrame`-guard в `onReceivedError`, идемпотентные callback'и. _(2026-07-04)_
+- [x] **P1** `TokenRefreshWorker` — сетевой constraint + `UPDATE`. _(2026-07-04)_
+- [x] **P1** `CloneRepositoryService` — не прерывает клон без `POST_NOTIFICATIONS`. _(2026-07-04)_
 
 ---
 
-## P0 — критичное (ломает release-сборку, данные или безопасность)
+## P0 — критичное (ломает release-сборку, данные или безопасность) — ✅ ВЫПОЛНЕНО 2026-07-04
+
+> Все три пункта внесены. Оставлены здесь как справка по сделанному; проверка — smoke-тест
+> `assembleRelease` (login PAT Gitea/Azure, список Bitbucket) + restore-из-бэкапа на втором устройстве.
 
 ### P0.1 Release-сборка ломает Bitbucket / Gitea / Azure DevOps (R8 + Gson)
 
@@ -104,7 +113,7 @@
 
 **Файл:** `ui/auth/OAuthActivity.kt`
 
-- [ ] **Перехватывать redirect в `shouldOverrideUrlLoading`, а не в `onPageStarted`.**
+- [x] **Перехватывать redirect в `shouldOverrideUrlLoading`, а не в `onPageStarted`.** _(2026-07-04, fallback в `onPageStarted` оставлен, callback'и идемпотентны)_
   Сейчас для `gitflow://oauth/...` возвращается `false` («пусть WebView грузит»), а код
   ловится в `onPageStarted`. Поведение для кастомных схем различается между версиями
   WebView: на части устройств сначала прилетает `ERR_UNKNOWN_URL_SCHEME` в
@@ -117,7 +126,7 @@
   ```
   Вызов `checkForAuthCode` из `onPageStarted` можно оставить как fallback, но добавить
   guard-флаг, чтобы callback не сработал дважды.
-- [ ] **`onReceivedError`: игнорировать ошибки субресурсов.** Сейчас упавший favicon или
+- [x] **`onReceivedError`: игнорировать ошибки субресурсов.** _(2026-07-04)_ Упавший favicon или
   заблокированный DNS-фильтром домен аналитики закрывает весь auth flow. Первой строкой:
   ```kotlin
   if (request?.isForMainFrame != true) return
@@ -150,15 +159,8 @@ Git-слой тестируется на JVM: JGit создаёт репозит
 
 ### Прочее
 
-- [ ] `TokenRefreshWorker`: добавить constraint сети, иначе retry крутится впустую офлайн:
-  ```kotlin
-  PeriodicWorkRequestBuilder<TokenRefreshWorker>(30, TimeUnit.MINUTES)
-      .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-      .build()
-  ```
-- [ ] `CloneRepositoryService`: не завершать сервис при отсутствии `POST_NOTIFICATIONS`.
-  `startForeground()` не требует этого разрешения — уведомление просто не покажется.
-  Сейчас отказ в разрешении = клонирование вообще не выполняется.
+- [x] `TokenRefreshWorker`: добавлен constraint `NetworkType.CONNECTED` + политика `UPDATE`. _(2026-07-04)_
+- [x] `CloneRepositoryService`: не завершает сервис при отсутствии `POST_NOTIFICATIONS`. _(2026-07-04)_
 - [ ] Пагинация списков репозиториев: GitHub — жёстко 2 страницы личных (200 шт.) и 3 на
   организацию, Gitea — 4 страницы. Либо крутить цикл «пока страница полная» с разумным
   потолком, либо показывать в UI «показаны первые N».

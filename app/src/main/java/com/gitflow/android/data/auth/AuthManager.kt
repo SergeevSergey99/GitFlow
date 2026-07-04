@@ -46,12 +46,27 @@ class AuthManager(private val context: Context) {
     }
 
     private fun createEncryptedPreferences(): SharedPreferences {
+        return try {
+            buildEncryptedPreferences()
+        } catch (e: Exception) {
+            // The Keystore master key is missing or rotated, or the prefs file is corrupted
+            // (e.g. restored from a cloud backup onto another device — Keystore keys are not
+            // backed up). EncryptedSharedPreferences then throws AEADBadTagException at load
+            // time, which would crash-loop the app on startup. Reset the file and rebuild:
+            // stored tokens are lost (user must re-login) but the app stays usable.
+            Timber.e(e, "Encrypted auth prefs unreadable; resetting")
+            context.deleteSharedPreferences(ENCRYPTED_PREFS_FILE)
+            buildEncryptedPreferences()
+        }
+    }
+
+    private fun buildEncryptedPreferences(): SharedPreferences {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
         return EncryptedSharedPreferences.create(
             context,
-            "auth_prefs_encrypted",
+            ENCRYPTED_PREFS_FILE,
             masterKey,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
@@ -72,6 +87,7 @@ class AuthManager(private val context: Context) {
     }
 
     companion object {
+        private const val ENCRYPTED_PREFS_FILE = "auth_prefs_encrypted"
         private const val PKCE_STATE_TTL_MS = 10 * 60 * 1000L
         private const val TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000L
 
@@ -885,14 +901,22 @@ class AuthManager(private val context: Context) {
 
         try {
             when {
-                host.contains("github.com", ignoreCase = true) -> fetchGitHubRepositorySize(path)
-                host.contains("gitlab.com", ignoreCase = true) -> fetchGitLabRepositorySize(path, gitlabApi)
+                hostMatches(host, "github.com") -> fetchGitHubRepositorySize(path)
+                hostMatches(host, "gitlab.com") -> fetchGitLabRepositorySize(path, gitlabApi)
                 isCurrentGitLabHost(host) -> fetchGitLabRepositorySize(path, gitLabApiForCurrentSession())
-                host.contains("bitbucket.org", ignoreCase = true) -> null // no public size API
+                hostMatches(host, "bitbucket.org") -> null // no public size API
                 else -> null
             }
         } catch (e: Exception) { null }
     }
+
+    /**
+     * Strict host match: true only when [host] equals [domain] exactly or is a
+     * subdomain of it. Prevents look-alike hosts such as "github.com.attacker.com"
+     * from being routed as a known provider.
+     */
+    private fun hostMatches(host: String, domain: String): Boolean =
+        host.equals(domain, ignoreCase = true) || host.endsWith(".$domain", ignoreCase = true)
 
     // ---------------------------------------------------------------------------
     // Private helpers

@@ -2,6 +2,26 @@
 
 Все заметные изменения проекта фиксируются здесь.
 
+## 2026-07-04
+
+### Fixed — P0 критичные (release / данные / безопасность)
+- **R8 + Gson (release-сборка ломала Bitbucket/Gitea/Azure):** `proguard-rules.pro` — точечные keep-правила заменены на `-keep class com.gitflow.android.data.auth.** { *; }`. Обфускация полей DTO больше не рушит десериализацию Gson в minified-сборке.
+- **Краш-луп после restore из бэкапа:** добавлены `res/xml/backup_rules.xml` и `res/xml/data_extraction_rules.xml`, исключающие `auth_prefs_encrypted` из cloud-backup и device-transfer; подключены в манифесте (`fullBackupContent`, `dataExtractionRules`). В `AuthManager` создание `EncryptedSharedPreferences` обёрнуто в try/catch: при `AEADBadTagException`/повреждении файл сбрасывается и пересоздаётся вместо падения на старте.
+- **Утечка токена через look-alike host:** `GitRepository.resolveCredentialsProvider` и `resolveCommitIdentity`, `AuthManager.getRepositoryApproximateSize` — `host.contains("github.com")` заменён на строгий `hostMatches` (equals или `.endsWith(".domain")`). `github.com.attacker.com` больше не принимается за GitHub. `resolveCommitIdentity` теперь матчит по `URIish.host`, а не по подстроке всего URL.
+
+### Fixed — OAuth WebView (P0.5)
+- `OAuthActivity`: redirect (`gitflow://`) перехватывается в `shouldOverrideUrlLoading` с `return true` — WebView больше не пытается грузить кастомную схему (устраняет `ERR_UNKNOWN_URL_SCHEME` на части устройств). Обработка в `onPageStarted` оставлена как fallback.
+- `onReceivedError` игнорирует ошибки суб-ресурсов (`isForMainFrame != true`) — сбой favicon/аналитики/заблокированного DNS-фильтром домена больше не срывает авторизацию.
+- Терминальные callback'и (`onCodeReceived`/`onError`) сделаны идемпотентными через `AtomicBoolean` — код не срабатывает дважды.
+
+### Fixed — надёжность (P1)
+- `TokenRefreshWorker`: добавлен constraint `NetworkType.CONNECTED`; политика `KEEP` → `UPDATE`, чтобы ограничение применилось и на уже установленных копиях. Больше не крутит retry в офлайне.
+- `CloneRepositoryService`: клонирование больше не прерывается при отсутствии `POST_NOTIFICATIONS`. `startForeground()` не требует этого разрешения; прогресс остаётся виден в приложении через `CloneProgressTracker`.
+
+### Docs
+- `RECOMMENDATIONS.md` переписан: детальный план P0–P3 с пошаговыми инструкциями, аудит UI-консистентности (P1.5), план фич (merge/rebase, single-branch clone, PR/MR, SSH, blame).
+- `AUTH_ISSUES.md` — добавлены issue #13–#15 (утечка токена, R8, бэкап).
+
 ## 2026-02-25
 
 ### Added — Koin 4.0 DI

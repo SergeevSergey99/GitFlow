@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Data extraction rules for API 31+ (android:dataExtractionRules).
+  Exclude the encrypted auth preferences from both cloud backup and device-to-device
+  transfer: their AES keys live in the Android Keystore and are not transferred, so a
+  restored file cannot be decrypted and crashes the app at startup (AEADBadTagException).
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="auth_prefs_encrypted.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="auth_prefs_encrypted.xml" />
+    </device-transfer>
+</data-extraction-rules>

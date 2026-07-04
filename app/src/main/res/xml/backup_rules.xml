@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backup rules for API <= 30 (android:fullBackupContent).
+  Exclude the encrypted auth preferences: their AES keys live in the Android
+  Keystore and are NOT part of the backup. Restoring the file onto another device
+  (or after a Keystore reset) makes EncryptedSharedPreferences.create() throw
+  AEADBadTagException at startup, crash-looping the app.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="auth_prefs_encrypted.xml" />
+</full-backup-content>

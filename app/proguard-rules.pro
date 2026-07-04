@@ -63,20 +63,12 @@
 
 # ==================== Data models ====================
 -keep class com.gitflow.android.data.models.** { *; }
--keep class com.gitflow.android.data.auth.GitHubOAuthResponse { *; }
--keep class com.gitflow.android.data.auth.GitHubUser { *; }
--keep class com.gitflow.android.data.auth.GitHubRepository { *; }
--keep class com.gitflow.android.data.auth.GitHubOrganization { *; }
--keep class com.gitflow.android.data.auth.GitLabOAuthResponse { *; }
--keep class com.gitflow.android.data.auth.GitLabUser { *; }
--keep class com.gitflow.android.data.auth.GitLabRepository { *; }
--keep class com.gitflow.android.data.auth.GitLabNamespace { *; }
--keep class com.gitflow.android.data.auth.GitLabStatistics { *; }
--keep class com.gitflow.android.data.auth.GitLabGroup { *; }
 
-# ==================== Retrofit interfaces ====================
--keep interface com.gitflow.android.data.auth.GitHubApi { *; }
--keep interface com.gitflow.android.data.auth.GitLabApi { *; }
+# All auth-layer Gson DTOs (GitHub/GitLab/Bitbucket/Gitea/Azure OAuth responses,
+# users, repositories, emails, paged responses). R8 must not rename their fields —
+# Gson maps JSON keys to field names by reflection. Without this, minified release
+# builds silently return empty objects for Bitbucket/Gitea/Azure providers.
+-keep class com.gitflow.android.data.auth.** { *; }
 
 # ==================== Kotlin Serialization ====================
 -keepattributes *Annotation*, InnerClasses

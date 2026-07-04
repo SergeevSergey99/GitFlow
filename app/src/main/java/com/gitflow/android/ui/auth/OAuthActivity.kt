@@ -119,6 +119,16 @@ fun OAuthScreen(
     var isLoading by remember { mutableStateOf(true) }
     val webViewRef = remember { mutableStateOf<WebView?>(null) }
 
+    // The redirect is detected in both shouldOverrideUrlLoading and onPageStarted (and errors
+    // can also arrive), so guard the terminal callbacks to fire exactly once.
+    val completed = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    val handleCode: (String, String) -> Unit = remember {
+        { code, state -> if (completed.compareAndSet(false, true)) onCodeReceived(code, state) }
+    }
+    val handleError: (String) -> Unit = remember {
+        { message -> if (completed.compareAndSet(false, true)) onError(message) }
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             webViewRef.value?.destroy()
@@ -161,9 +171,13 @@ fun OAuthScreen(
                             ): Boolean {
                                 val url = request?.url?.toString() ?: return false
 
-                                // Always allow redirect URI
+                                // Intercept the OAuth redirect here and consume it. Returning
+                                // true stops the WebView from trying to load the custom
+                                // "gitflow://" scheme, which on some WebView versions raises
+                                // ERR_UNKNOWN_URL_SCHEME and aborts the whole flow.
                                 if (url.startsWith(redirectUri)) {
-                                    return false
+                                    checkForAuthCode(url, redirectUri, expectedState, handleCode, handleError)
+                                    return true
                                 }
 
                                 val host = request.url?.host ?: return true
@@ -181,8 +195,10 @@ fun OAuthScreen(
                                 super.onPageStarted(view, url, favicon)
                                 isLoading = true
 
+                                // Fallback: some providers deliver the redirect via a full page
+                                // load rather than shouldOverrideUrlLoading. handleCode is idempotent.
                                 url?.let {
-                                    checkForAuthCode(it, redirectUri, expectedState, onCodeReceived, onError)
+                                    checkForAuthCode(it, redirectUri, expectedState, handleCode, handleError)
                                 }
                             }
 
@@ -197,8 +213,12 @@ fun OAuthScreen(
                                 error: WebResourceError?
                             ) {
                                 super.onReceivedError(view, request, error)
+                                // Ignore failures of sub-resources (favicons, analytics, ad
+                                // domains blocked by DNS filters). Only a main-frame failure
+                                // should surface as an auth error.
+                                if (request?.isForMainFrame != true) return
                                 isLoading = false
-                                onError("Ошибка загрузки: ${error?.description}")
+                                handleError("Ошибка загрузки: ${error?.description}")
                             }
 
                             override fun onReceivedSslError(
@@ -207,7 +227,7 @@ fun OAuthScreen(
                                 error: SslError?
                             ) {
                                 handler?.cancel()
-                                onError("SSL error - connection not secure")
+                                handleError("SSL error - connection not secure")
                             }
                         }
 

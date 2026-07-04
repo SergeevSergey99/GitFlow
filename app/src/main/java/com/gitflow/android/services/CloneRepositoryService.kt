@@ -120,10 +120,13 @@ class CloneRepositoryService : Service() {
         repoFullName: String,
         approximateSize: Long?
     ) {
+        // Missing POST_NOTIFICATIONS does not prevent a foreground service from running:
+        // startForeground() still requires a Notification object, but the system simply
+        // won't display it. The clone proceeds and its progress stays visible in-app via
+        // CloneProgressTracker (see CloneProgressOverlay). Aborting here would silently
+        // drop the whole clone whenever the user declined notifications.
         if (!hasNotificationPermission()) {
-            Timber.w("Нет разрешения POST_NOTIFICATIONS, завершаем сервис")
-            stopSelf()
-            return
+            Timber.w("Нет разрешения POST_NOTIFICATIONS: уведомление о клонировании не будет показано, прогресс — только в приложении")
         }
 
         val progressBuilder = createProgressNotificationBuilder(repoFullName)
