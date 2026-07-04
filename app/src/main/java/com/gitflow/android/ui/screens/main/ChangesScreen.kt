@@ -549,15 +549,32 @@ private fun CommitSection(
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                 }
+                // Collapse back to the compact icon strip.
+                TextButton(
+                    onClick = { showDetails = false },
+                    modifier = Modifier.align(Alignment.End),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                ) {
+                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(2.dp))
+                    Text(text = stringResource(R.string.changes_commit_details), fontSize = 12.sp)
+                }
             } else {
                 Spacer(modifier = Modifier.height(4.dp))
-                // Compact mode: icons only, spread out for comfortable spacing.
+                // Compact mode: action icons + the details toggle, all in one row (no extra height).
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     actions.forEach { action -> CompactActionIcon(action = action) }
+                    IconButton(onClick = { showDetails = true }, modifier = Modifier.size(44.dp)) {
+                        Icon(
+                            Icons.Default.Tune,
+                            contentDescription = stringResource(R.string.changes_commit_details),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
             }
 
@@ -567,21 +584,6 @@ private fun CommitSection(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            }
-
-            // "Details" toggle sits at the bottom, low-emphasis.
-            TextButton(
-                onClick = { showDetails = !showDetails },
-                modifier = Modifier.align(Alignment.End),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-            ) {
-                Icon(
-                    imageVector = if (showDetails) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(2.dp))
-                Text(text = stringResource(R.string.changes_commit_details), fontSize = 12.sp)
             }
         }
     }

@@ -105,6 +105,23 @@ enum class RepoOperationState {
     OTHER
 }
 
+/**
+ * Context for an in-progress merge/rebase so the UI can show "what into what" and mark the
+ * two involved commits in the graph.
+ */
+data class ConflictInfo(
+    val operation: RepoOperationState = RepoOperationState.NONE,
+    /** Branch/ref being merged in (merge) or the branch being rebased (rebase). */
+    val sourceLabel: String? = null,
+    /** Current branch (merge target) or the ref being rebased onto (rebase). */
+    val targetLabel: String? = null,
+    /** Incoming commit: MERGE_HEAD (merge) or the replayed HEAD (rebase). */
+    val sourceHash: String? = null,
+    /** Base commit: current HEAD (merge) or the "onto" commit (rebase). */
+    val targetHash: String? = null,
+    val conflictPaths: List<String> = emptyList()
+)
+
 // New models for diff viewer
 @Serializable
 data class FileDiff(

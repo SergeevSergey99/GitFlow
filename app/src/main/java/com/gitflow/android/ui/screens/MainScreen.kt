@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.automirrored.filled.*
@@ -18,6 +19,7 @@ import androidx.compose.ui.unit.sp
 import org.koin.androidx.compose.koinViewModel
 import androidx.navigation.NavController
 import com.gitflow.android.R
+import com.gitflow.android.data.models.ConflictInfo
 import com.gitflow.android.data.models.RepoOperationState
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.IGitRepository
@@ -50,9 +52,10 @@ fun MainScreen(navController: NavController) {
     // the header before the branch name — same source the Changes tab uses for "Pull (N)".
     var pendingPullCount by remember { mutableStateOf(0) }
 
-    val operationState by viewModel.operationState.collectAsState()
-    val conflictPaths by viewModel.conflictPaths.collectAsState()
+    val conflictInfo by viewModel.conflictInfo.collectAsState()
     val operationSignal by viewModel.operationSignal.collectAsState()
+    val operationState = conflictInfo.operation
+    val conflictPaths = conflictInfo.conflictPaths
     val inConflict = operationState != RepoOperationState.NONE
     var showConflictInfo by remember { mutableStateOf(false) }
 
@@ -236,7 +239,8 @@ fun MainScreen(navController: NavController) {
                     EnhancedGraphView(
                         repository = selectedRepository,
                         gitRepository = gitRepository,
-                        config = getGraphConfig(selectedGraphPreset)
+                        config = getGraphConfig(selectedGraphPreset),
+                        conflictHashes = setOfNotNull(conflictInfo.sourceHash, conflictInfo.targetHash)
                     )
                 }
                 MainTab.CHANGES -> ChangesScreen(
@@ -299,8 +303,7 @@ fun MainScreen(navController: NavController) {
 
     if (showConflictInfo) {
         ConflictInfoDialog(
-            state = operationState,
-            conflictPaths = conflictPaths,
+            info = conflictInfo,
             onOpenChanges = {
                 showConflictInfo = false
                 viewModel.selectTab(MainTab.CHANGES)
@@ -320,28 +323,51 @@ private fun conflictHeaderText(state: RepoOperationState, conflictCount: Int): S
 
 @Composable
 private fun ConflictInfoDialog(
-    state: RepoOperationState,
-    conflictPaths: List<String>,
+    info: ConflictInfo,
     onOpenChanges: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val source = info.sourceLabel ?: "?"
+    val target = info.targetLabel ?: "?"
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.main_conflict_info_title)) },
         text = {
-            if (conflictPaths.isEmpty()) {
-                Text(
-                    stringResource(
-                        if (state == RepoOperationState.REBASING) R.string.main_conflict_info_ready_rebase
-                        else R.string.main_conflict_info_ready_merge
+            Column {
+                // "what into what": e.g. "feature → main" (merge) or "feature → onto abc1234" (rebase).
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(
+                                if (info.operation == RepoOperationState.REBASING) R.string.main_conflict_info_rebase_flow
+                                else R.string.main_conflict_info_merge_flow,
+                                source, target
+                            ),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                if (info.conflictPaths.isEmpty()) {
+                    Text(
+                        stringResource(
+                            if (info.operation == RepoOperationState.REBASING) R.string.main_conflict_info_ready_rebase
+                            else R.string.main_conflict_info_ready_merge
+                        )
                     )
-                )
-            } else {
-                Column {
+                } else {
                     Text(stringResource(R.string.main_conflict_info_resolve_hint))
                     Spacer(modifier = Modifier.height(8.dp))
-                    LazyColumn(modifier = Modifier.heightIn(max = 240.dp)) {
-                        items(conflictPaths) { path ->
+                    LazyColumn(modifier = Modifier.heightIn(max = 220.dp)) {
+                        items(info.conflictPaths) { path ->
                             Text(
                                 text = path,
                                 fontSize = 13.sp,

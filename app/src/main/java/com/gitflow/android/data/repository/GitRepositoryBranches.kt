@@ -18,6 +18,7 @@ import org.eclipse.jgit.transport.PushResult
 import org.eclipse.jgit.transport.RemoteRefUpdate
 import org.eclipse.jgit.lib.ProgressMonitor
 import org.eclipse.jgit.revwalk.RevWalk
+import java.io.File
 import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketException
@@ -528,19 +529,70 @@ private suspend fun GitRepository.interpretRebaseResult(
     }
 }
 
+private fun mapRepositoryState(state: RepositoryState): RepoOperationState = when (state) {
+    RepositoryState.MERGING, RepositoryState.MERGING_RESOLVED -> RepoOperationState.MERGING
+    RepositoryState.REBASING, RepositoryState.REBASING_REBASING,
+    RepositoryState.REBASING_MERGE, RepositoryState.REBASING_INTERACTIVE -> RepoOperationState.REBASING
+    RepositoryState.SAFE, RepositoryState.BARE -> RepoOperationState.NONE
+    else -> RepoOperationState.OTHER
+}
+
 internal suspend fun GitRepository.getRepositoryStateImpl(repository: Repository): RepoOperationState = withContext(Dispatchers.IO) {
     try {
         val git = openRepository(repository.path) ?: return@withContext RepoOperationState.NONE
+        git.use { g -> mapRepositoryState(g.repository.repositoryState) }
+    } catch (e: Exception) {
+        RepoOperationState.NONE
+    }
+}
+
+internal suspend fun GitRepository.getConflictInfoImpl(repository: Repository): ConflictInfo = withContext(Dispatchers.IO) {
+    try {
+        val git = openRepository(repository.path) ?: return@withContext ConflictInfo()
         git.use { g ->
-            when (g.repository.repositoryState) {
-                RepositoryState.MERGING, RepositoryState.MERGING_RESOLVED -> RepoOperationState.MERGING
-                RepositoryState.REBASING, RepositoryState.REBASING_REBASING,
-                RepositoryState.REBASING_MERGE, RepositoryState.REBASING_INTERACTIVE -> RepoOperationState.REBASING
-                RepositoryState.SAFE, RepositoryState.BARE -> RepoOperationState.NONE
-                else -> RepoOperationState.OTHER
+            val jrepo = g.repository
+            val state = mapRepositoryState(jrepo.repositoryState)
+            if (state != RepoOperationState.MERGING && state != RepoOperationState.REBASING) {
+                return@withContext ConflictInfo(operation = state)
+            }
+            val headHash = jrepo.resolve(Constants.HEAD)?.name
+            val conflictPaths = runCatching { g.status().call().conflicting.toList() }.getOrDefault(emptyList())
+
+            if (state == RepoOperationState.MERGING) {
+                val mergeHead = runCatching { jrepo.readMergeHeads()?.firstOrNull()?.name }.getOrNull()
+                val mergeMsg = runCatching { jrepo.readMergeCommitMsg() }.getOrNull()
+                val source = mergeMsg
+                    ?.let { Regex("Merge (?:remote-tracking )?branch '([^']+)'").find(it)?.groupValues?.get(1) }
+                    ?: mergeHead?.take(7)
+                ConflictInfo(
+                    operation = state,
+                    sourceLabel = source,
+                    targetLabel = jrepo.branch,
+                    sourceHash = mergeHead,
+                    targetHash = headHash,
+                    conflictPaths = conflictPaths
+                )
+            } else {
+                // Rebase state lives in .git/rebase-merge/ (interactive/merge) or .git/rebase-apply/.
+                val stateDir = listOf("rebase-merge", "rebase-apply")
+                    .map { File(jrepo.directory, it) }
+                    .firstOrNull { it.isDirectory }
+                val headName = stateDir
+                    ?.let { File(it, "head-name").takeIf(File::exists)?.readText()?.trim() }
+                    ?.removePrefix("refs/heads/")
+                val ontoHash = stateDir
+                    ?.let { File(it, "onto").takeIf(File::exists)?.readText()?.trim() }
+                ConflictInfo(
+                    operation = state,
+                    sourceLabel = headName ?: jrepo.branch,
+                    targetLabel = ontoHash?.take(7),
+                    sourceHash = headHash,
+                    targetHash = ontoHash,
+                    conflictPaths = conflictPaths
+                )
             }
         }
     } catch (e: Exception) {
-        RepoOperationState.NONE
+        ConflictInfo()
     }
 }

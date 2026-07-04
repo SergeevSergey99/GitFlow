@@ -52,6 +52,8 @@ interface IGitRepository {
     suspend fun rebaseContinue(repository: Repository): GitResult<Unit>
     suspend fun rebaseAbort(repository: Repository): GitResult<Unit>
     suspend fun getRepositoryState(repository: Repository): RepoOperationState
+    /** Rich context (source/target branches, involved commits, conflicts) for an in-progress merge/rebase. */
+    suspend fun getConflictInfo(repository: Repository): ConflictInfo
     /** Suggested commit message for an in-progress merge (.git/MERGE_MSG), if any. */
     suspend fun getMergeMessage(repository: Repository): String?
     suspend fun fetch(repository: Repository): GitResult<Unit>

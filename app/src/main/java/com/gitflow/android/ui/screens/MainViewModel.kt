@@ -3,6 +3,7 @@ package com.gitflow.android.ui.screens
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.gitflow.android.data.models.ConflictInfo
 import com.gitflow.android.data.models.RepoOperationState
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.IGitRepository
@@ -48,12 +49,9 @@ class MainViewModel(
     private val _isRestoringSession = MutableStateFlow(settingsManager.getLastRepositoryId() != null)
     val isRestoringSession: StateFlow<Boolean> = _isRestoringSession.asStateFlow()
 
-    // In-progress merge/rebase for the selected repo — drives the conflict header.
-    private val _operationState = MutableStateFlow(RepoOperationState.NONE)
-    val operationState: StateFlow<RepoOperationState> = _operationState.asStateFlow()
-
-    private val _conflictPaths = MutableStateFlow<List<String>>(emptyList())
-    val conflictPaths: StateFlow<List<String>> = _conflictPaths.asStateFlow()
+    // In-progress merge/rebase for the selected repo — drives the conflict header + popup.
+    private val _conflictInfo = MutableStateFlow(ConflictInfo())
+    val conflictInfo: StateFlow<ConflictInfo> = _conflictInfo.asStateFlow()
 
     // Bumped after a header-initiated abort/continue so the Changes tab reloads its state.
     private val _operationSignal = MutableStateFlow(0)
@@ -102,23 +100,15 @@ class MainViewModel(
         }
     }
 
-    /** Re-reads the merge/rebase state (and its conflicting files) for the selected repo. */
+    /** Re-reads the merge/rebase context (source/target, commits, conflicts) for the selected repo. */
     fun refreshOperationState() {
         val repo = _selectedRepository.value
         if (repo == null) {
-            _operationState.value = RepoOperationState.NONE
-            _conflictPaths.value = emptyList()
+            _conflictInfo.value = ConflictInfo()
             return
         }
         viewModelScope.launch {
-            val state = gitRepository.getRepositoryState(repo)
-            _operationState.value = state
-            _conflictPaths.value = if (state == RepoOperationState.MERGING || state == RepoOperationState.REBASING) {
-                runCatching { gitRepository.getChangedFiles(repo).filter { it.hasConflicts }.map { it.path } }
-                    .getOrDefault(emptyList())
-            } else {
-                emptyList()
-            }
+            _conflictInfo.value = gitRepository.getConflictInfo(repo)
         }
     }
 
@@ -126,7 +116,7 @@ class MainViewModel(
     fun abortMergeOrRebase() {
         val repo = _selectedRepository.value ?: return
         viewModelScope.launch {
-            when (_operationState.value) {
+            when (_conflictInfo.value.operation) {
                 RepoOperationState.REBASING -> gitRepository.rebaseAbort(repo)
                 else -> gitRepository.abortMerge(repo)
             }

@@ -51,10 +51,12 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -62,6 +64,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.times
@@ -88,7 +91,9 @@ import java.util.*
 fun EnhancedGraphView(
     repository: Repository?,
     gitRepository: IGitRepository,
-    config: GraphConfig = GraphConfig.Default
+    config: GraphConfig = GraphConfig.Default,
+    /** Commits involved in an in-progress conflicted merge/rebase — marked with a red dashed outline. */
+    conflictHashes: Set<String> = emptySet()
 ) {
     if (repository == null) {
         EmptyStateMessage(stringResource(R.string.graph_select_repo))
@@ -243,6 +248,7 @@ fun EnhancedGraphView(
                     graphData = graphData,
                     config = config,
                     currentBranch = repository.currentBranch,
+                    conflictHashes = conflictHashes,
                     hasMoreCommits = hasMoreCommits && !isLoading,
                     onLoadMore = { currentPageSize += 50 },
                     onCommitClick = { commit ->
@@ -751,6 +757,19 @@ private fun SearchResultsList(
     }
 }
 
+/** Draws a rounded dashed rectangle around the content — used to flag conflict-tip commits. */
+private fun Modifier.dashedBorder(color: Color, cornerRadius: Dp, strokeWidth: Dp = 1.5.dp): Modifier =
+    this.drawBehind {
+        drawRoundRect(
+            color = color,
+            cornerRadius = CornerRadius(cornerRadius.toPx()),
+            style = Stroke(
+                width = strokeWidth.toPx(),
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f))
+            )
+        )
+    }
+
 /* ============================ Canvas / Rows ============================ */
 
 @Composable
@@ -758,6 +777,7 @@ private fun GraphCanvas(
     graphData: GraphData,
     config: GraphConfig,
     currentBranch: String,
+    conflictHashes: Set<String>,
     hasMoreCommits: Boolean,
     onLoadMore: () -> Unit,
     onCommitClick: (Commit) -> Unit,
@@ -783,6 +803,7 @@ private fun GraphCanvas(
                 maxLanes = graphData.maxLane,
                 config = config,
                 isCurrent = currentBranch.isNotEmpty() && commit.branchHeads.contains(currentBranch),
+                isConflictTip = commit.hash in conflictHashes,
                 horizontalScrollState = horizontalScrollState,
                 onClick = { onCommitClick(commit) },
                 onLongPress = { onCommitLongPress(commit) }
@@ -846,11 +867,13 @@ private fun GraphCommitRow(
     maxLanes: Int,
     config: GraphConfig,
     isCurrent: Boolean,
+    isConflictTip: Boolean,
     horizontalScrollState: androidx.compose.foundation.ScrollState,
     onClick: () -> Unit,
     onLongPress: () -> Unit
 ) {
     val nodeColor = laneColor(nodeData.lane)
+    val conflictColor = MaterialTheme.colorScheme.error
 
     Row(
         modifier = Modifier
@@ -863,6 +886,11 @@ private fun GraphCommitRow(
             // Subtle tint marks the HEAD commit of the current local branch.
             .then(
                 if (isCurrent) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                else Modifier
+            )
+            // Red dashed outline marks the two commits of an in-progress conflicted merge/rebase.
+            .then(
+                if (isConflictTip) Modifier.dashedBorder(conflictColor, cornerRadius = 6.dp)
                 else Modifier
             )
             .padding(horizontal = config.rowPadding),

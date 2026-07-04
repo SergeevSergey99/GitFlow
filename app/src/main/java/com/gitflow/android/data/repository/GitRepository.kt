@@ -206,6 +206,7 @@ class GitRepository(
     override suspend fun rebaseContinue(repository: Repository): GitResult<Unit> = rebaseContinueImpl(repository)
     override suspend fun rebaseAbort(repository: Repository): GitResult<Unit> = rebaseAbortImpl(repository)
     override suspend fun getRepositoryState(repository: Repository): RepoOperationState = getRepositoryStateImpl(repository)
+    override suspend fun getConflictInfo(repository: Repository): ConflictInfo = getConflictInfoImpl(repository)
     override suspend fun getMergeMessage(repository: Repository): String? = getMergeMessageImpl(repository)
     override suspend fun fetch(repository: Repository): GitResult<Unit> = fetchImpl(repository)
     override suspend fun pull(repository: Repository): GitResult<Unit> = pullImpl(repository)

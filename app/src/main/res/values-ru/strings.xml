@@ -236,6 +236,8 @@
     <string name="main_conflict_abort">Отменить</string>
     <string name="main_conflict_continue">Продолжить</string>
     <string name="main_conflict_info_title">Конфликты merge/rebase</string>
+    <string name="main_conflict_info_merge_flow">Слияние «%1$s» в «%2$s»</string>
+    <string name="main_conflict_info_rebase_flow">Rebase «%1$s» на %2$s</string>
     <string name="main_conflict_info_resolve_hint">Разрешите эти файлы во вкладке «Изменения»:</string>
     <string name="main_conflict_info_ready_merge">Все конфликты разрешены. Закоммитьте во вкладке «Изменения», чтобы завершить merge.</string>
     <string name="main_conflict_info_ready_rebase">Все конфликты разрешены. Нажмите «Продолжить», чтобы завершить rebase.</string>
