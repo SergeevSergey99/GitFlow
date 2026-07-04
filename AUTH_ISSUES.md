@@ -23,6 +23,26 @@
   из разных корутин — потенциальная гонка при параллельном доступе.
   _Исправлено: заменён на `ConcurrentHashMap` в `AuthManager.kt`._
 
+- [ ] **#13 — Утечка токена через поддельный remote URL** *(аудит 2026-07-04)*
+  `resolveCredentialsProvider` в `GitRepository.kt` матчит провайдера через
+  `host.contains("github.com")`. Хост `github.com.attacker.com` проходит проверку —
+  при clone/push такого URL токен уходит чужому серверу. Аналогично для
+  gitlab/bitbucket/azure веток, `getRepositoryApproximateSize` и `resolveCommitIdentity`.
+  Фикс: строгий матчинг `host == domain || host.endsWith(".$domain")` (как в `OAuthActivity.isHostAllowed`).
+  Детали: `RECOMMENDATIONS.md` P0.3.
+
+- [ ] **#14 — Release-сборка ломает Bitbucket/Gitea/Azure (R8 + Gson)** *(аудит 2026-07-04)*
+  `proguard-rules.pro` сохраняет только `GitHub*`/`GitLab*` DTO. Модели `Bitbucket*`,
+  `Gitea*`, `Azure*`, `GitHubEmail`, `BitbucketEmail` обфусцируются → Gson возвращает
+  пустые объекты только в release. Фикс: `-keep class com.gitflow.android.data.auth.** { *; }`.
+  Детали: `RECOMMENDATIONS.md` P0.1.
+
+- [ ] **#15 — Восстановление из бэкапа = краш-луп** *(аудит 2026-07-04)*
+  `allowBackup=true` без правил исключения: `auth_prefs_encrypted` восстанавливается
+  без Keystore-ключей → `AEADBadTagException` в `AuthManager.init` → Koin падает на старте.
+  Фикс: `dataExtractionRules`/`fullBackupContent` + try/catch с пересозданием prefs.
+  Детали: `RECOMMENDATIONS.md` P0.2.
+
 ---
 
 ## Умеренные

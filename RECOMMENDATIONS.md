@@ -1,7 +1,8 @@
 # Рекомендации и ближайший backlog
 
-> Обновлено: 2026-02-25
+> Обновлено: 2026-07-04
 > История изменений: `CHANGELOG.md`
+> Детали по auth-слою: `AUTH_ISSUES.md`
 
 ## Выполнено
 
@@ -13,38 +14,297 @@
 - [x] Реализован `BranchManagementDialog` + `BranchesViewModel`: переключение/создание/удаление веток, remote tracking checkout, поиск, ahead/behind chips.
 - [x] Внедрён Koin 4.0 DI: `di/AppModule.kt`, синглтоны + все ViewModels; удалены все Factory-классы; `koinViewModel()` / `koinInject()` на всех экранах.
 - [x] Исправлены compiler warnings: AutoMirrored icons, Compose API (`HorizontalDivider`, `PrimaryTabRow`), OAuthActivity deprecated `onReceivedError`, Koin DSL import.
+- [x] Allowlist хостов в OAuth WebView (`OAuthActivity.isHostAllowed`), state-проверка (CSRF), PKCE.
 
-## P0 — следующий шаг (обязательное)
+---
 
-- [ ] Добавить regression tests для сценариев:
-  - [ ] single/batch stage/unstage;
-  - [ ] reset/discard file changes;
-  - [ ] open diff / open history.
-- [ ] Harden OAuth WebView:
-  - [ ] allowlist хостов (`github.com`, `gitlab.com`, callback host);
-  - [ ] блокировка любых внешних редиректов;
-  - [ ] аудит JavaScript/DOM storage настроек.
+## P0 — критичное (ломает release-сборку, данные или безопасность)
+
+### P0.1 Release-сборка ломает Bitbucket / Gitea / Azure DevOps (R8 + Gson)
+
+**Файл:** `app/proguard-rules.pro`
+
+**Проблема.** Keep-правила явно сохраняют только `GitHub*` и `GitLab*` DTO. Модели
+`Bitbucket*` (`BitbucketApi.kt`), `Gitea*` (`GiteaApi.kt`), `Azure*` (`AzureDevOpsApi.kt`),
+а также `GitHubEmail` и `BitbucketEmail` лежат в пакете `data.auth` и под правила не
+попадают. R8 обфусцирует имена полей → Gson перестаёт их маппить → в release-сборке
+эти провайдеры получают пустые объекты/NPE. В debug всё работает, поэтому баг незаметен.
+
+**Как исправить.**
+1. Заменить точечные keep-правила блоком (секция `Data models`):
+   ```proguard
+   # Все Gson DTO auth-слоя (GitHub/GitLab/Bitbucket/Gitea/Azure)
+   -keep class com.gitflow.android.data.auth.** { *; }
+   ```
+   Retrofit-интерфейсы уже покрыты общими правилами Retrofit — отдельные `-keep interface` можно убрать.
+2. Альтернатива (чище, но дольше): проставить `@SerializedName` на все поля DTO и оставить
+   только `-keepclassmembers` для аннотированных полей.
+3. **Проверка:** собрать `assembleRelease`, установить и прогнать вручную: login PAT Gitea/Azure,
+   список репозиториев Bitbucket. Добавить этот smoke-тест в чеклист релиза.
+
+### P0.2 Восстановление из бэкапа = краш-луп при запуске
+
+**Файлы:** `app/src/main/AndroidManifest.xml`, `data/auth/AuthManager.kt`
+
+**Проблема.** `android:allowBackup="true"` без `dataExtractionRules`/`fullBackupContent`.
+Файл `auth_prefs_encrypted` попадает в облачный бэкап, но ключи Android Keystore не
+переносятся. После восстановления на новом устройстве `EncryptedSharedPreferences.create()`
+в `init` у `AuthManager` бросает `AEADBadTagException` → Koin не собирает граф →
+приложение падает на старте бесконечно.
+
+**Как исправить.**
+1. Создать `res/xml/backup_rules.xml` (API ≤ 30) и `res/xml/data_extraction_rules.xml` (API 31+),
+   исключающие shared prefs `auth_prefs_encrypted`:
+   ```xml
+   <!-- backup_rules.xml -->
+   <full-backup-content>
+       <exclude domain="sharedpref" path="auth_prefs_encrypted.xml"/>
+   </full-backup-content>
+   ```
+   ```xml
+   <!-- data_extraction_rules.xml -->
+   <data-extraction-rules>
+       <cloud-backup>
+           <exclude domain="sharedpref" path="auth_prefs_encrypted.xml"/>
+       </cloud-backup>
+       <device-transfer>
+           <exclude domain="sharedpref" path="auth_prefs_encrypted.xml"/>
+       </device-transfer>
+   </data-extraction-rules>
+   ```
+2. Подключить в манифесте: `android:fullBackupContent="@xml/backup_rules"`,
+   `android:dataExtractionRules="@xml/data_extraction_rules"`.
+3. Страховка в `AuthManager.createEncryptedPreferences()`: обернуть в `try/catch`;
+   при `GeneralSecurityException`/`AEADBadTagException` удалить повреждённый файл
+   (`context.deleteSharedPreferences("auth_prefs_encrypted")`) и создать заново.
+   Потеря токенов (пользователь перелогинится) лучше краш-лупа.
+
+### P0.3 Утечка токена через поддельный remote URL
+
+**Файл:** `data/repository/GitRepository.kt` → `resolveCredentialsProvider`
+
+**Проблема.** Провайдер определяется через `host.contains("github.com")`. Хост
+`github.com.attacker.com` проходит проверку — при clone/push такого URL GitHub-токен
+уйдёт злоумышленнику как credentials. То же для веток gitlab/bitbucket/azure.
+
+**Как исправить.**
+1. Добавить helper (по образцу `OAuthActivity.isHostAllowed`):
+   ```kotlin
+   private fun hostMatches(host: String, domain: String): Boolean =
+       host.equals(domain, ignoreCase = true) || host.endsWith(".$domain", ignoreCase = true)
+   ```
+2. Заменить все `host.contains(...)` в `resolveCredentialsProvider` на `hostMatches(host, "github.com")` и т.д.
+3. Тем же способом поправить `host.contains` в `AuthManager.getRepositoryApproximateSize`
+   и `uri.contains` в `resolveCommitIdentity` (там риск ниже — только подпись коммита, — но логика должна быть единой).
+4. **Тест:** unit-тест на `resolveCredentialsProvider` с URL `https://github.com.evil.example/repo.git` → должен вернуть `null`.
+
+---
+
+## P0.5 — OAuth WebView hardening (уточнённый план)
+
+**Файл:** `ui/auth/OAuthActivity.kt`
+
+- [ ] **Перехватывать redirect в `shouldOverrideUrlLoading`, а не в `onPageStarted`.**
+  Сейчас для `gitflow://oauth/...` возвращается `false` («пусть WebView грузит»), а код
+  ловится в `onPageStarted`. Поведение для кастомных схем различается между версиями
+  WebView: на части устройств сначала прилетает `ERR_UNKNOWN_URL_SCHEME` в
+  `onReceivedError` → авторизация падает. Правильно:
+  ```kotlin
+  if (url.startsWith(redirectUri)) {
+      checkForAuthCode(url, redirectUri, expectedState, onCodeReceived, onError)
+      return true   // не давать WebView грузить кастомную схему
+  }
+  ```
+  Вызов `checkForAuthCode` из `onPageStarted` можно оставить как fallback, но добавить
+  guard-флаг, чтобы callback не сработал дважды.
+- [ ] **`onReceivedError`: игнорировать ошибки субресурсов.** Сейчас упавший favicon или
+  заблокированный DNS-фильтром домен аналитики закрывает весь auth flow. Первой строкой:
+  ```kotlin
+  if (request?.isForMainFrame != true) return
+  ```
+- [ ] **Средний срок — миграция на Custom Tabs.** `androidx.browser` уже в зависимостях,
+  `activity-alias` с `gitflow://oauth` уже экспортирован в манифесте — инфраструктура готова.
+  Custom Tabs снимает и вопрос доверия WebView, и риск блокировки embedded-браузеров провайдерами.
+- [ ] **`client_secret` в APK.** Секрет из `assets/oauth.properties` извлекается из любой сборки.
+  PKCE есть, но GitHub/GitLab при наличии секрета опираются на него. Долгосрочные варианты:
+  GitHub Device Flow (без секрета) либо микро-бэкенд для обмена `code` → `token`.
+  Минимум сейчас: не публиковать APK с боевым секретом; `oauth.properties` в `.gitignore` (уже сделано).
 - [ ] Проверить отсутствие секретов в логах auth/network и в crash-репортах.
 
-## P1 — архитектура и поддерживаемость
+---
 
-- [ ] Разгрузить `ChangesScreen.kt` на отдельные компоненты (tree panel, file actions menu, dialogs).
-- [ ] Разгрузить `CommitDetailDialog.kt` на независимые секции.
-- [ ] Добавить CI pipeline: compile + lint + тесты.
+## P1 — надёжность и поддерживаемость
 
-## P1.5 — Branch Management (доработки)
+### Тесты (regression, без эмулятора)
 
-- [ ] Добавить merge/rebase ветки из `BranchManagementDialog`.
-- [ ] Rename ветки (JGit: `branchRename`).
-- [ ] Push отдельной ветки из диалога.
+Git-слой тестируется на JVM: JGit создаёт репозиторий во временной папке (`@TempDir`),
+`GitRepository*` файлы не зависят от Android API (кроме `Context` для DataStore — мокается
+или выносится). Сценарии:
 
-## P2 — производительность и UX
+- [ ] single/batch stage/unstage (`GitRepositoryIndex`);
+- [ ] reset/discard file changes;
+- [ ] commit / amend;
+- [ ] merge с конфликтом → `getMergeConflicts` → resolve → commit;
+- [ ] `resolveCredentialsProvider`: матчинг хостов, поддельные хосты (см. P0.3), URL с userInfo;
+- [ ] `RepositoryDataStore`: битый JSON → backup + пустой список.
+
+### Прочее
+
+- [ ] `TokenRefreshWorker`: добавить constraint сети, иначе retry крутится впустую офлайн:
+  ```kotlin
+  PeriodicWorkRequestBuilder<TokenRefreshWorker>(30, TimeUnit.MINUTES)
+      .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+      .build()
+  ```
+- [ ] `CloneRepositoryService`: не завершать сервис при отсутствии `POST_NOTIFICATIONS`.
+  `startForeground()` не требует этого разрешения — уведомление просто не покажется.
+  Сейчас отказ в разрешении = клонирование вообще не выполняется.
+- [ ] Пагинация списков репозиториев: GitHub — жёстко 2 страницы личных (200 шт.) и 3 на
+  организацию, Gitea — 4 страницы. Либо крутить цикл «пока страница полная» с разумным
+  потолком, либо показывать в UI «показаны первые N».
+- [ ] Bitbucket/Azure ID: в `AuthManager` конвертеры используют `uuid.hashCode()`, а auth-код —
+  CRC32 (`toDeterministicId`). Привести к одному способу (CRC32) — иначе один и тот же
+  репозиторий получает разные ID в разных местах (см. `AUTH_ISSUES.md` #10).
+- [ ] Разгрузить `ChangesScreen.kt` (1707 строк) на компоненты: tree panel, file actions menu, dialogs.
+- [ ] Разгрузить `CommitDetailDialog.kt` (3349 строк) на независимые секции.
+- [ ] CI pipeline: compile + lint + unit-тесты (+ сборка `assembleRelease`, чтобы ловить R8-регрессии из P0.1).
+
+---
+
+## P1.5 — UI-консистентность (похожие места, реализованные по-разному)
+
+Аудит от 2026-07-04. Каждый пункт — самостоятельная небольшая задача.
+
+- [ ] **Показ ошибок/сообщений — три разных механизма.**
+  - Toast: `CommitDetailDialog.kt` (8 мест), `ChangesScreen.kt` (копирование), `CloneRepositoryService`;
+  - Snackbar: `ChangesScreen.kt`, `EnhancedGraphScreen.kt`;
+  - inline `Text` из `errorMessage`: `AuthScreen`, `RemoteRepositoriesScreen`.
+
+  **Целевой паттерн:** транзиентные результаты операций → `message`/`errorMessage` в UiState
+  + `SnackbarHost` на экране; inline-ошибки — только для валидации форм; Toast — только из
+  Service (там нет Compose-хоста).
+- [ ] **Форма состояния ViewModel — два стиля.** `ChangesViewModel`, `BranchesViewModel`,
+  `RepositoryListViewModel`, `SettingsViewModel`, `CommitDetailViewModel` — единый
+  `data class XxxUiState`; `AuthViewModel` и `RemoteRepositoriesViewModel` — россыпь
+  отдельных `StateFlow`. Привести два последних к единому `UiState`-классу.
+- [ ] **Локализация: ~54 русских хардкода в 7 файлах** при живой инфраструктуре
+  `values/` + `values-ru/`: `AuthScreen.kt` (~24), `OAuthActivity.kt` (7), `CloneRepositoryService.kt` (6),
+  `AuthViewModel.kt` (5), `RemoteRepositoriesViewModel.kt` (6), `AuthManager.kt`
+  (`normalizeAndValidateInstanceUrl` — 5), `SettingsScreen.kt` (1). У пользователя с
+  английской локалью весь auth-флоу будет по-русски. Вынести в ресурсы (default — en).
+- [ ] **Форматирование дат — 6+ реализаций.** Дубли: relative-формат в `RepositoryCard.kt:154`
+  и `EnhancedGraphScreen.kt:1333` (копипаст); свои форматы в `CommitDetailDialog.kt`
+  (три штуки: 1470, 1582, 1589), `ChangesScreen.kt:1447`, `RemoteRepositoriesScreen.kt:512`.
+  Создать `ui/util/Formatters.kt`: `relativeDate()`, `shortDate()`, `fullDate()` — и переиспользовать.
+  Отдельный баг в `RemoteRepositoriesScreen.formatDate`: ISO-строка с `'Z'` парсится через
+  `SimpleDateFormat` с локальной таймзоной → время смещено. На minSdk 26 доступен
+  `java.time.Instant.parse()` — использовать его.
+- [ ] **Форматирование размеров — 3 реализации:** `formatFileSize` (`CommitDetailDialog.kt:1626`),
+  `formatSize` (`CloneProgressOverlay.kt:240`), `formatSizeForNotification`
+  (`CloneRepositoryService.kt:428`). Свести в `Formatters.formatBytes()`.
+- [ ] **Clipboard — два подхода + копипаст.** Системный `ClipboardManager` c дублированными
+  блоками «copy file name / copy file path» в `CommitDetailDialog.kt:1208` и
+  `ChangesScreen.kt:1018`; Compose `LocalClipboardManager` в `AddRepositoryDialog.kt`.
+  Один helper (`copyToClipboard(context, label, text)` + общий пункт меню), подход — единый.
+- [ ] **`collectAsState()` без lifecycle-awareness во всех 10 файлах.** Единообразно, но flow
+  продолжают собираться в фоне. Добавить `androidx.lifecycle:lifecycle-runtime-compose` и
+  перейти на `collectAsStateWithLifecycle()` одним проходом.
+- [ ] **`LaunchedEffect(uiState.message)` — одинаковый триггер, разное поведение:**
+  в `BranchManagementDialog.kt:47` закрывает диалог, в `ChangesScreen.kt:93` показывает
+  snackbar. При добавлении merge/rebase (см. Фичи) авто-закрытие сломает сценарий
+  «merge с конфликтом» — заменить на явные события (`sealed class` event / отдельное поле
+  `closeDialog: Boolean`), а не сигналить строкой сообщения.
+
+---
+
+## P2 — фичи (по убыванию ценности)
+
+### 1. Merge / rebase веток из `BranchManagementDialog`
+
+- `IGitRepository`: `suspend fun mergeBranch(repository, branchName): GitResult<Unit>`,
+  `suspend fun rebaseOntoBranch(repository, branchName): GitResult<Unit>`,
+  `suspend fun abortRebase(repository): GitResult<Unit>`.
+- Реализация в `GitRepositoryBranches.kt`:
+  - merge: `git.merge().include(git.repository.resolve(branchName)).call()`;
+    по `MergeResult.mergeStatus` различать FAST_FORWARD/MERGED (успех), CONFLICTING
+    (вернуть спец-результат «конфликты — открой Changes»), FAILED;
+  - rebase: `git.rebase().setUpstream(...).call()`; статус STOPPED = конфликт →
+    предлагать continue (после резолва в ChangesScreen) или abort.
+- Конфликт-резолвер уже есть (`getMergeConflicts`/`resolveConflict` + UI в ChangesScreen) — переиспользовать.
+- UI: два пункта в bottom sheet ветки + confirm-диалог. Обязательно сначала починить
+  авто-закрытие диалога (см. P1.5, последний пункт).
+- `mergeCommitIntoCurrentBranch` уже существует — merge ветки делается поверх него
+  (ветка = её HEAD-коммит), но статусы конфликтов нужно прокинуть наружу.
+
+### 2. Клонирование одной ветки (быстрая экономия трафика)
+
+JGit 5.13 **не** умеет shallow clone (`setDepth` появился в JGit 6.3), но умеет single-branch:
+```kotlin
+cloneCommand
+    .setBranchesToClone(listOf("refs/heads/$branch"))
+    .setBranch("refs/heads/$branch")
+    .setCloneAllBranches(false)
+```
+- UI: в `AddRepositoryDialog` / `RemoteRepositoriesScreen` — выбор «все ветки / только дефолтная».
+- Полноценный shallow clone — только после апгрейда JGit (см. Технические заметки).
+
+### 3. Просмотр Pull Requests / Merge Requests
+
+Retrofit-слой для всех 5 провайдеров уже есть — добавить по одному endpoint:
+- GitHub: `GET /repos/{owner}/{repo}/pulls`;
+- GitLab: `GET /projects/{id}/merge_requests?state=opened`;
+- Bitbucket: `GET /repositories/{workspace}/{slug}/pullrequests`;
+- Gitea: `GET /repos/{owner}/{repo}/pulls`; Azure: `GET .../pullrequests?api-version=7.0`.
+
+Новый экран `PullRequestsScreen` + VM по образцу `RemoteRepositoriesViewModel`
+(список, статус, автор, ветки; открытие в браузере через `htmlUrl`). DTO не забыть
+покрыть keep-правилами (см. P0.1 — после фикса покрываются автоматически).
+
+### 4. SSH-ключи
+
+- Зависимость `org.eclipse.jgit:org.eclipse.jgit.ssh.apache:5.13.3...` (Apache MINA sshd, та же версия).
+- Генерация ключа (Ed25519), приватный ключ — в EncryptedSharedPreferences,
+  публичный — экран «скопируй в настройки провайдера».
+- `SshdSessionFactory` с кастомным `KeyPasswordProvider`; подключить в `TransportConfigCallback`
+  для clone/fetch/push, когда URL начинается с `ssh://`/`git@`.
+- Большая фича — делать после merge/rebase и PR-списка.
+
+### 5. Поиск по коммитам + blame
+
+- Поиск: `getCommits` уже пагинирован; фильтрация по message/author на стороне клиента
+  (JGit `LogCommand` не умеет grep) — поле поиска над списком в `EnhancedGraphScreen`.
+- Blame: `git.blame().setFilePath(path).call()` → аннотированный просмотр из
+  `CommitDetailDialog` (по кнопке в просмотре файла).
+
+### 6. Мелочи
+
+- [ ] Rename ветки (`git.branchRename().setOldName().setNewName()`) — уже в backlog.
+- [ ] Push отдельной ветки (`git.push().setRefSpecs(RefSpec("refs/heads/x:refs/heads/x"))`).
+- [ ] Per-app language: `android:localeConfig` в манифесте + `LocaleManager` на API 33+,
+  текущий `attachBaseContext`-механизм оставить для API < 33. Fallback неизвестного
+  значения языка сменить с русского на системный.
+- [ ] Предупреждение о submodules при клоне (`.gitmodules` в корне → баннер «submodules не поддерживаются»).
+
+---
+
+## P3 — производительность и UX
 
 - [ ] Профилировать работу на больших репозиториях (graph/diff/history).
-- [ ] Добавить кэширование дорогих вычислений (diff/history при повторных открытиях).
-- [ ] Продумать унификацию tree/list UX между `ChangesScreen` и `CommitDetailDialog`.
+- [ ] Кэшировать дорогие вычисления (diff/history при повторных открытиях).
+- [ ] Унифицировать tree/list UX между `ChangesScreen` и `CommitDetailDialog`.
+- [ ] Проверить edge-to-edge на Android 15 (targetSdk 35 включает его принудительно):
+  экраны без `Scaffold` — в первую очередь `OAuthActivity` (нижняя кромка WebView под
+  системной навигацией).
 
 ## Технические заметки
 
-- JGit остаётся на `5.13.3` из-за совместимости с minSdk 26.
-- Для воспроизводимых локальных сборок нужен стабильный `gradlew` в репозитории.
+- **JGit 5.13.3** — осознанный пин (6.x требует `java.nio.file`). Путь апгрейда, когда
+  понадобится shallow clone: core library desugaring с `desugar_jdk_libs_nio:2.x`
+  (поддерживает `java.nio.file` на minSdk 26) + JGit 6.10.x + прогон всех git-сценариев.
+- **`security-crypto 1.1.0-alpha06`** — библиотека deprecated и заморожена Google.
+  Работает, но при следующем большом рефакторинге auth-слоя мигрировать на Tink напрямую
+  или свой Keystore-обёртку. До миграции обязателен fallback из P0.2.
+- **`navigation-compose 2.8.5`** отстаёт от Compose BOM 2026.01 — обновить до 2.9.x при
+  ближайшем обновлении зависимостей.
+- Для воспроизводимых локальных сборок нужен стабильный `gradlew` (wrapper-скрипты) в репозитории.
+- Чеклист релиза: `assembleRelease` + smoke-тест OAuth/PAT всех провайдеров на minified-сборке (см. P0.1).
