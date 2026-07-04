@@ -40,6 +40,7 @@ import com.gitflow.android.data.models.FileDiff
 import com.gitflow.android.data.models.FileChange
 import com.gitflow.android.data.models.MergeConflict
 import com.gitflow.android.data.models.MergeConflictSection
+import com.gitflow.android.data.models.RepoOperationState
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.models.StashEntry
 import com.gitflow.android.data.models.SyncProgress
@@ -87,6 +88,13 @@ fun ChangesScreen(
         viewModel.onRepositoryUpdated(repository)
     }
 
+    // Reload the working tree every time this tab becomes visible. The ViewModel outlives tab
+    // switches, so without this a merge/rebase started elsewhere (branch dialog) would not
+    // surface its conflicts here until a manual pull-to-refresh.
+    LaunchedEffect(Unit) {
+        viewModel.refresh()
+    }
+
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Show transient snackbar messages emitted by the ViewModel
@@ -113,7 +121,8 @@ fun ChangesScreen(
         isRefreshing = isManualRefreshing,
         onRefresh = {
             isManualRefreshing = true
-            viewModel.loadChanges()
+            // refresh() (not loadChanges()) keeps the commit message the user is typing.
+            viewModel.refresh()
         },
         modifier = Modifier.fillMaxSize()
     ) {
@@ -181,7 +190,10 @@ fun ChangesScreen(
             onAcceptTheirs = viewModel::acceptTheirs,
             canPush = uiState.canPush,
             pendingPushCommits = uiState.pendingPushCommits,
-            pendingPullCommits = uiState.pendingPullCommits
+            pendingPullCommits = uiState.pendingPullCommits,
+            operationState = uiState.operationState,
+            onContinueRebase = viewModel::continueRebase,
+            onAbortOperation = viewModel::abortOperation
         )
 
         // Push progress overlay
@@ -311,7 +323,10 @@ private fun ChangesContent(
     onAcceptTheirs: (FileChange) -> Unit,
     canPush: Boolean,
     pendingPushCommits: Int,
-    pendingPullCommits: Int
+    pendingPullCommits: Int,
+    operationState: RepoOperationState,
+    onContinueRebase: () -> Unit,
+    onAbortOperation: () -> Unit
 ) {
     var isCommitSectionExpanded by rememberSaveable { mutableStateOf(true) }
     var isTreeView by rememberSaveable { mutableStateOf(false) }
@@ -343,7 +358,23 @@ private fun ChangesContent(
 
                 Box(modifier = Modifier.fillMaxSize()) {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        if (isCommitSectionExpanded) {
+                        // Merge/rebase in progress: explain what to do and offer continue/abort.
+                        if (operationState == RepoOperationState.MERGING ||
+                            operationState == RepoOperationState.REBASING
+                        ) {
+                            ConflictOperationBanner(
+                                state = operationState,
+                                enabled = !isProcessing,
+                                hasConflicts = unstagedFiles.any { it.hasConflicts },
+                                onContinue = onContinueRebase,
+                                onAbort = onAbortOperation
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+
+                        // During a rebase the commit panel is useless (Continue makes the
+                        // commit); hide it so the conflict list gets the space.
+                        if (isCommitSectionExpanded && operationState != RepoOperationState.REBASING) {
                             CommitSection(
                                 commitMessage = commitMessage,
                                 commitDescription = commitDescription,
@@ -362,7 +393,8 @@ private fun ChangesContent(
                                 isBusy = isProcessing,
                                 canPush = canPush,
                                 pendingPushCommits = pendingPushCommits,
-                                pendingPullCommits = pendingPullCommits
+                                pendingPullCommits = pendingPullCommits,
+                                isMerging = operationState == RepoOperationState.MERGING
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                         }
@@ -415,6 +447,62 @@ private fun ChangesContent(
     }
 }
 
+/** Banner shown while a merge/rebase awaits conflict resolution on this screen. */
+@Composable
+private fun ConflictOperationBanner(
+    state: RepoOperationState,
+    enabled: Boolean,
+    hasConflicts: Boolean,
+    onContinue: () -> Unit,
+    onAbort: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+        )
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = stringResource(
+                        if (state == RepoOperationState.REBASING) R.string.changes_banner_rebasing
+                        else R.string.changes_banner_merging
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(onClick = onAbort, enabled = enabled) {
+                    Text(
+                        stringResource(R.string.branches_banner_abort),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                if (state == RepoOperationState.REBASING) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    // Continue only makes sense once the conflicts below are resolved.
+                    TextButton(onClick = onContinue, enabled = enabled && !hasConflicts) {
+                        Text(stringResource(R.string.branches_banner_continue))
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun CommitSection(
     commitMessage: String,
@@ -434,75 +522,34 @@ private fun CommitSection(
     isBusy: Boolean,
     canPush: Boolean,
     pendingPushCommits: Int,
-    pendingPullCommits: Int
+    pendingPullCommits: Int,
+    isMerging: Boolean
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Text(
-                stringResource(R.string.changes_commit_title),
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                value = commitMessage,
-                onValueChange = onCommitMessageChange,
-                label = { Text(stringResource(R.string.changes_commit_message_hint)) },
-                modifier = Modifier.fillMaxWidth(),
-                maxLines = 3
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedTextField(
-                value = commitDescription,
-                onValueChange = onCommitDescriptionChange,
-                label = { Text(stringResource(R.string.changes_commit_description_hint)) },
-                modifier = Modifier.fillMaxWidth(),
-                minLines = 2,
-                maxLines = 6
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Checkbox(
-                    checked = isAmendMode,
-                    onCheckedChange = { onToggleAmend() },
-                    enabled = !isBusy
-                )
-                Text(
-                    text = stringResource(R.string.changes_amend_last_commit),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (isAmendMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onStageAll,
+    // Compact layout: one row "message + Commit", a slim toolbar of icon actions, and the
+    // rarely-used extras (description, amend) folded behind a "Details" toggle.
+    var showDetails by rememberSaveable { mutableStateOf(false) }
+    val hasConflicts = unstagedFiles.any { it.hasConflicts }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = commitMessage,
+                    onValueChange = onCommitMessageChange,
+                    label = { Text(stringResource(R.string.changes_commit_message_hint)) },
                     modifier = Modifier.weight(1f),
-                    enabled = unstagedFiles.isNotEmpty() && !isBusy
-                ) {
-                    Text(stringResource(R.string.changes_stage_all))
-                }
-                OutlinedButton(
-                    onClick = onStashOpen,
-                    enabled = !isBusy
-                ) {
-                    Icon(Icons.Default.Archive, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(stringResource(R.string.changes_stash_button))
-                }
+                    maxLines = 2,
+                    textStyle = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.width(8.dp))
                 Button(
                     onClick = onCommit,
-                    modifier = Modifier.weight(1f),
-                    enabled = (isAmendMode || stagedFiles.isNotEmpty()) && commitMessage.isNotBlank() && !isBusy
+                    // A merge commit is legal even with an index identical to HEAD (all
+                    // conflicts resolved to "ours"), hence the isMerging escape hatch.
+                    // Unresolved conflicts always block the commit.
+                    enabled = (isAmendMode || stagedFiles.isNotEmpty() || isMerging) &&
+                        commitMessage.isNotBlank() && !isBusy && !hasConflicts,
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
                 ) {
                     Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
@@ -512,65 +559,128 @@ private fun CommitSection(
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onFetch,
-                    modifier = Modifier.weight(1f),
-                    enabled = canPush && !isBusy
+
+            if (showDetails) {
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = commitDescription,
+                    onValueChange = onCommitDescriptionChange,
+                    label = { Text(stringResource(R.string.changes_commit_description_hint)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                    maxLines = 5
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = stringResource(R.string.changes_fetch_button),
-                        maxLines = 1,
-                        softWrap = false
+                    Checkbox(
+                        checked = isAmendMode,
+                        onCheckedChange = { onToggleAmend() },
+                        enabled = !isBusy
                     )
-                }
-                OutlinedButton(
-                    onClick = onPull,
-                    modifier = Modifier.weight(1f),
-                    enabled = canPush && !isBusy
-                ) {
-                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = if (pendingPullCommits > 0) {
-                            stringResource(R.string.changes_pull_button_count, pendingPullCommits)
-                        } else {
-                            stringResource(R.string.changes_pull_button)
-                        },
-                        maxLines = 1,
-                        softWrap = false
+                        text = stringResource(R.string.changes_amend_last_commit),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isAmendMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
 
-            if (canPush) {
-                if (pendingPushCommits > 0) {
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedButton(
-                        onClick = onPush,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !isBusy
-                    ) {
-                        Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(stringResource(R.string.changes_push_button, pendingPushCommits))
-                    }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(
+                    onClick = { showDetails = !showDetails },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Icon(
+                        imageVector = if (showDetails) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(2.dp))
+                    Text(
+                        text = stringResource(R.string.changes_commit_details),
+                        fontSize = 12.sp
+                    )
                 }
-            } else {
-                Spacer(modifier = Modifier.height(4.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CompactActionIcon(
+                        icon = Icons.Default.DoneAll,
+                        contentDescription = stringResource(R.string.changes_stage_all),
+                        enabled = unstagedFiles.isNotEmpty() && !isBusy,
+                        onClick = onStageAll
+                    )
+                    CompactActionIcon(
+                        icon = Icons.Default.Archive,
+                        contentDescription = stringResource(R.string.changes_stash_button),
+                        enabled = !isBusy,
+                        onClick = onStashOpen
+                    )
+                    CompactActionIcon(
+                        icon = Icons.Default.Sync,
+                        contentDescription = stringResource(R.string.changes_fetch_button),
+                        enabled = canPush && !isBusy,
+                        onClick = onFetch
+                    )
+                    CompactActionIcon(
+                        icon = Icons.Default.CloudDownload,
+                        contentDescription = stringResource(R.string.changes_pull_button),
+                        enabled = canPush && !isBusy,
+                        badgeCount = pendingPullCommits,
+                        onClick = onPull
+                    )
+                    CompactActionIcon(
+                        icon = Icons.Default.CloudUpload,
+                        contentDescription = stringResource(R.string.changes_push_short),
+                        enabled = canPush && pendingPushCommits > 0 && !isBusy,
+                        badgeCount = pendingPushCommits,
+                        onClick = onPush
+                    )
+                }
+            }
+
+            if (!canPush) {
                 Text(
                     text = stringResource(R.string.changes_remote_not_configured),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+        }
+    }
+}
+
+/** 40dp icon action with an optional count badge — keeps the commit card slim. */
+@Composable
+private fun CompactActionIcon(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    badgeCount: Int = 0
+) {
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.size(40.dp)
+    ) {
+        if (badgeCount > 0) {
+            BadgedBox(
+                badge = {
+                    Badge {
+                        Text(badgeCount.toString(), fontSize = 9.sp)
+                    }
+                }
+            ) {
+                Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(20.dp))
+            }
+        } else {
+            Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -610,10 +720,49 @@ private fun FileChangesList(
     onAcceptOurs: (FileChange) -> Unit,
     onAcceptTheirs: (FileChange) -> Unit
 ) {
+    // Conflicted files get their own always-visible section on top: they block everything
+    // else (commit, rebase continue) and must not be buried inside the unstaged list.
+    val conflictFiles = unstagedFiles.filter { it.hasConflicts }
+    val plainUnstagedFiles = unstagedFiles.filter { !it.hasConflicts }
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        if (conflictFiles.isNotEmpty()) {
+            item {
+                SectionHeader(
+                    title = stringResource(R.string.changes_conflicts_title, conflictFiles.size),
+                    isTreeView = isTreeView,
+                    onToggleViewMode = onToggleViewMode,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            // Always rendered as cards (even in tree view) so the resolve actions stay visible.
+            items(conflictFiles) { file ->
+                FileChangeCard(
+                    file = file,
+                    isStaged = false,
+                    onToggle = { onFileToggle(file) },
+                    onOpen = { onOpenFileDiff(file) },
+                    onLongPress = { onContextMenuTargetChange(file.path) },
+                    isMenuExpanded = contextMenuTargetPath == file.path,
+                    onDismissMenu = { onContextMenuTargetChange(null) },
+                    menuContent = {
+                        FileChangeActionsMenu(
+                            file = file,
+                            onDismiss = { onContextMenuTargetChange(null) },
+                            onOpenHistory = { onOpenFileHistory(file.path) },
+                            onDiscard = { onDiscardFile(file.path) }
+                        )
+                    },
+                    onResolveConflict = { onResolveConflict(file) },
+                    onAcceptOurs = { onAcceptOurs(file) },
+                    onAcceptTheirs = { onAcceptTheirs(file) }
+                )
+            }
+        }
+
         if (stagedFiles.isNotEmpty()) {
             item {
                 SectionHeader(
@@ -663,10 +812,10 @@ private fun FileChangesList(
             }
         }
 
-        if (unstagedFiles.isNotEmpty()) {
+        if (plainUnstagedFiles.isNotEmpty()) {
             item {
                 SectionHeader(
-                    title = stringResource(R.string.changes_unstaged_title, unstagedFiles.size),
+                    title = stringResource(R.string.changes_unstaged_title, plainUnstagedFiles.size),
                     isTreeView = isTreeView,
                     onToggleViewMode = onToggleViewMode,
                     color = MaterialTheme.colorScheme.onSurface
@@ -675,7 +824,7 @@ private fun FileChangesList(
             if (isTreeView) {
                 item {
                     FileChangesTreeSection(
-                        files = unstagedFiles,
+                        files = plainUnstagedFiles,
                         isStaged = false,
                         contextMenuTargetPath = contextMenuTargetPath,
                         onContextMenuTargetChange = onContextMenuTargetChange,
@@ -687,7 +836,7 @@ private fun FileChangesList(
                     )
                 }
             } else {
-                items(unstagedFiles) { file ->
+                items(plainUnstagedFiles) { file ->
                     FileChangeCard(
                         file = file,
                         isStaged = false,

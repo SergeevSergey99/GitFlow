@@ -302,6 +302,14 @@
     <string name="changes_conflict_resolve_failed">Failed to resolve conflict</string>
     <string name="changes_conflict_details_failed">Cannot load conflict details</string>
     <string name="changes_conflict_manual_success">Conflicts resolved</string>
+    <string name="changes_banner_merging">Merge in progress — resolve the conflicts below, then commit.</string>
+    <string name="changes_banner_rebasing">Rebase paused on conflicts — resolve them below, then press Continue.</string>
+    <string name="changes_conflicts_title">Conflicts (%1$d)</string>
+    <string name="changes_rebase_continued">Rebase completed</string>
+    <string name="changes_rebase_still_conflicts">More conflicts — resolve them below</string>
+    <string name="changes_operation_aborted">Operation aborted</string>
+    <string name="changes_commit_details">Details</string>
+    <string name="changes_push_short">Push</string>
 
     <!-- GraphPresetDialog -->
     <string name="graph_preset_title">Graph Preset</string>

@@ -302,6 +302,14 @@
     <string name="changes_conflict_resolve_failed">Не удалось решить конфликт</string>
     <string name="changes_conflict_details_failed">Не удалось загрузить детали конфликта</string>
     <string name="changes_conflict_manual_success">Конфликты устранены</string>
+    <string name="changes_banner_merging">Идёт слияние — разрешите конфликты ниже и создайте коммит.</string>
+    <string name="changes_banner_rebasing">Rebase остановлен на конфликтах — разрешите их ниже и нажмите «Продолжить».</string>
+    <string name="changes_conflicts_title">Конфликты (%1$d)</string>
+    <string name="changes_rebase_continued">Rebase завершён</string>
+    <string name="changes_rebase_still_conflicts">Остались конфликты — разрешите их ниже</string>
+    <string name="changes_operation_aborted">Операция отменена</string>
+    <string name="changes_commit_details">Детали</string>
+    <string name="changes_push_short">Push</string>
 
     <!-- GraphPresetDialog -->
     <string name="graph_preset_title">Пресет графа</string>

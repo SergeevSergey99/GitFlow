@@ -21,6 +21,8 @@
 - [x] **P0.5** OAuth WebView: перехват redirect в `shouldOverrideUrlLoading`, `isForMainFrame`-guard в `onReceivedError`, идемпотентные callback'и. _(2026-07-04)_
 - [x] **P1** `TokenRefreshWorker` — сетевой constraint + `UPDATE`. _(2026-07-04)_
 - [x] **P1** `CloneRepositoryService` — не прерывает клон без `POST_NOTIFICATIONS`. _(2026-07-04)_
+- [x] **P2** Merge/rebase из `BranchManagementDialog` + конфликтный флоу в «Изменениях»: refresh при входе во вкладку, баннер операции (Continue/Abort), секция «Конфликты», префилл MERGE_MSG, флип ours/theirs при rebase. _(2026-07-04)_
+- [x] **P1.5 (частично)** Компактная панель коммита в `ChangesScreen` (одна строка + иконки с бейджами, детали за тумблером). _(2026-07-04)_
 
 ---
 

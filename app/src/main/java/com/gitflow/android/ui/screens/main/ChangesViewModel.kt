@@ -9,6 +9,7 @@ import com.gitflow.android.data.models.ConflictResolutionStrategy
 import com.gitflow.android.data.models.FileChange
 import com.gitflow.android.data.models.GitResult
 import com.gitflow.android.data.models.MergeConflict
+import com.gitflow.android.data.models.RepoOperationState
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.models.StashEntry
 import com.gitflow.android.data.models.SyncProgress
@@ -43,7 +44,9 @@ data class ChangesUiState(
     /** Whether the failed network operation can be retried. */
     val isRetryable: Boolean = false,
     /** True if the last remote operation failed due to an expired session. */
-    val needsReAuth: Boolean = false
+    val needsReAuth: Boolean = false,
+    /** In-progress merge/rebase whose conflicts must be resolved on this screen. */
+    val operationState: RepoOperationState = RepoOperationState.NONE
 )
 
 class ChangesViewModel(
@@ -82,32 +85,34 @@ class ChangesViewModel(
         refreshPullCount()
     }
 
+    /** Full reset + reload: clears in-progress commit input. Used once, on creation. */
     fun loadChanges() {
+        _uiState.update {
+            it.copy(
+                conflictDetails = null,
+                commitMessage = "",
+                commitDescription = "",
+                isAmendMode = false,
+                isProcessing = false,
+                isConflictLoading = false
+            )
+        }
+        refresh()
+    }
+
+    /**
+     * Reloads the working-tree state WITHOUT clobbering commit input. Safe to call every
+     * time the tab becomes visible — a merge/rebase started elsewhere (branch dialog)
+     * surfaces its conflicts here through this path.
+     */
+    fun refresh() {
         viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    isLoading = true,
-                    conflictDetails = null,
-                    commitMessage = "",
-                    commitDescription = "",
-                    isProcessing = false,
-                    isConflictLoading = false
-                )
-            }
+            _uiState.update { it.copy(isLoading = true) }
             try {
-                val files = gitRepository.getChangedFiles(repository)
-                val refreshed = gitRepository.refreshRepository(repository)
-                val pullCount = loadPendingPullCount()
-                _uiState.update {
-                    it.copy(
-                        changes = files,
-                        isLoading = false,
-                        canPush = refreshed?.hasRemoteOrigin ?: it.canPush,
-                        pendingPushCommits = refreshed?.pendingPushCommits ?: it.pendingPushCommits,
-                        pendingPullCommits = pullCount
-                    )
-                }
-            } catch (e: Exception) {
+                reloadChanges()
+            } catch (_: Exception) {
+                // keep whatever state we had
+            } finally {
                 _uiState.update { it.copy(isLoading = false) }
             }
         }
@@ -117,13 +122,26 @@ class ChangesViewModel(
         val files = gitRepository.getChangedFiles(repository)
         val refreshed = gitRepository.refreshRepository(repository)
         val pullCount = loadPendingPullCount()
+        val opState = gitRepository.getRepositoryState(repository)
         _uiState.update {
             it.copy(
                 changes = files,
                 canPush = refreshed?.hasRemoteOrigin ?: it.canPush,
                 pendingPushCommits = refreshed?.pendingPushCommits ?: it.pendingPushCommits,
-                pendingPullCommits = pullCount
+                pendingPullCommits = pullCount,
+                operationState = opState
             )
+        }
+        // During a merge, offer git's prepared message (.git/MERGE_MSG) so the user can
+        // commit the merge right away without inventing a message.
+        if (opState == RepoOperationState.MERGING &&
+            _uiState.value.commitMessage.isBlank() &&
+            !_uiState.value.isAmendMode
+        ) {
+            gitRepository.getMergeMessage(repository)?.let { mergeMsg ->
+                val split = splitCommitMessage(mergeMsg)
+                _uiState.update { it.copy(commitMessage = split.first, commitDescription = split.second) }
+            }
         }
     }
 
@@ -327,26 +345,70 @@ class ChangesViewModel(
         }
     }
 
-    fun acceptOurs(file: FileChange) {
+    /** "Keep the current branch's version" as the user understands it. */
+    fun acceptOurs(file: FileChange) =
+        resolveWithStrategy(file, ConflictResolutionStrategy.OURS, R.string.changes_conflict_resolved_current)
+
+    /** "Take the incoming version" as the user understands it. */
+    fun acceptTheirs(file: FileChange) =
+        resolveWithStrategy(file, ConflictResolutionStrategy.THEIRS, R.string.changes_conflict_resolved_incoming)
+
+    private fun resolveWithStrategy(file: FileChange, userStrategy: ConflictResolutionStrategy, successMsgId: Int) {
         guard {
-            val result = gitRepository.resolveConflict(repository, file.path, ConflictResolutionStrategy.OURS)
+            // git inverts ours/theirs during a rebase: stage 2 ("ours") is the branch being
+            // rebased ONTO, stage 3 ("theirs") is the current branch's replayed commit.
+            // The UI buttons promise "current branch" / "incoming", so flip the strategy
+            // while a rebase is in progress to honor what the user actually asked for.
+            val effective = if (_uiState.value.operationState == RepoOperationState.REBASING) {
+                when (userStrategy) {
+                    ConflictResolutionStrategy.OURS -> ConflictResolutionStrategy.THEIRS
+                    ConflictResolutionStrategy.THEIRS -> ConflictResolutionStrategy.OURS
+                }
+            } else {
+                userStrategy
+            }
+            val result = gitRepository.resolveConflict(repository, file.path, effective)
             if (result is GitResult.Success) {
                 reloadChanges()
-                emit(str(R.string.changes_conflict_resolved_current))
+                emit(str(successMsgId))
             } else {
                 emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_conflict_resolve_failed))
             }
         }
     }
 
-    fun acceptTheirs(file: FileChange) {
+    /** Continues a conflict-paused rebase after everything below is resolved. */
+    fun continueRebase() {
         guard {
-            val result = gitRepository.resolveConflict(repository, file.path, ConflictResolutionStrategy.THEIRS)
-            if (result is GitResult.Success) {
-                reloadChanges()
-                emit(str(R.string.changes_conflict_resolved_incoming))
-            } else {
-                emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_conflict_resolve_failed))
+            when (val result = gitRepository.rebaseContinue(repository)) {
+                is GitResult.Success -> {
+                    reloadChanges()
+                    emit(str(R.string.changes_rebase_continued))
+                }
+                is GitResult.Failure.Conflict -> {
+                    reloadChanges()
+                    emit(str(R.string.changes_rebase_still_conflicts))
+                }
+                is GitResult.Failure -> emit(result.message.ifBlank { str(R.string.changes_conflict_resolve_failed) })
+            }
+        }
+    }
+
+    /** Aborts the in-progress merge or rebase and restores a clean working tree. */
+    fun abortOperation() {
+        guard {
+            val result = when (_uiState.value.operationState) {
+                RepoOperationState.REBASING -> gitRepository.rebaseAbort(repository)
+                else -> gitRepository.abortMerge(repository)
+            }
+            when (result) {
+                is GitResult.Success -> {
+                    // The prepared merge message is no longer relevant.
+                    _uiState.update { it.copy(commitMessage = "", commitDescription = "") }
+                    reloadChanges()
+                    emit(str(R.string.changes_operation_aborted))
+                }
+                is GitResult.Failure -> emit(result.message.ifBlank { str(R.string.changes_conflict_resolve_failed) })
             }
         }
     }

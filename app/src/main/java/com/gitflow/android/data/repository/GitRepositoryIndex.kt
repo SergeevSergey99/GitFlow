@@ -286,6 +286,16 @@ internal suspend fun GitRepository.amendLastCommitImpl(repository: Repository, m
     }
 }
 
+/** Reads .git/MERGE_MSG — the message git prepared for the in-progress merge commit. */
+internal suspend fun GitRepository.getMergeMessageImpl(repository: Repository): String? = withContext(Dispatchers.IO) {
+    try {
+        val git = openRepository(repository.path) ?: return@withContext null
+        git.use { g -> g.repository.readMergeCommitMsg()?.takeIf { it.isNotBlank() } }
+    } catch (e: Exception) {
+        null
+    }
+}
+
 internal suspend fun GitRepository.getLastCommitMessageImpl(repository: Repository): String? = withContext(Dispatchers.IO) {
     try {
         val git = openRepository(repository.path) ?: return@withContext null
