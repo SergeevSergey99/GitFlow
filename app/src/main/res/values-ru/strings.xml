@@ -229,6 +229,17 @@
     <!-- MainScreen -->
     <string name="main_screen_title">GitFlow</string>
     <string name="main_screen_repo_info">%1$s • %2$s</string>
+    <string name="main_conflict_merge">Merge · конфликтов: %1$d</string>
+    <string name="main_conflict_merge_ready">Merge готов — закоммитьте</string>
+    <string name="main_conflict_rebase">Rebase · конфликтов: %1$d</string>
+    <string name="main_conflict_rebase_ready">Rebase готов — продолжите</string>
+    <string name="main_conflict_abort">Отменить</string>
+    <string name="main_conflict_continue">Продолжить</string>
+    <string name="main_conflict_info_title">Конфликты merge/rebase</string>
+    <string name="main_conflict_info_resolve_hint">Разрешите эти файлы во вкладке «Изменения»:</string>
+    <string name="main_conflict_info_ready_merge">Все конфликты разрешены. Закоммитьте во вкладке «Изменения», чтобы завершить merge.</string>
+    <string name="main_conflict_info_ready_rebase">Все конфликты разрешены. Нажмите «Продолжить», чтобы завершить rebase.</string>
+    <string name="main_conflict_info_open_changes">Открыть «Изменения»</string>
     <string name="main_screen_tab_repos">Репозитории</string>
     <string name="main_screen_tab_graph">Граф</string>
     <string name="main_screen_tab_changes">Изменения</string>

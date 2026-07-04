@@ -59,7 +59,9 @@ import java.util.Locale
 fun ChangesScreen(
     repository: Repository?,
     gitRepository: IGitRepository,
-    onGoToSettings: () -> Unit = {}
+    onGoToSettings: () -> Unit = {},
+    onRepoStateChanged: () -> Unit = {},
+    externalRefreshSignal: Int = 0
 ) {
     if (repository == null) {
         EmptyStateMessage(stringResource(R.string.changes_select_repo))
@@ -93,6 +95,17 @@ fun ChangesScreen(
     // surface its conflicts here until a manual pull-to-refresh.
     LaunchedEffect(Unit) {
         viewModel.refresh()
+    }
+
+    // The header aborted/continued the operation — reload from scratch (drops the now-moot
+    // prefilled merge message).
+    LaunchedEffect(externalRefreshSignal) {
+        if (externalRefreshSignal > 0) viewModel.loadChanges()
+    }
+
+    // Notify the host so the conflict header reflects resolutions made here.
+    LaunchedEffect(uiState.operationState, uiState.changes) {
+        onRepoStateChanged()
     }
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -191,9 +204,7 @@ fun ChangesScreen(
             canPush = uiState.canPush,
             pendingPushCommits = uiState.pendingPushCommits,
             pendingPullCommits = uiState.pendingPullCommits,
-            operationState = uiState.operationState,
-            onContinueRebase = viewModel::continueRebase,
-            onAbortOperation = viewModel::abortOperation
+            operationState = uiState.operationState
         )
 
         // Push progress overlay
@@ -324,9 +335,7 @@ private fun ChangesContent(
     canPush: Boolean,
     pendingPushCommits: Int,
     pendingPullCommits: Int,
-    operationState: RepoOperationState,
-    onContinueRebase: () -> Unit,
-    onAbortOperation: () -> Unit
+    operationState: RepoOperationState
 ) {
     var isCommitSectionExpanded by rememberSaveable { mutableStateOf(true) }
     var isTreeView by rememberSaveable { mutableStateOf(false) }
@@ -358,22 +367,8 @@ private fun ChangesContent(
 
                 Box(modifier = Modifier.fillMaxSize()) {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // Merge/rebase in progress: explain what to do and offer continue/abort.
-                        if (operationState == RepoOperationState.MERGING ||
-                            operationState == RepoOperationState.REBASING
-                        ) {
-                            ConflictOperationBanner(
-                                state = operationState,
-                                enabled = !isProcessing,
-                                hasConflicts = unstagedFiles.any { it.hasConflicts },
-                                onContinue = onContinueRebase,
-                                onAbort = onAbortOperation
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
-
-                        // During a rebase the commit panel is useless (Continue makes the
-                        // commit); hide it so the conflict list gets the space.
+                        // During a rebase the commit panel is useless (the header's Continue makes
+                        // the commit); hide it so the conflict list gets the space.
                         if (isCommitSectionExpanded && operationState != RepoOperationState.REBASING) {
                             CommitSection(
                                 commitMessage = commitMessage,
@@ -440,62 +435,6 @@ private fun ChangesContent(
                                 modifier = Modifier.size(18.dp)
                             )
                         }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** Banner shown while a merge/rebase awaits conflict resolution on this screen. */
-@Composable
-private fun ConflictOperationBanner(
-    state: RepoOperationState,
-    enabled: Boolean,
-    hasConflicts: Boolean,
-    onContinue: () -> Unit,
-    onAbort: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer
-        )
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Default.Warning,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onTertiaryContainer
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = stringResource(
-                        if (state == RepoOperationState.REBASING) R.string.changes_banner_rebasing
-                        else R.string.changes_banner_merging
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                TextButton(onClick = onAbort, enabled = enabled) {
-                    Text(
-                        stringResource(R.string.branches_banner_abort),
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-                if (state == RepoOperationState.REBASING) {
-                    Spacer(modifier = Modifier.width(4.dp))
-                    // Continue only makes sense once the conflicts below are resolved.
-                    TextButton(onClick = onContinue, enabled = enabled && !hasConflicts) {
-                        Text(stringResource(R.string.branches_banner_continue))
                     }
                 }
             }
@@ -587,61 +526,30 @@ private fun CommitSection(
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(
-                    onClick = { showDetails = !showDetails },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Icon(
-                        imageVector = if (showDetails) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(2.dp))
-                    Text(
-                        text = stringResource(R.string.changes_commit_details),
-                        fontSize = 12.sp
-                    )
-                }
+            Spacer(modifier = Modifier.height(8.dp))
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CompactActionIcon(
-                        icon = Icons.Default.DoneAll,
-                        contentDescription = stringResource(R.string.changes_stage_all),
-                        enabled = unstagedFiles.isNotEmpty() && !isBusy,
-                        onClick = onStageAll
-                    )
-                    CompactActionIcon(
-                        icon = Icons.Default.Archive,
-                        contentDescription = stringResource(R.string.changes_stash_button),
-                        enabled = !isBusy,
-                        onClick = onStashOpen
-                    )
-                    CompactActionIcon(
-                        icon = Icons.Default.Sync,
-                        contentDescription = stringResource(R.string.changes_fetch_button),
-                        enabled = canPush && !isBusy,
-                        onClick = onFetch
-                    )
-                    CompactActionIcon(
-                        icon = Icons.Default.CloudDownload,
-                        contentDescription = stringResource(R.string.changes_pull_button),
-                        enabled = canPush && !isBusy,
-                        badgeCount = pendingPullCommits,
-                        onClick = onPull
-                    )
-                    CompactActionIcon(
-                        icon = Icons.Default.CloudUpload,
-                        contentDescription = stringResource(R.string.changes_push_short),
-                        enabled = canPush && pendingPushCommits > 0 && !isBusy,
-                        badgeCount = pendingPushCommits,
-                        onClick = onPush
-                    )
+            // Labeled action grid (icon + name), 3 per row, so each action is self-explanatory.
+            val actions = listOf(
+                QuickAction(Icons.Default.DoneAll, stringResource(R.string.changes_stage_all), unstagedFiles.isNotEmpty() && !isBusy, 0, onStageAll),
+                QuickAction(Icons.Default.Archive, stringResource(R.string.changes_stash_button), !isBusy, 0, onStashOpen),
+                QuickAction(Icons.Default.Sync, stringResource(R.string.changes_fetch_button), canPush && !isBusy, 0, onFetch),
+                QuickAction(Icons.Default.CloudDownload, stringResource(R.string.changes_pull_button), canPush && !isBusy, pendingPullCommits, onPull),
+                QuickAction(Icons.Default.CloudUpload, stringResource(R.string.changes_push_short), canPush && pendingPushCommits > 0 && !isBusy, pendingPushCommits, onPush)
+            )
+            actions.chunked(3).forEach { rowActions ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    rowActions.forEach { action ->
+                        LabeledActionCell(action = action, modifier = Modifier.weight(1f))
+                    }
+                    // Pad the short row so cells keep a consistent width.
+                    repeat(3 - rowActions.size) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
                 }
+                Spacer(modifier = Modifier.height(6.dp))
             }
 
             if (!canPush) {
@@ -651,36 +559,65 @@ private fun CommitSection(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+
+            // "Details" toggle sits at the bottom, low-emphasis.
+            TextButton(
+                onClick = { showDetails = !showDetails },
+                modifier = Modifier.align(Alignment.End),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+            ) {
+                Icon(
+                    imageVector = if (showDetails) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(2.dp))
+                Text(text = stringResource(R.string.changes_commit_details), fontSize = 12.sp)
+            }
         }
     }
 }
 
-/** 40dp icon action with an optional count badge — keeps the commit card slim. */
+private data class QuickAction(
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val label: String,
+    val enabled: Boolean,
+    val badgeCount: Int,
+    val onClick: () -> Unit
+)
+
+/** One cell of the action grid: an icon (with optional count badge) above a short label. */
 @Composable
-private fun CompactActionIcon(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    contentDescription: String,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    badgeCount: Int = 0
-) {
-    IconButton(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier.size(40.dp)
+private fun LabeledActionCell(action: QuickAction, modifier: Modifier = Modifier) {
+    val contentColor = if (action.enabled) MaterialTheme.colorScheme.onSurface
+    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+    Surface(
+        onClick = action.onClick,
+        enabled = action.enabled,
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        modifier = modifier.height(52.dp)
     ) {
-        if (badgeCount > 0) {
-            BadgedBox(
-                badge = {
-                    Badge {
-                        Text(badgeCount.toString(), fontSize = 9.sp)
-                    }
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            if (action.badgeCount > 0) {
+                BadgedBox(badge = { Badge { Text(action.badgeCount.toString(), fontSize = 9.sp) } }) {
+                    Icon(action.icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(20.dp))
                 }
-            ) {
-                Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(20.dp))
+            } else {
+                Icon(action.icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(20.dp))
             }
-        } else {
-            Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = action.label,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = contentColor
+            )
         }
     }
 }

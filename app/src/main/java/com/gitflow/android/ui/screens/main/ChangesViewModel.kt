@@ -377,41 +377,8 @@ class ChangesViewModel(
         }
     }
 
-    /** Continues a conflict-paused rebase after everything below is resolved. */
-    fun continueRebase() {
-        guard {
-            when (val result = gitRepository.rebaseContinue(repository)) {
-                is GitResult.Success -> {
-                    reloadChanges()
-                    emit(str(R.string.changes_rebase_continued))
-                }
-                is GitResult.Failure.Conflict -> {
-                    reloadChanges()
-                    emit(str(R.string.changes_rebase_still_conflicts))
-                }
-                is GitResult.Failure -> emit(result.message.ifBlank { str(R.string.changes_conflict_resolve_failed) })
-            }
-        }
-    }
-
-    /** Aborts the in-progress merge or rebase and restores a clean working tree. */
-    fun abortOperation() {
-        guard {
-            val result = when (_uiState.value.operationState) {
-                RepoOperationState.REBASING -> gitRepository.rebaseAbort(repository)
-                else -> gitRepository.abortMerge(repository)
-            }
-            when (result) {
-                is GitResult.Success -> {
-                    // The prepared merge message is no longer relevant.
-                    _uiState.update { it.copy(commitMessage = "", commitDescription = "") }
-                    reloadChanges()
-                    emit(str(R.string.changes_operation_aborted))
-                }
-                is GitResult.Failure -> emit(result.message.ifBlank { str(R.string.changes_conflict_resolve_failed) })
-            }
-        }
-    }
+    // continue/abort of a merge/rebase are driven from the conflict header (MainViewModel);
+    // this screen only handles per-file conflict resolution and the merge commit.
 
     fun openConflict(file: FileChange) {
         if (_uiState.value.isConflictLoading) return

@@ -1,6 +1,9 @@
 package com.gitflow.android.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.automirrored.filled.*
@@ -15,6 +18,7 @@ import androidx.compose.ui.unit.sp
 import org.koin.androidx.compose.koinViewModel
 import androidx.navigation.NavController
 import com.gitflow.android.R
+import com.gitflow.android.data.models.RepoOperationState
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.ui.config.GraphConfig
@@ -46,6 +50,12 @@ fun MainScreen(navController: NavController) {
     // the header before the branch name — same source the Changes tab uses for "Pull (N)".
     var pendingPullCount by remember { mutableStateOf(0) }
 
+    val operationState by viewModel.operationState.collectAsState()
+    val conflictPaths by viewModel.conflictPaths.collectAsState()
+    val operationSignal by viewModel.operationSignal.collectAsState()
+    val inConflict = operationState != RepoOperationState.NONE
+    var showConflictInfo by remember { mutableStateOf(false) }
+
     // Обновляем выбранный репозиторий если он изменился в списке
     LaunchedEffect(repositories) {
         viewModel.updateSelectedRepositoryIfChanged(repositories)
@@ -65,50 +75,112 @@ fun MainScreen(navController: NavController) {
         }
     }
 
+    // Re-check merge/rebase state whenever the repo or the active tab changes.
+    LaunchedEffect(selectedRepository, selectedTab) {
+        viewModel.refreshOperationState()
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 expandedHeight = 48.dp,
                 title = {
                     selectedRepository?.let { repo ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "${repo.name}  •  ",
-                                fontSize = 18.sp,
-                                maxLines = 1,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            if (pendingPullCount > 0) {
+                        if (inConflict) {
+                            // Conflict mode: red header, tap anywhere on the title for details.
+                            Row(
+                                modifier = Modifier.clickable { showConflictInfo = true },
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Warning,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "↓$pendingPullCount ",
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    text = conflictHeaderText(operationState, conflictPaths.size),
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.SemiBold,
                                     maxLines = 1,
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    Icons.Default.Info,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onErrorContainer
                                 )
                             }
-                            Text(
-                                text = repo.currentBranch,
-                                fontSize = 18.sp,
-                                maxLines = 1,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        } else {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "${repo.name}  •  ",
+                                    fontSize = 18.sp,
+                                    maxLines = 1,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (pendingPullCount > 0) {
+                                    Text(
+                                        text = "↓$pendingPullCount ",
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Text(
+                                    text = repo.currentBranch,
+                                    fontSize = 18.sp,
+                                    maxLines = 1,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 },
                 actions = {
                     selectedRepository?.let {
-                        IconButton(onClick = { showBranchDialog = true }) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.CallSplit,
-                                contentDescription = stringResource(R.string.branches_title)
-                            )
+                        if (inConflict) {
+                            // Rebase can be continued (once resolved); both can be aborted.
+                            if (operationState == RepoOperationState.REBASING) {
+                                IconButton(
+                                    onClick = { viewModel.continueRebase() },
+                                    enabled = conflictPaths.isEmpty()
+                                ) {
+                                    Icon(
+                                        Icons.Default.PlayArrow,
+                                        contentDescription = stringResource(R.string.main_conflict_continue),
+                                        tint = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                }
+                            }
+                            IconButton(onClick = { viewModel.abortMergeOrRebase() }) {
+                                Icon(
+                                    Icons.Default.Cancel,
+                                    contentDescription = stringResource(R.string.main_conflict_abort),
+                                    tint = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                        } else {
+                            IconButton(onClick = { showBranchDialog = true }) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.CallSplit,
+                                    contentDescription = stringResource(R.string.branches_title)
+                                )
+                            }
                         }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    containerColor = if (inConflict) MaterialTheme.colorScheme.errorContainer
+                    else MaterialTheme.colorScheme.primaryContainer,
+                    titleContentColor = if (inConflict) MaterialTheme.colorScheme.onErrorContainer
+                    else MaterialTheme.colorScheme.onPrimaryContainer,
+                    actionIconContentColor = if (inConflict) MaterialTheme.colorScheme.onErrorContainer
+                    else MaterialTheme.colorScheme.onPrimaryContainer
                 )
             )
         },
@@ -170,7 +242,11 @@ fun MainScreen(navController: NavController) {
                 MainTab.CHANGES -> ChangesScreen(
                     repository = selectedRepository,
                     gitRepository = gitRepository,
-                    onGoToSettings = { viewModel.selectTab(MainTab.SETTINGS) }
+                    onGoToSettings = { viewModel.selectTab(MainTab.SETTINGS) },
+                    // Keep the conflict header in sync when conflicts are resolved here.
+                    onRepoStateChanged = { viewModel.refreshOperationState() },
+                    // Bumped when the header aborts/continues so this tab reloads.
+                    externalRefreshSignal = operationSignal
                 )
                 MainTab.SETTINGS -> SettingsScreen(
                     selectedGraphPreset = selectedGraphPreset,
@@ -217,6 +293,74 @@ fun MainScreen(navController: NavController) {
             )
         }
     }
+
+    if (showConflictInfo) {
+        ConflictInfoDialog(
+            state = operationState,
+            conflictPaths = conflictPaths,
+            onOpenChanges = {
+                showConflictInfo = false
+                viewModel.selectTab(MainTab.CHANGES)
+            },
+            onDismiss = { showConflictInfo = false }
+        )
+    }
+}
+
+@Composable
+private fun conflictHeaderText(state: RepoOperationState, conflictCount: Int): String = when {
+    state == RepoOperationState.REBASING && conflictCount == 0 -> stringResource(R.string.main_conflict_rebase_ready)
+    state == RepoOperationState.REBASING -> stringResource(R.string.main_conflict_rebase, conflictCount)
+    conflictCount == 0 -> stringResource(R.string.main_conflict_merge_ready)
+    else -> stringResource(R.string.main_conflict_merge, conflictCount)
+}
+
+@Composable
+private fun ConflictInfoDialog(
+    state: RepoOperationState,
+    conflictPaths: List<String>,
+    onOpenChanges: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.main_conflict_info_title)) },
+        text = {
+            if (conflictPaths.isEmpty()) {
+                Text(
+                    stringResource(
+                        if (state == RepoOperationState.REBASING) R.string.main_conflict_info_ready_rebase
+                        else R.string.main_conflict_info_ready_merge
+                    )
+                )
+            } else {
+                Column {
+                    Text(stringResource(R.string.main_conflict_info_resolve_hint))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyColumn(modifier = Modifier.heightIn(max = 240.dp)) {
+                        items(conflictPaths) { path ->
+                            Text(
+                                text = path,
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onOpenChanges) {
+                Text(stringResource(R.string.main_conflict_info_open_changes))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.commit_detail_close))
+            }
+        }
+    )
 }
 
 // Helper function to get graph config

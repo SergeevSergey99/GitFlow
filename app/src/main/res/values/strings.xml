@@ -229,6 +229,17 @@
     <!-- MainScreen -->
     <string name="main_screen_title">GitFlow</string>
     <string name="main_screen_repo_info">%1$s • %2$s</string>
+    <string name="main_conflict_merge">Merge · %1$d conflicts</string>
+    <string name="main_conflict_merge_ready">Merge ready — commit</string>
+    <string name="main_conflict_rebase">Rebase · %1$d conflicts</string>
+    <string name="main_conflict_rebase_ready">Rebase ready — continue</string>
+    <string name="main_conflict_abort">Abort</string>
+    <string name="main_conflict_continue">Continue</string>
+    <string name="main_conflict_info_title">Merge/rebase conflicts</string>
+    <string name="main_conflict_info_resolve_hint">Resolve these files in the Changes tab:</string>
+    <string name="main_conflict_info_ready_merge">All conflicts resolved. Commit in the Changes tab to finish the merge.</string>
+    <string name="main_conflict_info_ready_rebase">All conflicts resolved. Press Continue to finish the rebase.</string>
+    <string name="main_conflict_info_open_changes">Open Changes</string>
     <string name="main_screen_tab_repos">Repos</string>
     <string name="main_screen_tab_graph">Graph</string>
     <string name="main_screen_tab_changes">Changes</string>
