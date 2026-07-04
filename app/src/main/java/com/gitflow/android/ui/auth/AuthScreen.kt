@@ -21,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -28,6 +29,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import org.koin.androidx.compose.koinViewModel
+import com.gitflow.android.R
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitUser
 import com.gitflow.android.data.models.TokenInfo
@@ -49,6 +51,8 @@ fun AuthScreen(
     val localAuthorName by viewModel.localAuthorName.collectAsState()
     val localAuthorEmail by viewModel.localAuthorEmail.collectAsState()
 
+    val cancelledMessage = stringResource(R.string.auth_manage_cancelled)
+
     val oauthLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -60,7 +64,7 @@ fun AuthScreen(
                 viewModel.handleAuthCallback(provider, code, state)
             }
         } else {
-            val error = result.data?.getStringExtra(OAuthActivity.RESULT_ERROR) ?: "Авторизация отменена"
+            val error = result.data?.getStringExtra(OAuthActivity.RESULT_ERROR) ?: cancelledMessage
             viewModel.setError(error)
         }
     }
@@ -68,10 +72,10 @@ fun AuthScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Управление аккаунтами") },
+                title = { Text(stringResource(R.string.auth_manage_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.auth_back))
                     }
                 }
             )
@@ -108,7 +112,7 @@ fun AuthScreen(
             }
 
             Text(
-                text = "Подключите ваши Git аккаунты для доступа к частным репозиториям",
+                text = stringResource(R.string.auth_manage_subtitle),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -195,16 +199,13 @@ fun AuthScreen(
                             tint = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "Информация",
+                            text = stringResource(R.string.auth_info_title),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
                     }
                     Text(
-                        text = "• GitHub, GitLab и Bitbucket используют OAuth авторизацию\n" +
-                               "• Gitea и Azure DevOps используют Personal Access Token (PAT)\n" +
-                               "• Ваши токены доступа хранятся локально на устройстве\n" +
-                               "• Вы можете отключить аккаунт в любое время",
+                        text = stringResource(R.string.auth_info_body),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -272,7 +273,7 @@ fun AccountCard(
                         }
                     } else {
                         Text(
-                            text = "Не подключен",
+                            text = stringResource(R.string.auth_status_not_connected),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -290,23 +291,23 @@ fun AccountCard(
                         ) {
                             Icon(
                                 Icons.Default.CheckCircle,
-                                contentDescription = "Подключен",
+                                contentDescription = stringResource(R.string.auth_status_connected),
                                 tint = MaterialTheme.colorScheme.primary
                             )
                             TextButton(
                                 onClick = onLogout,
                                 enabled = !isLoading
                             ) {
-                                Text("Отключить")
+                                Text(stringResource(R.string.auth_disconnect))
                             }
                         }
                         // Token expiry badge (only for OAuth tokens with expiry)
                         if (tokenInfo != null && tokenInfo.status != TokenStatus.NEVER_EXPIRES) {
                             val (badgeColor, badgeText) = when (tokenInfo.status) {
-                                TokenStatus.VALID -> MaterialTheme.colorScheme.primaryContainer to "Токен активен"
+                                TokenStatus.VALID -> MaterialTheme.colorScheme.primaryContainer to stringResource(R.string.auth_token_active)
                                 TokenStatus.EXPIRING_SOON -> MaterialTheme.colorScheme.tertiaryContainer to
-                                    "Истекает через ${tokenInfo.minutesUntilExpiry}м"
-                                TokenStatus.EXPIRED -> MaterialTheme.colorScheme.errorContainer to "Истёк"
+                                    stringResource(R.string.auth_token_expires_in, tokenInfo.minutesUntilExpiry ?: 0L)
+                                TokenStatus.EXPIRED -> MaterialTheme.colorScheme.errorContainer to stringResource(R.string.auth_token_expired)
                                 TokenStatus.NEVER_EXPIRES -> MaterialTheme.colorScheme.primaryContainer to ""
                             }
                             if (badgeText.isNotEmpty()) {
@@ -328,7 +329,7 @@ fun AccountCard(
                     if (onLoginOAuth != null && onLoginPAT != null) {
                         // Both OAuth and PAT available (e.g. GitLab). The column must be width-
                         // bounded: fillMaxWidth buttons in an unweighted Row child would otherwise
-                        // grab all the space and squeeze the "Не подключен" text to one char per line.
+                        // grab all the space and squeeze the status text to one char per line.
                         Column(
                             modifier = Modifier.width(132.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -364,7 +365,7 @@ fun AccountCard(
                                     strokeWidth = 2.dp
                                 )
                             } else {
-                                Text("Подключить")
+                                Text(stringResource(R.string.auth_connect))
                             }
                         }
                     }
@@ -418,12 +419,12 @@ private fun LocalAuthorCard(
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Локальный автор",
+                        text = stringResource(R.string.auth_local_author),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Используется при коммитах когда аккаунт не определён",
+                        text = stringResource(R.string.auth_local_author_desc),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -433,8 +434,8 @@ private fun LocalAuthorCard(
             OutlinedTextField(
                 value = authorName,
                 onValueChange = onNameChanged,
-                label = { Text("Имя") },
-                placeholder = { Text("Иван Иванов") },
+                label = { Text(stringResource(R.string.auth_field_name)) },
+                placeholder = { Text(stringResource(R.string.auth_placeholder_name)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 leadingIcon = {
@@ -445,8 +446,8 @@ private fun LocalAuthorCard(
             OutlinedTextField(
                 value = authorEmail,
                 onValueChange = onEmailChanged,
-                label = { Text("Email") },
-                placeholder = { Text("ivan@example.com") },
+                label = { Text(stringResource(R.string.auth_field_email)) },
+                placeholder = { Text(stringResource(R.string.auth_placeholder_email)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 leadingIcon = {
@@ -489,14 +490,14 @@ private fun PATLoginDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text("Подключить ${providerDisplayName(provider)}")
+            Text(stringResource(R.string.auth_connect_provider, providerDisplayName(provider)))
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = instanceUrl,
                     onValueChange = { instanceUrl = it },
-                    label = { Text(when { isAzure -> "URL организации"; isGitLab -> "URL инстанса"; else -> "URL экземпляра" }) },
+                    label = { Text(when { isAzure -> stringResource(R.string.auth_pat_url_org); isGitLab -> stringResource(R.string.auth_pat_url_instance); else -> stringResource(R.string.auth_pat_url_generic) }) },
                     placeholder = {
                         Text(when { isAzure -> "https://dev.azure.com/myorg"; isGitLab -> "https://gitlab.example.com"; else -> "https://gitea.example.com" })
                     },
@@ -509,7 +510,7 @@ private fun PATLoginDialog(
                     OutlinedTextField(
                         value = username,
                         onValueChange = { username = it },
-                        label = { Text("Имя пользователя") },
+                        label = { Text(stringResource(R.string.auth_field_username)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
@@ -527,7 +528,7 @@ private fun PATLoginDialog(
                         IconButton(onClick = { patVisible = !patVisible }) {
                             Icon(
                                 if (patVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                contentDescription = if (patVisible) "Скрыть" else "Показать"
+                                contentDescription = if (patVisible) stringResource(R.string.auth_hide) else stringResource(R.string.auth_show)
                             )
                         }
                     }
@@ -535,9 +536,9 @@ private fun PATLoginDialog(
 
                 Text(
                     text = when {
-                        isAzure -> "Создайте PAT на: dev.azure.com → User settings → Personal access tokens"
-                        isGitLab -> "Создайте PAT на: ${instanceUrl.trimEnd('/')}/-/user_settings/personal_access_tokens"
-                        else -> "Создайте PAT на: ${instanceUrl.trimEnd('/')}/user/settings/applications"
+                        isAzure -> stringResource(R.string.auth_pat_hint_azure)
+                        isGitLab -> stringResource(R.string.auth_pat_hint_gitlab, instanceUrl.trimEnd('/'))
+                        else -> stringResource(R.string.auth_pat_hint_generic, instanceUrl.trimEnd('/'))
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -549,12 +550,12 @@ private fun PATLoginDialog(
                 onClick = { onConfirm(instanceUrl.trim(), username.trim(), pat.trim()) },
                 enabled = instanceUrl.isNotBlank() && pat.isNotBlank() && (isAzure || isGitLab || username.isNotBlank())
             ) {
-                Text("Подключить")
+                Text(stringResource(R.string.auth_connect))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Отмена")
+                Text(stringResource(R.string.auth_cancel))
             }
         }
     )

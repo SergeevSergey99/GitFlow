@@ -19,6 +19,9 @@ import kotlinx.coroutines.launch
 
 class RemoteRepositoriesViewModel(private val authManager: AuthManager) : ViewModel() {
 
+    private fun str(id: Int, vararg args: Any): String =
+        authManager.getContext().getString(id, *args)
+
     private val _repositories = MutableStateFlow<List<GitRemoteRepository>>(emptyList())
     val repositories: StateFlow<List<GitRemoteRepository>> = _repositories.asStateFlow()
 
@@ -48,7 +51,7 @@ class RemoteRepositoriesViewModel(private val authManager: AuthManager) : ViewMo
 
         when {
             providers.isEmpty() -> {
-                _errorMessage.value = "Необходимо авторизоваться в одном из Git-провайдеров. Перейдите в Настройки → Управление аккаунтами."
+                _errorMessage.value = str(R.string.remote_error_need_auth)
                 _isLoading.value = false
             }
             _selectedProvider.value == null || !providers.contains(_selectedProvider.value) -> {
@@ -60,13 +63,13 @@ class RemoteRepositoriesViewModel(private val authManager: AuthManager) : ViewMo
     fun selectProvider(provider: GitProvider) {
         try {
             if (!authManager.isAuthenticated(provider)) {
-                _errorMessage.value = "Необходимо авторизоваться в ${provider.name}"
+                _errorMessage.value = str(R.string.remote_error_need_auth_provider, provider.name)
                 return
             }
             _selectedProvider.value = provider
             loadRepositories(provider)
         } catch (e: Exception) {
-            _errorMessage.value = "Ошибка при выборе провайдера: ${e.message}"
+            _errorMessage.value = str(R.string.remote_error_select_provider, e.message ?: "")
         }
     }
 
@@ -82,7 +85,7 @@ class RemoteRepositoriesViewModel(private val authManager: AuthManager) : ViewMo
                 val repos = authManager.getRepositories(provider)
                 _repositories.value = repos.sortedByDescending { it.updatedAt }
             } catch (e: Exception) {
-                _errorMessage.value = "Ошибка загрузки репозиториев: ${e.message}"
+                _errorMessage.value = str(R.string.remote_error_load, e.message ?: "")
                 _repositories.value = emptyList()
             } finally {
                 _isLoading.value = false
@@ -107,7 +110,7 @@ class RemoteRepositoriesViewModel(private val authManager: AuthManager) : ViewMo
                     return@launch
                 }
                 val cloneUrl = authManager.getCloneUrl(repository)
-                    ?: throw Exception("Не удалось получить URL для клонирования")
+                    ?: throw Exception(str(R.string.remote_error_clone_url))
                 val started = CloneRepositoryService.start(
                     context = context,
                     repository = repository,
@@ -120,7 +123,7 @@ class RemoteRepositoriesViewModel(private val authManager: AuthManager) : ViewMo
                 }
                 onStarted()
             } catch (e: Exception) {
-                _errorMessage.value = "Ошибка клонирования: ${e.message}"
+                _errorMessage.value = str(R.string.remote_error_clone, e.message ?: "")
             } finally {
                 _isCloning.value = false
             }

@@ -988,7 +988,7 @@ class AuthManager(private val context: Context) {
     private fun normalizeAndValidateInstanceUrl(rawUrl: String, provider: GitProvider): String {
         var candidate = rawUrl.trim()
         if (candidate.isEmpty()) {
-            throw IllegalArgumentException("URL не может быть пустым")
+            throw IllegalArgumentException(context.getString(R.string.auth_url_empty))
         }
 
         if (!candidate.startsWith("http://", ignoreCase = true) &&
@@ -998,22 +998,22 @@ class AuthManager(private val context: Context) {
         }
 
         val uri = runCatching { URI(candidate) }.getOrNull()
-            ?: throw IllegalArgumentException("Некорректный URL")
+            ?: throw IllegalArgumentException(context.getString(R.string.auth_url_invalid))
 
         val scheme = uri.scheme?.lowercase() ?: ""
         if (scheme != "https" && scheme != "http") {
-            throw IllegalArgumentException("Поддерживаются только http/https URL")
+            throw IllegalArgumentException(context.getString(R.string.auth_url_scheme))
         }
 
         val host = uri.host?.takeIf { it.isNotBlank() }
-            ?: throw IllegalArgumentException("В URL отсутствует host")
+            ?: throw IllegalArgumentException(context.getString(R.string.auth_url_no_host))
 
         if (scheme == "http" && !isLocalHost(host)) {
-            throw IllegalArgumentException("Небезопасный http разрешён только для localhost")
+            throw IllegalArgumentException(context.getString(R.string.auth_url_insecure_http))
         }
 
         if (provider == GitProvider.AZURE_DEVOPS && uri.path.orEmpty().trim('/').isEmpty()) {
-            throw IllegalArgumentException("Для Azure DevOps укажите URL организации (например, https://dev.azure.com/myorg)")
+            throw IllegalArgumentException(context.getString(R.string.auth_url_azure_org))
         }
 
         return uri.toString().trimEnd('/')

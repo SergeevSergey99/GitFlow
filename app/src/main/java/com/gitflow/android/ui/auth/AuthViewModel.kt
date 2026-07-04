@@ -3,6 +3,7 @@ package com.gitflow.android.ui.auth
 import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitUser
@@ -17,6 +18,9 @@ class AuthViewModel(
     private val authManager: AuthManager,
     private val settingsManager: AppSettingsManager
 ) : ViewModel() {
+
+    private fun str(id: Int, vararg args: Any): String =
+        authManager.getContext().getString(id, *args)
 
     private val _githubUser = MutableStateFlow<GitUser?>(null)
     val githubUser: StateFlow<GitUser?> = _githubUser.asStateFlow()
@@ -99,7 +103,7 @@ class AuthViewModel(
             launchIntent(intent)
         } catch (e: Exception) {
             _isLoading.value = false
-            _errorMessage.value = "Ошибка запуска авторизации: ${e.message}"
+            _errorMessage.value = str(R.string.authvm_error_start, e.message ?: "")
         }
     }
 
@@ -113,10 +117,10 @@ class AuthViewModel(
                 if (result.success) {
                     setUserForProvider(provider, result.user)
                 } else {
-                    _errorMessage.value = result.error ?: "Ошибка авторизации"
+                    _errorMessage.value = result.error ?: str(R.string.authvm_error_auth)
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Ошибка обработки авторизации: ${e.message}"
+                _errorMessage.value = str(R.string.authvm_error_process, e.message ?: "")
             } finally {
                 _isLoading.value = false
                 currentProvider = null
@@ -134,10 +138,10 @@ class AuthViewModel(
                 if (result.success) {
                     setUserForProvider(provider, result.user)
                 } else {
-                    _errorMessage.value = result.error ?: "Ошибка проверки токена"
+                    _errorMessage.value = result.error ?: str(R.string.authvm_error_token_check_generic)
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Ошибка проверки токена: ${e.message}"
+                _errorMessage.value = str(R.string.authvm_error_token_check, e.message ?: "")
             } finally {
                 _isLoading.value = false
             }

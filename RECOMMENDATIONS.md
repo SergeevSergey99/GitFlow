@@ -205,11 +205,12 @@
   `RepositoryListViewModel`, `SettingsViewModel`, `CommitDetailViewModel` — единый
   `data class XxxUiState`; `AuthViewModel` и `RemoteRepositoriesViewModel` — россыпь
   отдельных `StateFlow`. Привести два последних к единому `UiState`-классу.
-- [ ] **Локализация: ~54 русских хардкода в 7 файлах** при живой инфраструктуре
-  `values/` + `values-ru/`: `AuthScreen.kt` (~24), `OAuthActivity.kt` (7), `CloneRepositoryService.kt` (6),
-  `AuthViewModel.kt` (5), `RemoteRepositoriesViewModel.kt` (6), `AuthManager.kt`
-  (`normalizeAndValidateInstanceUrl` — 5), `SettingsScreen.kt` (1). У пользователя с
-  английской локалью весь auth-флоу будет по-русски. Вынести в ресурсы (default — en).
+- [x] **Локализация auth-флоу** _(2026-07-04)_ Вынесены в `values/` + `values-ru/` все русские
+  хардкоды: `AuthScreen` (~24), `OAuthActivity` (7), `AuthViewModel` (5),
+  `RemoteRepositoriesViewModel` (6), `AuthManager.normalizeAndValidateInstanceUrl` (5),
+  `SettingsScreen` (1). Composable → `stringResource`; ViewModels/AuthManager → `getString`
+  (через `authManager.getContext()` / поле `context`). 6 строк в `CloneRepositoryService` —
+  это Timber-логи (не UI), намеренно не тронуты. Проверено: нет дублей ключей, наборы en/ru совпадают.
 - [x] **Форматирование дат/размеров — единый `ui/util/Formatters.kt`** _(2026-07-04)_
   `timeAgo` (был копипаст в `RepositoryCard` и `EnhancedGraphScreen`, причём в графе —
   нелокализованный английский), `formatDate`/`formatHistoryDate` (из `CommitDetailDialog`),

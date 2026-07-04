@@ -551,7 +551,7 @@ private fun AccountSection(
                         )
                     } else {
                         Text(
-                            text = "Автор не задан",
+                            text = stringResource(R.string.settings_author_not_set),
                             fontSize = 14.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

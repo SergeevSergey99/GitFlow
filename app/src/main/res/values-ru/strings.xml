@@ -542,5 +542,68 @@
     <string name="auth_notification_gitlab_expired">Сессия GitLab истекла. Нажмите, чтобы войти снова.</string>
     <string name="auth_notification_bitbucket_expired">Сессия Bitbucket истекла. Нажмите, чтобы войти снова.</string>
     <string name="auth_session_expired_banner">Сессия истекла. Пожалуйста, войдите снова.</string>
+
+    <!-- Account management screen -->
+    <string name="auth_manage_title">Управление аккаунтами</string>
+    <string name="auth_manage_subtitle">Подключите ваши Git аккаунты для доступа к частным репозиториям</string>
+    <string name="auth_manage_cancelled">Авторизация отменена</string>
+    <string name="auth_back">Назад</string>
+    <string name="auth_close">Закрыть</string>
+    <string name="auth_info_title">Информация</string>
+    <string name="auth_info_body">• GitHub, GitLab и Bitbucket используют OAuth авторизацию\n• Gitea и Azure DevOps используют Personal Access Token (PAT)\n• Ваши токены доступа хранятся локально на устройстве\n• Вы можете отключить аккаунт в любое время</string>
+    <string name="auth_status_not_connected">Не подключен</string>
+    <string name="auth_status_connected">Подключен</string>
+    <string name="auth_disconnect">Отключить</string>
+    <string name="auth_connect">Подключить</string>
+    <string name="auth_connect_provider">Подключить %1$s</string>
+    <string name="auth_token_active">Токен активен</string>
+    <string name="auth_token_expires_in">Истекает через %1$dм</string>
+    <string name="auth_token_expired">Истёк</string>
+    <string name="auth_local_author">Локальный автор</string>
+    <string name="auth_local_author_desc">Используется при коммитах когда аккаунт не определён</string>
+    <string name="auth_field_name">Имя</string>
+    <string name="auth_placeholder_name">Иван Иванов</string>
+    <string name="auth_field_email">Email</string>
+    <string name="auth_placeholder_email">ivan@example.com</string>
+    <string name="auth_field_username">Имя пользователя</string>
+    <string name="auth_pat_url_org">URL организации</string>
+    <string name="auth_pat_url_instance">URL инстанса</string>
+    <string name="auth_pat_url_generic">URL экземпляра</string>
+    <string name="auth_show">Показать</string>
+    <string name="auth_hide">Скрыть</string>
+    <string name="auth_pat_hint_azure">Создайте PAT на: dev.azure.com → User settings → Personal access tokens</string>
+    <string name="auth_pat_hint_gitlab">Создайте PAT на: %1$s/-/user_settings/personal_access_tokens</string>
+    <string name="auth_pat_hint_generic">Создайте PAT на: %1$s/user/settings/applications</string>
+    <string name="auth_cancel">Отмена</string>
+
+    <!-- OAuth WebView screen -->
+    <string name="oauth_title">Авторизация %1$s</string>
+    <string name="oauth_loading">Загрузка…</string>
+    <string name="oauth_error_load">Ошибка загрузки: %1$s</string>
+    <string name="oauth_error_auth">Ошибка авторизации: %1$s</string>
+    <string name="oauth_error_no_code">Не удалось получить код авторизации</string>
+
+    <!-- Auth / remote repositories messages -->
+    <string name="authvm_error_start">Ошибка запуска авторизации: %1$s</string>
+    <string name="authvm_error_auth">Ошибка авторизации</string>
+    <string name="authvm_error_process">Ошибка обработки авторизации: %1$s</string>
+    <string name="authvm_error_token_check_generic">Ошибка проверки токена</string>
+    <string name="authvm_error_token_check">Ошибка проверки токена: %1$s</string>
+    <string name="remote_error_need_auth">Необходимо авторизоваться в одном из Git-провайдеров. Перейдите в Настройки → Управление аккаунтами.</string>
+    <string name="remote_error_need_auth_provider">Необходимо авторизоваться в %1$s</string>
+    <string name="remote_error_select_provider">Ошибка при выборе провайдера: %1$s</string>
+    <string name="remote_error_load">Ошибка загрузки репозиториев: %1$s</string>
+    <string name="remote_error_clone_url">Не удалось получить URL для клонирования</string>
+    <string name="remote_error_clone">Ошибка клонирования: %1$s</string>
+
+    <!-- Instance URL validation -->
+    <string name="auth_url_empty">URL не может быть пустым</string>
+    <string name="auth_url_invalid">Некорректный URL</string>
+    <string name="auth_url_scheme">Поддерживаются только http/https URL</string>
+    <string name="auth_url_no_host">В URL отсутствует host</string>
+    <string name="auth_url_insecure_http">Небезопасный http разрешён только для localhost</string>
+    <string name="auth_url_azure_org">Для Azure DevOps укажите URL организации (например, https://dev.azure.com/myorg)</string>
+
+    <string name="settings_author_not_set">Автор не задан</string>
     <string name="auth_sign_in_button">Войти</string>
 </resources>

@@ -1,5 +1,6 @@
 package com.gitflow.android.ui.auth
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.net.http.SslError
@@ -20,7 +21,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.gitflow.android.R
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.ui.theme.GitFlowTheme
 
@@ -145,16 +148,16 @@ fun OAuthScreen(
                     GitProvider.BITBUCKET -> "Bitbucket"
                     else -> provider.name
                 }
-                Text("Авторизация $providerName")
+                Text(stringResource(R.string.oauth_title, providerName))
             },
             navigationIcon = {
                 IconButton(onClick = onClose) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.auth_back))
                 }
             },
             actions = {
                 IconButton(onClick = onClose) {
-                    Icon(Icons.Default.Close, contentDescription = "Закрыть")
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.auth_close))
                 }
             }
         )
@@ -176,7 +179,7 @@ fun OAuthScreen(
                                 // "gitflow://" scheme, which on some WebView versions raises
                                 // ERR_UNKNOWN_URL_SCHEME and aborts the whole flow.
                                 if (url.startsWith(redirectUri)) {
-                                    checkForAuthCode(url, redirectUri, expectedState, handleCode, handleError)
+                                    checkForAuthCode(context, url, redirectUri, expectedState, handleCode, handleError)
                                     return true
                                 }
 
@@ -198,7 +201,7 @@ fun OAuthScreen(
                                 // Fallback: some providers deliver the redirect via a full page
                                 // load rather than shouldOverrideUrlLoading. handleCode is idempotent.
                                 url?.let {
-                                    checkForAuthCode(it, redirectUri, expectedState, handleCode, handleError)
+                                    checkForAuthCode(context, it, redirectUri, expectedState, handleCode, handleError)
                                 }
                             }
 
@@ -218,7 +221,7 @@ fun OAuthScreen(
                                 // should surface as an auth error.
                                 if (request?.isForMainFrame != true) return
                                 isLoading = false
-                                handleError("Ошибка загрузки: ${error?.description}")
+                                handleError(context.getString(R.string.oauth_error_load, error?.description ?: ""))
                             }
 
                             override fun onReceivedSslError(
@@ -256,7 +259,7 @@ fun OAuthScreen(
                     ) {
                         CircularProgressIndicator()
                         Text(
-                            text = "Загрузка...",
+                            text = stringResource(R.string.oauth_loading),
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
@@ -267,6 +270,7 @@ fun OAuthScreen(
 }
 
 private fun checkForAuthCode(
+    context: Context,
     url: String,
     redirectUri: String,
     expectedState: String,
@@ -279,7 +283,7 @@ private fun checkForAuthCode(
         val error = uri.getQueryParameter("error")
         if (error != null) {
             val errorDescription = uri.getQueryParameter("error_description") ?: error
-            onError("Ошибка авторизации: $errorDescription")
+            onError(context.getString(R.string.oauth_error_auth, errorDescription))
             return
         }
 
@@ -293,7 +297,7 @@ private fun checkForAuthCode(
         if (code != null) {
             onCodeReceived(code, state)
         } else {
-            onError("Не удалось получить код авторизации")
+            onError(context.getString(R.string.oauth_error_no_code))
         }
     }
 }

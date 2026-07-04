@@ -542,5 +542,68 @@
     <string name="auth_notification_gitlab_expired">GitLab session expired. Tap to sign in again.</string>
     <string name="auth_notification_bitbucket_expired">Bitbucket session expired. Tap to sign in again.</string>
     <string name="auth_session_expired_banner">Session expired. Please sign in again.</string>
+
+    <!-- Account management screen -->
+    <string name="auth_manage_title">Account management</string>
+    <string name="auth_manage_subtitle">Connect your Git accounts to access private repositories</string>
+    <string name="auth_manage_cancelled">Authorization cancelled</string>
+    <string name="auth_back">Back</string>
+    <string name="auth_close">Close</string>
+    <string name="auth_info_title">Information</string>
+    <string name="auth_info_body">• GitHub, GitLab and Bitbucket use OAuth authorization\n• Gitea and Azure DevOps use a Personal Access Token (PAT)\n• Your access tokens are stored locally on the device\n• You can disconnect an account at any time</string>
+    <string name="auth_status_not_connected">Not connected</string>
+    <string name="auth_status_connected">Connected</string>
+    <string name="auth_disconnect">Disconnect</string>
+    <string name="auth_connect">Connect</string>
+    <string name="auth_connect_provider">Connect %1$s</string>
+    <string name="auth_token_active">Token active</string>
+    <string name="auth_token_expires_in">Expires in %1$dm</string>
+    <string name="auth_token_expired">Expired</string>
+    <string name="auth_local_author">Local author</string>
+    <string name="auth_local_author_desc">Used for commits when no account is set</string>
+    <string name="auth_field_name">Name</string>
+    <string name="auth_placeholder_name">John Appleseed</string>
+    <string name="auth_field_email">Email</string>
+    <string name="auth_placeholder_email">john@example.com</string>
+    <string name="auth_field_username">Username</string>
+    <string name="auth_pat_url_org">Organization URL</string>
+    <string name="auth_pat_url_instance">Instance URL</string>
+    <string name="auth_pat_url_generic">Instance URL</string>
+    <string name="auth_show">Show</string>
+    <string name="auth_hide">Hide</string>
+    <string name="auth_pat_hint_azure">Create a PAT at: dev.azure.com → User settings → Personal access tokens</string>
+    <string name="auth_pat_hint_gitlab">Create a PAT at: %1$s/-/user_settings/personal_access_tokens</string>
+    <string name="auth_pat_hint_generic">Create a PAT at: %1$s/user/settings/applications</string>
+    <string name="auth_cancel">Cancel</string>
+
+    <!-- OAuth WebView screen -->
+    <string name="oauth_title">Authorize %1$s</string>
+    <string name="oauth_loading">Loading…</string>
+    <string name="oauth_error_load">Load error: %1$s</string>
+    <string name="oauth_error_auth">Authorization error: %1$s</string>
+    <string name="oauth_error_no_code">Failed to get authorization code</string>
+
+    <!-- Auth / remote repositories messages -->
+    <string name="authvm_error_start">Error starting authorization: %1$s</string>
+    <string name="authvm_error_auth">Authorization error</string>
+    <string name="authvm_error_process">Error processing authorization: %1$s</string>
+    <string name="authvm_error_token_check_generic">Token verification error</string>
+    <string name="authvm_error_token_check">Token verification error: %1$s</string>
+    <string name="remote_error_need_auth">You must sign in to one of the Git providers. Go to Settings → Manage Accounts.</string>
+    <string name="remote_error_need_auth_provider">You must sign in to %1$s</string>
+    <string name="remote_error_select_provider">Error selecting provider: %1$s</string>
+    <string name="remote_error_load">Error loading repositories: %1$s</string>
+    <string name="remote_error_clone_url">Failed to get the clone URL</string>
+    <string name="remote_error_clone">Clone error: %1$s</string>
+
+    <!-- Instance URL validation -->
+    <string name="auth_url_empty">URL cannot be empty</string>
+    <string name="auth_url_invalid">Invalid URL</string>
+    <string name="auth_url_scheme">Only http/https URLs are supported</string>
+    <string name="auth_url_no_host">URL is missing a host</string>
+    <string name="auth_url_insecure_http">Insecure http is allowed only for localhost</string>
+    <string name="auth_url_azure_org">For Azure DevOps, specify the organization URL (e.g. https://dev.azure.com/myorg)</string>
+
+    <string name="settings_author_not_set">Author not set</string>
     <string name="auth_sign_in_button">Sign In</string>
 </resources>

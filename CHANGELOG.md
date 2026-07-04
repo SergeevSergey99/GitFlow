@@ -4,6 +4,11 @@
 
 ## 2026-07-04 (7)
 
+### Changed — локализация auth-флоу (P1.5)
+- ~48 русских хардкодов вынесены в `values/` + `values-ru/`: `AuthScreen`, `OAuthActivity`, `AuthViewModel`, `RemoteRepositoriesViewModel`, `AuthManager.normalizeAndValidateInstanceUrl`, `SettingsScreen`. Раньше у пользователя с английской локалью весь экран управления аккаунтами и ошибки авторизации были по-русски.
+- Composable → `stringResource`; ViewModels/AuthManager (нет Compose-контекста) → `getString` через `authManager.getContext()` / поле `context`. `OAuthActivity.checkForAuthCode` получил параметр `context` для локализации ошибок вне Composable.
+- Timber-логи в `CloneRepositoryService` оставлены как есть (не пользовательский текст).
+
 ### Changed — единый `ui/util/Formatters.kt` (P1.5)
 - `timeAgo` — вынесен из `RepositoryCard`/`EnhancedGraphScreen` (в графе был нелокализованный английский «5m ago»); теперь один локализованный `@Composable`.
 - `formatBytes` — свёл 4 копии (`formatSize`, `formatSizeForNotification`, `formatFileSize`, `formatRepositorySize`); попутно убраны хардкод-русские «МБ/ГБ» из уведомления клонирования и карточки remote-репо (теперь стандартные B/KB/MB/GB).
