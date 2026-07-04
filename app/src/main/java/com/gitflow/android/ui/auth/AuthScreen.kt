@@ -326,21 +326,26 @@ fun AccountCard(
                     }
                 } else {
                     if (onLoginOAuth != null && onLoginPAT != null) {
-                        // Both OAuth and PAT available (e.g. GitLab)
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        // Both OAuth and PAT available (e.g. GitLab). The column must be width-
+                        // bounded: fillMaxWidth buttons in an unweighted Row child would otherwise
+                        // grab all the space and squeeze the "Не подключен" text to one char per line.
+                        Column(
+                            modifier = Modifier.width(132.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
                             Button(
                                 onClick = onLoginOAuth,
                                 enabled = !isLoading,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("GitLab.com")
+                                Text("GitLab.com", maxLines = 1)
                             }
                             OutlinedButton(
                                 onClick = { showPATDialog = true },
                                 enabled = !isLoading,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Self-hosted")
+                                Text("Self-hosted", maxLines = 1)
                             }
                         }
                     } else {
