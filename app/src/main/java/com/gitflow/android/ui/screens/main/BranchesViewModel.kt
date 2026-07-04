@@ -85,7 +85,7 @@ class BranchesViewModel(
         runOp {
             when (val result = gitRepository.mergeBranch(repository, branch.name)) {
                 is GitResult.Success -> succeed("Merged ${branch.name} into current branch")
-                is GitResult.Failure.Conflict -> conflict("Merge conflicts — resolve them in Changes, then commit the merge")
+                is GitResult.Failure.Conflict -> conflict()
                 is GitResult.Failure -> fail(result.message)
             }
         }
@@ -95,7 +95,7 @@ class BranchesViewModel(
         runOp {
             when (val result = gitRepository.rebaseCurrentOnto(repository, branch.name)) {
                 is GitResult.Success -> succeed("Rebased current branch onto ${branch.name}")
-                is GitResult.Failure.Conflict -> conflict("Rebase paused on conflicts — resolve in Changes, then Continue")
+                is GitResult.Failure.Conflict -> conflict()
                 is GitResult.Failure -> fail(result.message)
             }
         }
@@ -105,7 +105,7 @@ class BranchesViewModel(
         runOp {
             when (val result = gitRepository.rebaseContinue(repository)) {
                 is GitResult.Success -> succeed("Rebase completed")
-                is GitResult.Failure.Conflict -> conflict("Still conflicts — resolve in Changes, then Continue")
+                is GitResult.Failure.Conflict -> conflict()
                 is GitResult.Failure -> fail(result.message)
             }
         }
@@ -152,9 +152,13 @@ class BranchesViewModel(
         _uiState.update { it.copy(message = msg, mutationSignal = it.mutationSignal + 1) }
     }
 
-    /** A conflict left an operation in progress: surface guidance and signal a state change. */
-    private fun conflict(msg: String) {
-        _uiState.update { it.copy(errorMessage = msg, mutationSignal = it.mutationSignal + 1) }
+    /**
+     * A conflict left an operation in progress. No message is set — the OperationBanner
+     * (driven by operationState from the follow-up loadBranches) already conveys it, and a
+     * second error card would be redundant. Just signal the host to re-check state.
+     */
+    private fun conflict() {
+        _uiState.update { it.copy(mutationSignal = it.mutationSignal + 1) }
     }
 
     private fun fail(msg: String) {

@@ -77,6 +77,8 @@ fun ChangesScreen(
     val scope = rememberCoroutineScope()
 
     var selectedDiff by remember { mutableStateOf<FileDiff?>(null) }
+    var diffOldLabel by remember { mutableStateOf<String?>(null) }
+    var diffNewLabel by remember { mutableStateOf<String?>(null) }
     var isDiffLoading by remember { mutableStateOf(false) }
     var diffError by remember { mutableStateOf<String?>(null) }
 
@@ -162,6 +164,19 @@ fun ChangesScreen(
             onFilesToggle = viewModel::toggleFiles,
             onDiscardFile = viewModel::discardFileChanges,
             onOpenFileDiff = { file ->
+                // For a conflicted file, label the two diff sides with the branch names
+                // (matching the resolve buttons); otherwise keep the generic Old/New.
+                if (file.hasConflicts && uiState.operationState != RepoOperationState.NONE) {
+                    diffOldLabel = uiState.conflictOursLabel
+                        ?.let { context.getString(R.string.changes_conflict_ours_label, it) }
+                        ?: context.getString(R.string.changes_conflict_ours_branch)
+                    diffNewLabel = uiState.conflictTheirsLabel
+                        ?.let { context.getString(R.string.changes_conflict_theirs_label, it) }
+                        ?: context.getString(R.string.changes_conflict_theirs_branch)
+                } else {
+                    diffOldLabel = null
+                    diffNewLabel = null
+                }
                 scope.launch {
                     isDiffLoading = true
                     diffError = null
@@ -204,7 +219,9 @@ fun ChangesScreen(
             canPush = uiState.canPush,
             pendingPushCommits = uiState.pendingPushCommits,
             pendingPullCommits = uiState.pendingPullCommits,
-            operationState = uiState.operationState
+            operationState = uiState.operationState,
+            oursBranchLabel = uiState.conflictOursLabel,
+            theirsBranchLabel = uiState.conflictTheirsLabel
         )
 
         // Push progress overlay
@@ -289,7 +306,9 @@ fun ChangesScreen(
     selectedDiff?.let { diff ->
         WorkingTreeDiffDialog(
             diff = diff,
-            onDismiss = { selectedDiff = null }
+            onDismiss = { selectedDiff = null },
+            oldLabel = diffOldLabel,
+            newLabel = diffNewLabel
         )
     }
 
@@ -335,7 +354,9 @@ private fun ChangesContent(
     canPush: Boolean,
     pendingPushCommits: Int,
     pendingPullCommits: Int,
-    operationState: RepoOperationState
+    operationState: RepoOperationState,
+    oursBranchLabel: String?,
+    theirsBranchLabel: String?
 ) {
     var isCommitSectionExpanded by rememberSaveable { mutableStateOf(true) }
     var isTreeView by rememberSaveable { mutableStateOf(false) }
@@ -409,7 +430,9 @@ private fun ChangesContent(
                             onOpenFileHistory = onOpenFileHistory,
                             onResolveConflict = onResolveConflict,
                             onAcceptOurs = onAcceptOurs,
-                            onAcceptTheirs = onAcceptTheirs
+                            onAcceptTheirs = onAcceptTheirs,
+                            oursBranchLabel = oursBranchLabel,
+                            theirsBranchLabel = theirsBranchLabel
                         )
                     }
 
@@ -572,6 +595,7 @@ private fun CommitSection(
                         Icon(
                             Icons.Default.Tune,
                             contentDescription = stringResource(R.string.changes_commit_details),
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -684,7 +708,9 @@ private fun FileChangesList(
     onOpenFileHistory: (String) -> Unit,
     onResolveConflict: (FileChange) -> Unit,
     onAcceptOurs: (FileChange) -> Unit,
-    onAcceptTheirs: (FileChange) -> Unit
+    onAcceptTheirs: (FileChange) -> Unit,
+    oursBranchLabel: String?,
+    theirsBranchLabel: String?
 ) {
     // Conflicted files get their own always-visible section on top: they block everything
     // else (commit, rebase continue) and must not be buried inside the unstaged list.
@@ -724,7 +750,9 @@ private fun FileChangesList(
                     },
                     onResolveConflict = { onResolveConflict(file) },
                     onAcceptOurs = { onAcceptOurs(file) },
-                    onAcceptTheirs = { onAcceptTheirs(file) }
+                    onAcceptTheirs = { onAcceptTheirs(file) },
+                    oursBranchLabel = oursBranchLabel,
+                    theirsBranchLabel = theirsBranchLabel
                 )
             }
         }
@@ -1148,7 +1176,9 @@ private fun FileChangeActionsMenu(
 @Composable
 private fun WorkingTreeDiffDialog(
     diff: FileDiff,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    oldLabel: String? = null,
+    newLabel: String? = null
 ) {
     var sideBySide by rememberSaveable(diff.path) { mutableStateOf(false) }
     Dialog(
@@ -1193,7 +1223,8 @@ private fun WorkingTreeDiffDialog(
                     }
                 }
                 HorizontalDivider()
-                if (sideBySide) SideBySideDiffView(diff) else UnifiedDiffView(diff)
+                if (sideBySide) SideBySideDiffView(diff, oldLabel = oldLabel, newLabel = newLabel)
+                else UnifiedDiffView(diff)
             }
         }
     }

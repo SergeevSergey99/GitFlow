@@ -629,7 +629,11 @@ fun UnifiedDiffView(diff: FileDiff) {
 }
 
 @Composable
-fun SideBySideDiffView(diff: FileDiff) {
+fun SideBySideDiffView(
+    diff: FileDiff,
+    oldLabel: String? = null,
+    newLabel: String? = null
+) {
     val horizontalScrollState = rememberScrollState()
 
     Row(modifier = Modifier.fillMaxSize()) {
@@ -644,7 +648,7 @@ fun SideBySideDiffView(diff: FileDiff) {
                 color = Color(0xFFF44336).copy(alpha = 0.1f)
             ) {
                 Text(
-                    text = stringResource(R.string.commit_detail_old),
+                    text = oldLabel ?: stringResource(R.string.commit_detail_old),
                     modifier = Modifier.padding(8.dp),
                     fontWeight = FontWeight.Medium,
                     fontSize = 12.sp
@@ -679,7 +683,7 @@ fun SideBySideDiffView(diff: FileDiff) {
                 color = Color(0xFF4CAF50).copy(alpha = 0.1f)
             ) {
                 Text(
-                    text = stringResource(R.string.commit_detail_new),
+                    text = newLabel ?: stringResource(R.string.commit_detail_new),
                     modifier = Modifier.padding(8.dp),
                     fontWeight = FontWeight.Medium,
                     fontSize = 12.sp

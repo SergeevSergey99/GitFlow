@@ -46,7 +46,14 @@ data class ChangesUiState(
     /** True if the last remote operation failed due to an expired session. */
     val needsReAuth: Boolean = false,
     /** In-progress merge/rebase whose conflicts must be resolved on this screen. */
-    val operationState: RepoOperationState = RepoOperationState.NONE
+    val operationState: RepoOperationState = RepoOperationState.NONE,
+    /**
+     * Label for the "keep current branch" side, already corrected for git's rebase inversion
+     * (during a rebase the current branch is the one being rebased, not the "onto" ref).
+     */
+    val conflictOursLabel: String? = null,
+    /** Label for the "take incoming" side. */
+    val conflictTheirsLabel: String? = null
 )
 
 class ChangesViewModel(
@@ -122,14 +129,25 @@ class ChangesViewModel(
         val files = gitRepository.getChangedFiles(repository)
         val refreshed = gitRepository.refreshRepository(repository)
         val pullCount = loadPendingPullCount()
-        val opState = gitRepository.getRepositoryState(repository)
+        val info = gitRepository.getConflictInfo(repository)
+        val opState = info.operation
+        // ConflictInfo uses source = the operation's subject branch, target = its base.
+        // "Keep current branch" = ours: for a merge that's the base (current branch); for a
+        // rebase git swaps sides, so ours is the subject (the branch being rebased).
+        val (oursLabel, theirsLabel) = if (opState == RepoOperationState.REBASING) {
+            info.sourceLabel to info.targetLabel
+        } else {
+            info.targetLabel to info.sourceLabel
+        }
         _uiState.update {
             it.copy(
                 changes = files,
                 canPush = refreshed?.hasRemoteOrigin ?: it.canPush,
                 pendingPushCommits = refreshed?.pendingPushCommits ?: it.pendingPushCommits,
                 pendingPullCommits = pullCount,
-                operationState = opState
+                operationState = opState,
+                conflictOursLabel = oursLabel,
+                conflictTheirsLabel = theirsLabel
             )
         }
         // During a merge, offer git's prepared message (.git/MERGE_MSG) so the user can

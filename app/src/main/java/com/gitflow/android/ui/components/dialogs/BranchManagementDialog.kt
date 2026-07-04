@@ -59,8 +59,11 @@ fun BranchManagementDialog(
     }
 
     // Re-read branch and merge/rebase state each time the dialog opens, so a merge/rebase
-    // resolved elsewhere (e.g. in the Changes screen) is reflected here on reopen.
+    // resolved/aborted elsewhere (Changes screen or the conflict header) is reflected here.
+    // Also drop any stale message from a previous session so it doesn't linger.
     LaunchedEffect(Unit) {
+        viewModel.clearError()
+        viewModel.clearMessage()
         viewModel.loadBranches()
     }
 

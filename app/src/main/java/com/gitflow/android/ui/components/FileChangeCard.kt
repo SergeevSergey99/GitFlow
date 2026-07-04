@@ -10,6 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
@@ -30,7 +31,11 @@ fun FileChangeCard(
     menuContent: (@Composable ColumnScope.() -> Unit)? = null,
     onResolveConflict: ((FileChange) -> Unit)? = null,
     onAcceptOurs: ((FileChange) -> Unit)? = null,
-    onAcceptTheirs: ((FileChange) -> Unit)? = null
+    onAcceptTheirs: ((FileChange) -> Unit)? = null,
+    /** Current branch name (ours) for the resolve buttons; null falls back to a generic label. */
+    oursBranchLabel: String? = null,
+    /** Incoming branch name (theirs) for the resolve buttons. */
+    theirsBranchLabel: String? = null
 ) {
     val statusColor = when (file.status) {
         ChangeStatus.ADDED -> Color(0xFF4CAF50)
@@ -101,11 +106,13 @@ fun FileChangeCard(
 
                     if (file.hasConflicts) {
                         Spacer(modifier = Modifier.height(8.dp))
-                        AssistChipRow(
+                        ConflictResolveActions(
                             conflictCount = file.conflictSections,
                             onResolveConflict = onResolveConflict,
                             onAcceptOurs = onAcceptOurs,
                             onAcceptTheirs = onAcceptTheirs,
+                            oursBranchLabel = oursBranchLabel,
+                            theirsBranchLabel = theirsBranchLabel,
                             file = file
                         )
                     }
@@ -125,14 +132,27 @@ fun FileChangeCard(
 }
 
 @Composable
-private fun AssistChipRow(
+private fun ConflictResolveActions(
     conflictCount: Int,
     onResolveConflict: ((FileChange) -> Unit)?,
     onAcceptOurs: ((FileChange) -> Unit)?,
     onAcceptTheirs: ((FileChange) -> Unit)?,
+    oursBranchLabel: String?,
+    theirsBranchLabel: String?,
     file: FileChange
 ) {
+    // Ours = current branch, theirs = the branch being merged/rebased in. Show the actual
+    // branch names when known so this matches the conflict header and the diff view.
+    val oursText = oursBranchLabel
+        ?.let { stringResource(R.string.changes_conflict_ours_label, it) }
+        ?: stringResource(R.string.file_change_accept_ours)
+    val theirsText = theirsBranchLabel
+        ?.let { stringResource(R.string.changes_conflict_theirs_label, it) }
+        ?: stringResource(R.string.file_change_accept_theirs)
+
+    // Single vertical layout so buttons keep a consistent width and don't skew.
     Column(
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text(
@@ -144,41 +164,37 @@ private fun AssistChipRow(
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.error
         )
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            onResolveConflict?.let { resolver ->
-                AssistChip(
-                    onClick = { resolver(file) },
-                    label = { Text(stringResource(R.string.file_change_show_conflicts)) },
-                    leadingIcon = {
-                        Icon(Icons.Default.Warning, contentDescription = null, modifier = Modifier.size(16.dp))
-                    }
-                )
+        onResolveConflict?.let { resolver ->
+            OutlinedButton(
+                onClick = { resolver(file) },
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Icon(Icons.Default.Warning, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(stringResource(R.string.file_change_show_conflicts))
             }
         }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            onAcceptOurs?.let { ours ->
-                FilledTonalButton(
-                    onClick = { ours(file) },
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    Icon(Icons.Default.Done, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(stringResource(R.string.file_change_accept_ours))
-                }
+        onAcceptOurs?.let { ours ->
+            FilledTonalButton(
+                onClick = { ours(file) },
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Icon(Icons.Default.Done, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(oursText, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            onAcceptTheirs?.let { theirs ->
-                OutlinedButton(
-                    onClick = { theirs(file) },
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(stringResource(R.string.file_change_accept_theirs))
-                }
+        }
+        onAcceptTheirs?.let { theirs ->
+            FilledTonalButton(
+                onClick = { theirs(file) },
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(theirsText, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
