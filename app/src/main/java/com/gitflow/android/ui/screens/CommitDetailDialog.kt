@@ -57,6 +57,9 @@ import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
 import com.gitflow.android.R
 import com.gitflow.android.ui.components.StartEllipsizedText
+import com.gitflow.android.ui.util.formatBytes
+import com.gitflow.android.ui.util.formatDate
+import com.gitflow.android.ui.util.formatHistoryDate
 import com.gitflow.android.data.models.*
 import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.data.settings.AppSettingsManager
@@ -1583,16 +1586,7 @@ fun VerticalDivider() {
     )
 }
 
-fun formatDate(timestamp: Long): String {
-    val sdf = SimpleDateFormat("EEEE, MMMM d, yyyy 'at' HH:mm:ss", Locale.getDefault())
-    return sdf.format(Date(timestamp))
-}
-
-fun formatHistoryDate(timestamp: Long): String {
-    if (timestamp <= 0L) return "--/--/-- --:--"
-    val sdf = SimpleDateFormat("dd/MM/yy HH:mm", Locale.getDefault())
-    return sdf.format(Date(timestamp))
-}
+// formatDate / formatHistoryDate moved to ui/util/Formatters.kt
 
 fun getFileIcon(fileName: String): androidx.compose.ui.graphics.vector.ImageVector {
     return when {
@@ -1627,13 +1621,7 @@ fun getFileIconColor(fileName: String): Color {
     }
 }
 
-fun formatFileSize(size: Long): String {
-    return when {
-        size < 1024 -> "$size B"
-        size < 1024 * 1024 -> "${size / 1024} KB"
-        else -> "${size / (1024 * 1024)} MB"
-    }
-}
+// formatFileSize moved to ui/util/Formatters.kt (formatBytes)
 
 @Composable
 fun FileTreeView(
@@ -2000,7 +1988,7 @@ fun FileTreeNodeItem(
 
                         if (node.type == FileTreeNodeType.FILE && node.size != null) {
                             Text(
-                                text = formatFileSize(node.size),
+                                text = formatBytes(node.size),
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -2258,7 +2246,7 @@ fun FileViewerDialog(
                                 )
                                 if (file.size != null) {
                                     Text(
-                                        text = formatFileSize(file.size),
+                                        text = formatBytes(file.size),
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                                     )

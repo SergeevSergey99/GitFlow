@@ -210,16 +210,14 @@
   `AuthViewModel.kt` (5), `RemoteRepositoriesViewModel.kt` (6), `AuthManager.kt`
   (`normalizeAndValidateInstanceUrl` — 5), `SettingsScreen.kt` (1). У пользователя с
   английской локалью весь auth-флоу будет по-русски. Вынести в ресурсы (default — en).
-- [ ] **Форматирование дат — 6+ реализаций.** Дубли: relative-формат в `RepositoryCard.kt:154`
-  и `EnhancedGraphScreen.kt:1333` (копипаст); свои форматы в `CommitDetailDialog.kt`
-  (три штуки: 1470, 1582, 1589), `ChangesScreen.kt:1447`, `RemoteRepositoriesScreen.kt:512`.
-  Создать `ui/util/Formatters.kt`: `relativeDate()`, `shortDate()`, `fullDate()` — и переиспользовать.
-  Отдельный баг в `RemoteRepositoriesScreen.formatDate`: ISO-строка с `'Z'` парсится через
-  `SimpleDateFormat` с локальной таймзоной → время смещено. На minSdk 26 доступен
-  `java.time.Instant.parse()` — использовать его.
-- [ ] **Форматирование размеров — 3 реализации:** `formatFileSize` (`CommitDetailDialog.kt:1626`),
-  `formatSize` (`CloneProgressOverlay.kt:240`), `formatSizeForNotification`
-  (`CloneRepositoryService.kt:428`). Свести в `Formatters.formatBytes()`.
+- [x] **Форматирование дат/размеров — единый `ui/util/Formatters.kt`** _(2026-07-04)_
+  `timeAgo` (был копипаст в `RepositoryCard` и `EnhancedGraphScreen`, причём в графе —
+  нелокализованный английский), `formatDate`/`formatHistoryDate` (из `CommitDetailDialog`),
+  `formatBytes` (свёл 4 реализации: `formatSize`, `formatSizeForNotification`, `formatFileSize`,
+  `formatRepositorySize` — три из них хардкодили русские «МБ/ГБ»), `isoToShortDate`.
+  **Фикс бага таймзоны:** `RemoteRepositoriesScreen.formatDate` парсил ISO `'Z'` как литерал в
+  локальной TZ → дата съезжала; теперь `Instant.parse` (UTC) + fallback на `OffsetDateTime`.
+  Остались 2 inline-формата (`CommitDetailDialog:1474`, `ChangesScreen:~1593`) — одноразовые, не дубли.
 - [ ] **Clipboard — два подхода + копипаст.** Системный `ClipboardManager` c дублированными
   блоками «copy file name / copy file path» в `CommitDetailDialog.kt:1208` и
   `ChangesScreen.kt:1018`; Compose `LocalClipboardManager` в `AddRepositoryDialog.kt`.

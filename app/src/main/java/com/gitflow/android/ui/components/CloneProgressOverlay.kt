@@ -32,8 +32,8 @@ import com.gitflow.android.data.repository.CloneProgressTracker
 import com.gitflow.android.data.repository.CloneStatus
 import com.gitflow.android.data.repository.CloneTaskState
 import com.gitflow.android.services.CloneRepositoryService
+import com.gitflow.android.ui.util.formatBytes
 import kotlin.math.roundToInt
-import java.util.Locale
 
 @Composable
 fun CloneProgressOverlay(
@@ -161,7 +161,7 @@ private fun CloneProgressCard(
 
                     state.approximateSize?.let { size ->
                         Text(
-                            text = stringResource(R.string.clone_progress_download, formatSize(size)),
+                            text = stringResource(R.string.clone_progress_download, formatBytes(size)),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                         )
@@ -185,7 +185,7 @@ private fun CloneProgressCard(
                     )
                     state.approximateSize?.let { size ->
                         Text(
-                            text = stringResource(R.string.clone_progress_downloaded, formatSize(size)),
+                            text = stringResource(R.string.clone_progress_downloaded, formatBytes(size)),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -237,11 +237,4 @@ private fun CloneProgressCard(
     }
 }
 
-private fun formatSize(sizeBytes: Long): String {
-    val megabytes = sizeBytes / 1024.0 / 1024.0
-    return if (megabytes >= 1024) {
-        String.format(Locale.getDefault(), "%.1f GB", megabytes / 1024.0)
-    } else {
-        String.format(Locale.getDefault(), "%.1f MB", megabytes)
-    }
-}
+// formatSize moved to ui/util/Formatters.kt (formatBytes)

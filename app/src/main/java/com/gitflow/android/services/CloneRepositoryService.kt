@@ -26,6 +26,7 @@ import com.gitflow.android.data.repository.CloneProgressCallback
 import com.gitflow.android.data.repository.CloneProgressTracker
 import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.data.settings.AppSettingsManager
+import com.gitflow.android.ui.util.formatBytes
 import org.koin.android.ext.android.inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,7 +37,6 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
-import java.util.Locale
 import kotlin.math.roundToInt
 
 class CloneRepositoryService : Service() {
@@ -192,7 +192,7 @@ class CloneRepositoryService : Service() {
 
         when (result) {
             is GitResult.Success -> {
-                val sizeText = approximateSize?.let { formatSizeForNotification(it) }
+                val sizeText = approximateSize?.let { formatBytes(it) }
                 val contentText = if (sizeText != null) {
                     getString(R.string.notification_clone_completed_with_size, repoName, sizeText)
                 } else {
@@ -428,13 +428,5 @@ class CloneRepositoryService : Service() {
             }
         }
 
-        private fun formatSizeForNotification(sizeBytes: Long): String {
-            val megabytes = sizeBytes / 1024.0 / 1024.0
-            return if (megabytes >= 1024) {
-                String.format(Locale.getDefault(), "%.1f ГБ", megabytes / 1024.0)
-            } else {
-                String.format(Locale.getDefault(), "%.1f МБ", megabytes)
-            }
-        }
     }
 }

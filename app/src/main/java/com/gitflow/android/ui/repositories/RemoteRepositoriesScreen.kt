@@ -32,8 +32,9 @@ import com.gitflow.android.ui.auth.providerDisplayName
 import com.gitflow.android.ui.auth.providerIcon
 import com.gitflow.android.ui.auth.providerIconColor
 import com.gitflow.android.ui.components.CloneProgressOverlay
+import com.gitflow.android.ui.util.formatBytes
+import com.gitflow.android.ui.util.isoToShortDate
 import java.io.File
-import java.text.SimpleDateFormat
 import java.util.*
 
 private const val SIZE_WARNING_THRESHOLD_BYTES = 50L * 1024L * 1024L
@@ -356,7 +357,7 @@ fun RepositoryCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = stringResource(R.string.remote_repos_updated, formatDate(repository.updatedAt)),
+                    text = stringResource(R.string.remote_repos_updated, isoToShortDate(repository.updatedAt)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -500,22 +501,7 @@ private fun shouldWarnAboutRepositorySize(sizeBytes: Long?): Boolean {
 private fun formatRepositorySize(sizeBytes: Long?): String? {
     val size = sizeBytes ?: return null
     if (size <= 0) return null
-
-    val megabytes = size / 1024.0 / 1024.0
-    return if (megabytes >= 1024) {
-        String.format(Locale.getDefault(), "%.1f ГБ", megabytes / 1024.0)
-    } else {
-        String.format(Locale.getDefault(), "%.1f МБ", megabytes)
-    }
+    return formatBytes(size)
 }
 
-private fun formatDate(dateString: String): String {
-    return try {
-        val inputFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault())
-        val outputFormat = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
-        val date = inputFormat.parse(dateString)
-        outputFormat.format(date ?: Date())
-    } catch (e: Exception) {
-        dateString
-    }
-}
+// formatDate(String) moved to ui/util/Formatters.kt (isoToShortDate — fixes the UTC 'Z' bug)

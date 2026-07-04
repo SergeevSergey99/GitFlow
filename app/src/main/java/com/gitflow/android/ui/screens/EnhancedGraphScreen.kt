@@ -75,6 +75,7 @@ import com.gitflow.android.data.models.GitResult
 import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.ui.config.GraphConfig
 import com.gitflow.android.ui.screens.main.EmptyStateMessage
+import com.gitflow.android.ui.util.timeAgo
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -1368,14 +1369,4 @@ private fun getBranchColor(branchName: String, darkTheme: Boolean): Color {
     return colors[index]
 }
 
-fun timeAgo(timestamp: Long): String {
-    val now = System.currentTimeMillis()
-    val diff = now - timestamp
-    return when {
-        diff < 60_000L -> "just now"
-        diff < 3_600_000L -> "${diff / 60_000L}m ago"
-        diff < 86_400_000L -> "${diff / 3_600_000L}h ago"
-        diff < 604_800_000L -> "${diff / 86_400_000L}d ago"
-        else -> SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date(timestamp))
-    }
-}
+// timeAgo moved to ui/util/Formatters.kt

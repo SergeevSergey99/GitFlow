@@ -17,8 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gitflow.android.R
 import com.gitflow.android.data.models.Repository
-import java.text.SimpleDateFormat
-import java.util.*
+import com.gitflow.android.ui.util.timeAgo
 
 @Composable
 fun RepositoryCard(
@@ -141,16 +140,4 @@ fun RepositoryCard(
     }
 }
 
-@Composable
-fun timeAgo(timestamp: Long): String {
-    val context = LocalContext.current
-    val now = System.currentTimeMillis()
-    val diff = now - timestamp
-    return when {
-        diff < 60_000L -> context.getString(R.string.repo_card_time_just_now)
-        diff < 3_600_000L -> context.getString(R.string.repo_card_time_minutes, diff / 60_000L)
-        diff < 86_400_000L -> context.getString(R.string.repo_card_time_hours, diff / 3_600_000L)
-        diff < 604_800_000L -> context.getString(R.string.repo_card_time_days, diff / 86_400_000L)
-        else -> SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date(timestamp))
-    }
-}
+// timeAgo moved to ui/util/Formatters.kt

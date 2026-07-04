@@ -2,6 +2,14 @@
 
 Все заметные изменения проекта фиксируются здесь.
 
+## 2026-07-04 (7)
+
+### Changed — единый `ui/util/Formatters.kt` (P1.5)
+- `timeAgo` — вынесен из `RepositoryCard`/`EnhancedGraphScreen` (в графе был нелокализованный английский «5m ago»); теперь один локализованный `@Composable`.
+- `formatBytes` — свёл 4 копии (`formatSize`, `formatSizeForNotification`, `formatFileSize`, `formatRepositorySize`); попутно убраны хардкод-русские «МБ/ГБ» из уведомления клонирования и карточки remote-репо (теперь стандартные B/KB/MB/GB).
+- `formatDate`/`formatHistoryDate` перенесены из `CommitDetailDialog`.
+- **Фикс бага таймзоны:** `isoToShortDate` (замена `RemoteRepositoriesScreen.formatDate`) — ISO `Z` теперь парсится как UTC через `java.time.Instant`, а не как локальный литерал через `SimpleDateFormat`; дата больше не съезжает у пользователей далеко от UTC. Fallback на `OffsetDateTime` для форматов с `+00:00`/микросекундами (Bitbucket).
+
 ## 2026-07-04 (6)
 
 ### Changed / Fixed — полировка конфликтного UI
