@@ -18,8 +18,14 @@
 - `TokenRefreshWorker`: добавлен constraint `NetworkType.CONNECTED`; политика `KEEP` → `UPDATE`, чтобы ограничение применилось и на уже установленных копиях. Больше не крутит retry в офлайне.
 - `CloneRepositoryService`: клонирование больше не прерывается при отсутствии `POST_NOTIFICATIONS`. `startForeground()` не требует этого разрешения; прогресс остаётся виден в приложении через `CloneProgressTracker`.
 
+### Added — Regression-тесты git-слоя (P1)
+- Зависимости для JVM-тестов: `robolectric:4.14.1`, `androidx.test:core:1.6.1`, `mockk:1.13.13`, `kotlinx-coroutines-test:1.10.2`; `testOptions.unitTests` в `build.gradle.kts`.
+- `GitRepositoryIndexTest` — stage (одиночный/`stageAll`), unstage, discard (tracked revert + untracked delete), commit (+ `NoStagedChanges`), amend, `getChangedFiles`, полный сценарий merge-конфликта (`getMergeConflicts` → `resolveConflict(OURS)` → commit). Реальный JGit-репозиторий во временной папке под Robolectric; идентичность коммита — из git config.
+- `GitRepositoryCredentialsTest` — host matching в `resolveCredentialsProvider`: точный хост и субдомен → credentials, **look-alike `github.com.attacker.com` → null** (регресс-тест на фикс P0.3), embedded userInfo, blank/unknown → null.
+- `RepositoryDataStore` corrupt-JSON тест отложен: `preferencesDataStore` — глобальный singleton-делегат, флаки под Robolectric без рефактора на инъекцию DataStore (см. `RECOMMENDATIONS.md`).
+
 ### Docs
-- `RECOMMENDATIONS.md` переписан: детальный план P0–P3 с пошаговыми инструкциями, аудит UI-консистентности (P1.5), план фич (merge/rebase, single-branch clone, PR/MR, SSH, blame).
+- `RECOMMENDATIONS.md` переписан: детальный план P0–P3 с пошаговыми инструкциями, аудит UI-консистентности (P1.5), план фич (merge/rebase, single-branch clone, PR/MR, SSH, blame); отмечены выполненные тесты.
 - `AUTH_ISSUES.md` — добавлены issue #13–#15 (утечка токена, R8, бэкап).
 
 ## 2026-02-25

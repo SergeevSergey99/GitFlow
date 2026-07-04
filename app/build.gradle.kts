@@ -45,6 +45,14 @@ android {
         compose = true
         buildConfig = true
     }
+    testOptions {
+        unitTests {
+            // Robolectric provides a real Context (with a temp filesystem) so DataStore-backed
+            // git-layer code can run as a plain JVM unit test.
+            isIncludeAndroidResources = true
+            isReturnDefaultValues = true
+        }
+    }
     // composeOptions block removed — not needed with Kotlin 2.0+ (org.jetbrains.kotlin.plugin.compose)
     packaging {
         resources {
@@ -129,6 +137,13 @@ dependencies {
     implementation("com.jakewharton.timber:timber:5.0.1")
 
     testImplementation("junit:junit:4.13.2")
+    // Robolectric-backed JVM unit tests for the git layer (real Context) + MockK for
+    // AuthManager/AppSettingsManager (final classes that can't be constructed under test
+    // because they touch the Android Keystore). JGit comes from the main classpath.
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test:core:1.6.1")
+    testImplementation("io.mockk:mockk:1.13.13")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2026.01.01"))

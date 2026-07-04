@@ -144,18 +144,29 @@
 
 ## P1 — надёжность и поддерживаемость
 
-### Тесты (regression, без эмулятора)
+### Тесты (regression, без эмулятора) — ЧАСТИЧНО ВЫПОЛНЕНО 2026-07-04
 
-Git-слой тестируется на JVM: JGit создаёт репозиторий во временной папке (`@TempDir`),
-`GitRepository*` файлы не зависят от Android API (кроме `Context` для DataStore — мокается
-или выносится). Сценарии:
+Подход: Robolectric даёт реальный `Context` (временная ФС для DataStore) + MockK для
+`AuthManager`/`AppSettingsManager` (final-классы, которые нельзя сконструировать в тесте
+из-за Keystore). Git-операции гоняются на реальном JGit-репозитории во временной папке
+(`TemporaryFolder`); идентичность коммита берётся из git config, поэтому моки в git-сценариях
+не участвуют. `@Config(manifest = Config.NONE)` важен — иначе Robolectric поднимет
+`GitFlowApplication.onCreate` (startKoin + WorkManager). Зависимости добавлены в `build.gradle.kts`.
 
-- [ ] single/batch stage/unstage (`GitRepositoryIndex`);
-- [ ] reset/discard file changes;
-- [ ] commit / amend;
-- [ ] merge с конфликтом → `getMergeConflicts` → resolve → commit;
-- [ ] `resolveCredentialsProvider`: матчинг хостов, поддельные хосты (см. P0.3), URL с userInfo;
-- [ ] `RepositoryDataStore`: битый JSON → backup + пустой список.
+- [x] single/batch stage/unstage (`GitRepositoryIndexTest`); _(2026-07-04)_
+- [x] reset/discard file changes (tracked → revert, untracked → delete); _(2026-07-04)_
+- [x] commit (+ NoStagedChanges) / amend; `getChangedFiles` классификация; _(2026-07-04)_
+- [x] merge с конфликтом → `getMergeConflicts` → `resolveConflict(OURS)` → commit; _(2026-07-04)_
+- [x] `resolveCredentialsProvider`: точный хост, субдомен, **поддельный хост → null** (P0.3), userInfo, blank; _(2026-07-04, `GitRepositoryCredentialsTest`)_
+- [ ] `RepositoryDataStore`: битый JSON → backup + пустой список. **Отложено:** `preferencesDataStore`
+  — приватный top-level singleton-делегат, кэшируется на весь JVM-процесс и привязывается к
+  filesDir первого теста → под Robolectric флаки. Нужен небольшой рефактор для тестируемости
+  (принимать `DataStore<Preferences>` или его директорию через конструктор), после чего тест
+  на `decodeRepositoriesOrNull` + backup-ключ пишется тривиально.
+
+> **Прогнать у себя:** `./gradlew testDebugUnitTest` (первый запуск Robolectric скачает
+> `android-all` для SDK 34). Проверить также, что версии `robolectric:4.14.1` / `mockk:1.13.13`
+> резолвятся в вашем окружении — при необходимости обновить.
 
 ### Прочее
 
