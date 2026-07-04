@@ -499,6 +499,14 @@ private fun CommitSection(
                 }
             }
 
+            val actions = listOf(
+                QuickAction(Icons.Default.DoneAll, stringResource(R.string.changes_stage_all), unstagedFiles.isNotEmpty() && !isBusy, 0, onStageAll),
+                QuickAction(Icons.Default.Archive, stringResource(R.string.changes_stash_button), !isBusy, 0, onStashOpen),
+                QuickAction(Icons.Default.Sync, stringResource(R.string.changes_fetch_button), canPush && !isBusy, 0, onFetch),
+                QuickAction(Icons.Default.CloudDownload, stringResource(R.string.changes_pull_button), canPush && !isBusy, pendingPullCommits, onPull),
+                QuickAction(Icons.Default.CloudUpload, stringResource(R.string.changes_push_short), canPush && pendingPushCommits > 0 && !isBusy, pendingPushCommits, onPush)
+            )
+
             if (showDetails) {
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
@@ -524,32 +532,33 @@ private fun CommitSection(
                         color = if (isAmendMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Labeled action grid (icon + name), 3 per row, so each action is self-explanatory.
-            val actions = listOf(
-                QuickAction(Icons.Default.DoneAll, stringResource(R.string.changes_stage_all), unstagedFiles.isNotEmpty() && !isBusy, 0, onStageAll),
-                QuickAction(Icons.Default.Archive, stringResource(R.string.changes_stash_button), !isBusy, 0, onStashOpen),
-                QuickAction(Icons.Default.Sync, stringResource(R.string.changes_fetch_button), canPush && !isBusy, 0, onFetch),
-                QuickAction(Icons.Default.CloudDownload, stringResource(R.string.changes_pull_button), canPush && !isBusy, pendingPullCommits, onPull),
-                QuickAction(Icons.Default.CloudUpload, stringResource(R.string.changes_push_short), canPush && pendingPushCommits > 0 && !isBusy, pendingPushCommits, onPush)
-            )
-            actions.chunked(3).forEach { rowActions ->
+                Spacer(modifier = Modifier.height(8.dp))
+                // Details mode: labeled table (icon + name), 3 per row.
+                actions.chunked(3).forEach { rowActions ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        rowActions.forEach { action ->
+                            LabeledActionCell(action = action, modifier = Modifier.weight(1f))
+                        }
+                        // Pad the short row so cells keep a consistent width.
+                        repeat(3 - rowActions.size) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
+            } else {
+                Spacer(modifier = Modifier.height(4.dp))
+                // Compact mode: icons only, spread out for comfortable spacing.
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    rowActions.forEach { action ->
-                        LabeledActionCell(action = action, modifier = Modifier.weight(1f))
-                    }
-                    // Pad the short row so cells keep a consistent width.
-                    repeat(3 - rowActions.size) {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
+                    actions.forEach { action -> CompactActionIcon(action = action) }
                 }
-                Spacer(modifier = Modifier.height(6.dp))
             }
 
             if (!canPush) {
@@ -585,6 +594,24 @@ private data class QuickAction(
     val badgeCount: Int,
     val onClick: () -> Unit
 )
+
+/** Icon-only action (compact mode) with an optional count badge. */
+@Composable
+private fun CompactActionIcon(action: QuickAction) {
+    IconButton(
+        onClick = action.onClick,
+        enabled = action.enabled,
+        modifier = Modifier.size(44.dp)
+    ) {
+        if (action.badgeCount > 0) {
+            BadgedBox(badge = { Badge { Text(action.badgeCount.toString(), fontSize = 9.sp) } }) {
+                Icon(action.icon, contentDescription = action.label, modifier = Modifier.size(22.dp))
+            }
+        } else {
+            Icon(action.icon, contentDescription = action.label, modifier = Modifier.size(22.dp))
+        }
+    }
+}
 
 /** One cell of the action grid: an icon (with optional count badge) above a short label. */
 @Composable

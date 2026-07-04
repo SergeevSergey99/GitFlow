@@ -287,8 +287,11 @@ fun MainScreen(navController: NavController) {
                 onDismiss = { showBranchDialog = false },
                 // Refresh the underlying repo state after a mutation, but let the dialog stay
                 // open — merge/rebase conflicts require the user to remain and act on them.
+                // A merge/rebase doesn't change Repository fields, so also re-check the
+                // operation state directly, otherwise the conflict header lags until a tab switch.
                 onBranchChanged = {
                     viewModel.refreshRepositories()
+                    viewModel.refreshOperationState()
                 }
             )
         }
