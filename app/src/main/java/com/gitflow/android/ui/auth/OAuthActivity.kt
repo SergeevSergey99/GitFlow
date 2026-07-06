@@ -1,32 +1,41 @@
 package com.gitflow.android.ui.auth
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.net.http.SslError
 import android.os.Bundle
-import android.webkit.SslErrorHandler
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.gitflow.android.R
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.ui.theme.GitFlowTheme
+import timber.log.Timber
 
+/**
+ * Hosts the OAuth authorization step in a Custom Tab (the device's real, fully-trusted
+ * browser) instead of an embedded WebView. This removes the whole class of WebView-trust
+ * issues (host allowlisting, JS/SSL settings, embedded-browser detection by providers) since
+ * the user authenticates in the actual browser they already trust, with its own address bar
+ * and certificate handling.
+ *
+ * Declared `launchMode="singleTask"` in the manifest, and reused for the OAuth redirect via
+ * the `.OAuthCallbackActivity` alias (`gitflow://oauth/...`, exported, BROWSABLE). This is the
+ * standard pattern for Custom-Tabs-based OAuth (also used by AppAuth): the same Activity
+ * instance that launched the tab is revisited via [onNewIntent] when the browser redirects
+ * back, rather than a new instance being created — so it can still fulfil the
+ * `startActivityForResult` contract [AuthViewModel]/[AuthScreen] are waiting on.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 class OAuthActivity : ComponentActivity() {
 
@@ -39,231 +48,120 @@ class OAuthActivity : ComponentActivity() {
         const val RESULT_CODE = "code"
         const val RESULT_STATE = "state"
         const val RESULT_ERROR = "error"
-
-        private val ALLOWED_HOSTS = setOf(
-            "github.com",
-            "gitlab.com",
-            "bitbucket.org"
-        )
-
-        internal fun isHostAllowed(host: String): Boolean {
-            return ALLOWED_HOSTS.any { host == it || host.endsWith(".$it") }
-        }
     }
+
+    private var authUrl: String = ""
+    private var redirectUri: String = ""
+    private var expectedState: String = ""
+    private var provider: GitProvider = GitProvider.GITHUB
+
+    private var customTabLaunched = false
+    private var redirectHandled = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val provider = intent.getStringExtra(EXTRA_PROVIDER)?.let {
-            GitProvider.valueOf(it)
-        } ?: run {
-            finish()
-            return
-        }
-
-        val authUrl = intent.getStringExtra(EXTRA_AUTH_URL) ?: run {
-            finish()
-            return
-        }
-
-        val redirectUri = intent.getStringExtra(EXTRA_REDIRECT_URI) ?: run {
-            finish()
-            return
-        }
-
-        val expectedState = intent.getStringExtra(EXTRA_STATE) ?: run {
-            finish()
-            return
-        }
+        provider = intent.getStringExtra(EXTRA_PROVIDER)?.let {
+            runCatching { GitProvider.valueOf(it) }.getOrNull()
+        } ?: return finishCancelled()
+        authUrl = intent.getStringExtra(EXTRA_AUTH_URL) ?: return finishCancelled()
+        redirectUri = intent.getStringExtra(EXTRA_REDIRECT_URI) ?: return finishCancelled()
+        expectedState = intent.getStringExtra(EXTRA_STATE) ?: return finishCancelled()
 
         setContent {
             GitFlowTheme {
-                OAuthScreen(
-                    provider = provider,
-                    authUrl = authUrl,
-                    redirectUri = redirectUri,
-                    expectedState = expectedState,
-                    onCodeReceived = { code, state ->
-                        val resultIntent = Intent().apply {
-                            putExtra(RESULT_CODE, code)
-                            putExtra(RESULT_STATE, state)
-                        }
-                        setResult(RESULT_OK, resultIntent)
-                        finish()
-                    },
-                    onError = { error ->
-                        val resultIntent = Intent().apply {
-                            putExtra(RESULT_ERROR, error)
-                        }
-                        setResult(RESULT_CANCELED, resultIntent)
-                        finish()
-                    },
-                    onClose = {
-                        setResult(RESULT_CANCELED)
-                        finish()
-                    }
+                OAuthWaitingScreen(
+                    providerName = providerDisplayName(provider),
+                    onCancel = { finishCancelled() }
                 )
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!customTabLaunched) {
+            // First time this Activity becomes visible: open the Custom Tab. Doing this here
+            // (rather than in onCreate) keeps it tied to actual visibility across OEM skins.
+            customTabLaunched = true
+            launchCustomTab()
+        } else if (!redirectHandled) {
+            // We're back on screen after the tab was shown, but onNewIntent never fired —
+            // the user backed out of the browser without completing sign-in.
+            finishCancelled()
+        }
+    }
+
+    private fun launchCustomTab() {
+        try {
+            CustomTabsIntent.Builder().build().launchUrl(this, Uri.parse(authUrl))
+        } catch (e: ActivityNotFoundException) {
+            Timber.w(e, "No browser available to launch OAuth Custom Tab")
+            finishWithError(getString(R.string.oauth_error_no_browser))
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        redirectHandled = true
+
+        // Guard defensively: the intent-filter only scopes on scheme+host, not the exact
+        // path, so make sure this is really our expected redirect before handling it —
+        // otherwise the Activity would be left stuck on the waiting screen forever.
+        val url = intent.data?.toString()
+        if (url == null || !url.startsWith(redirectUri)) return finishCancelled()
+        checkForAuthCode(
+            context = this,
+            url = url,
+            redirectUri = redirectUri,
+            expectedState = expectedState,
+            onCodeReceived = { code, state -> finishSuccess(code, state) },
+            onError = { message -> finishWithError(message) }
+        )
+    }
+
+    private fun finishSuccess(code: String, state: String) {
+        setResult(RESULT_OK, Intent().apply {
+            putExtra(RESULT_CODE, code)
+            putExtra(RESULT_STATE, state)
+        })
+        finish()
+    }
+
+    private fun finishWithError(message: String) {
+        setResult(RESULT_CANCELED, Intent().apply { putExtra(RESULT_ERROR, message) })
+        finish()
+    }
+
+    private fun finishCancelled() {
+        setResult(RESULT_CANCELED)
+        finish()
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun OAuthScreen(
-    provider: GitProvider,
-    authUrl: String,
-    redirectUri: String,
-    expectedState: String,
-    onCodeReceived: (code: String, state: String) -> Unit,
-    onError: (String) -> Unit,
-    onClose: () -> Unit
-) {
-    var isLoading by remember { mutableStateOf(true) }
-    val webViewRef = remember { mutableStateOf<WebView?>(null) }
-
-    // The redirect is detected in both shouldOverrideUrlLoading and onPageStarted (and errors
-    // can also arrive), so guard the terminal callbacks to fire exactly once.
-    val completed = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
-    val handleCode: (String, String) -> Unit = remember {
-        { code, state -> if (completed.compareAndSet(false, true)) onCodeReceived(code, state) }
-    }
-    val handleError: (String) -> Unit = remember {
-        { message -> if (completed.compareAndSet(false, true)) onError(message) }
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            webViewRef.value?.destroy()
-            webViewRef.value = null
-        }
-    }
-
+private fun OAuthWaitingScreen(providerName: String, onCancel: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
-            title = {
-                val providerName = when (provider) {
-                    GitProvider.GITHUB -> "GitHub"
-                    GitProvider.GITLAB -> "GitLab"
-                    GitProvider.BITBUCKET -> "Bitbucket"
-                    else -> provider.name
-                }
-                Text(stringResource(R.string.oauth_title, providerName))
-            },
-            navigationIcon = {
-                IconButton(onClick = onClose) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.auth_back))
-                }
-            },
+            title = { Text(stringResource(R.string.oauth_title, providerName)) },
             actions = {
-                IconButton(onClick = onClose) {
+                IconButton(onClick = onCancel) {
                     Icon(Icons.Default.Close, contentDescription = stringResource(R.string.auth_close))
                 }
             }
         )
-
-        Box(modifier = Modifier.fillMaxSize()) {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { context ->
-                    WebView(context).also { webViewRef.value = it }.apply {
-                        webViewClient = object : WebViewClient() {
-                            override fun shouldOverrideUrlLoading(
-                                view: WebView?,
-                                request: WebResourceRequest?
-                            ): Boolean {
-                                val url = request?.url?.toString() ?: return false
-
-                                // Intercept the OAuth redirect here and consume it. Returning
-                                // true stops the WebView from trying to load the custom
-                                // "gitflow://" scheme, which on some WebView versions raises
-                                // ERR_UNKNOWN_URL_SCHEME and aborts the whole flow.
-                                if (url.startsWith(redirectUri)) {
-                                    checkForAuthCode(context, url, redirectUri, expectedState, handleCode, handleError)
-                                    return true
-                                }
-
-                                val host = request.url?.host ?: return true
-                                if (!OAuthActivity.isHostAllowed(host)) {
-                                    return true // Block navigation to unknown hosts
-                                }
-                                return false
-                            }
-
-                            override fun onPageStarted(
-                                view: WebView?,
-                                url: String?,
-                                favicon: android.graphics.Bitmap?
-                            ) {
-                                super.onPageStarted(view, url, favicon)
-                                isLoading = true
-
-                                // Fallback: some providers deliver the redirect via a full page
-                                // load rather than shouldOverrideUrlLoading. handleCode is idempotent.
-                                url?.let {
-                                    checkForAuthCode(context, it, redirectUri, expectedState, handleCode, handleError)
-                                }
-                            }
-
-                            override fun onPageFinished(view: WebView?, url: String?) {
-                                super.onPageFinished(view, url)
-                                isLoading = false
-                            }
-
-                            override fun onReceivedError(
-                                view: WebView?,
-                                request: WebResourceRequest?,
-                                error: WebResourceError?
-                            ) {
-                                super.onReceivedError(view, request, error)
-                                // Ignore failures of sub-resources (favicons, analytics, ad
-                                // domains blocked by DNS filters). Only a main-frame failure
-                                // should surface as an auth error.
-                                if (request?.isForMainFrame != true) return
-                                isLoading = false
-                                handleError(context.getString(R.string.oauth_error_load, error?.description ?: ""))
-                            }
-
-                            override fun onReceivedSslError(
-                                view: WebView?,
-                                handler: SslErrorHandler?,
-                                error: SslError?
-                            ) {
-                                handler?.cancel()
-                                handleError("SSL error - connection not secure")
-                            }
-                        }
-
-                        settings.apply {
-                            javaScriptEnabled = true
-                            domStorageEnabled = true
-                            loadWithOverviewMode = true
-                            useWideViewPort = true
-                            allowFileAccess = false
-                            allowContentAccess = false
-                        }
-
-                        loadUrl(authUrl)
-                    }
-                }
-            )
-
-            if (isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        CircularProgressIndicator()
-                        Text(
-                            text = stringResource(R.string.oauth_loading),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                }
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                CircularProgressIndicator()
+                Text(
+                    text = stringResource(R.string.oauth_waiting_browser),
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
         }
     }

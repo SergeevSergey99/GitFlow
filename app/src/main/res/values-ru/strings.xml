@@ -600,8 +600,8 @@
 
     <!-- OAuth WebView screen -->
     <string name="oauth_title">Авторизация %1$s</string>
-    <string name="oauth_loading">Загрузка…</string>
-    <string name="oauth_error_load">Ошибка загрузки: %1$s</string>
+    <string name="oauth_waiting_browser">Ожидание браузера…</string>
+    <string name="oauth_error_no_browser">Не найден браузер для завершения входа</string>
     <string name="oauth_error_auth">Ошибка авторизации: %1$s</string>
     <string name="oauth_error_no_code">Не удалось получить код авторизации</string>
 

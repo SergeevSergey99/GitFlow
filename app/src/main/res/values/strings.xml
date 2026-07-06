@@ -600,8 +600,8 @@
 
     <!-- OAuth WebView screen -->
     <string name="oauth_title">Authorize %1$s</string>
-    <string name="oauth_loading">Loading…</string>
-    <string name="oauth_error_load">Load error: %1$s</string>
+    <string name="oauth_waiting_browser">Waiting for browser…</string>
+    <string name="oauth_error_no_browser">No browser found to complete sign-in</string>
     <string name="oauth_error_auth">Authorization error: %1$s</string>
     <string name="oauth_error_no_code">Failed to get authorization code</string>
 

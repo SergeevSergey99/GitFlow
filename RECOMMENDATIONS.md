@@ -19,6 +19,7 @@
 - [x] **P0.2** Backup/data-extraction rules + fallback пересоздания `EncryptedSharedPreferences` — нет краш-лупа после restore. _(2026-07-04)_
 - [x] **P0.3** Строгий `hostMatches` в `GitRepository`/`AuthManager` — нет утечки токена на look-alike хост. _(2026-07-04)_
 - [x] **P0.5** OAuth WebView: перехват redirect в `shouldOverrideUrlLoading`, `isForMainFrame`-guard в `onReceivedError`, идемпотентные callback'и. _(2026-07-04)_
+- [x] **P0.5** OAuth: миграция WebView → Custom Tabs + аудит логов/крашей на секреты (чисто). Остался только `client_secret`/Device Flow — требует бэкенд-решения. _(2026-07-04)_
 - [x] **P1** `TokenRefreshWorker` — сетевой constraint + `UPDATE`. _(2026-07-04)_
 - [x] **P1** `CloneRepositoryService` — не прерывает клон без `POST_NOTIFICATIONS`. _(2026-07-04)_
 - [x] **P2** Merge/rebase из `BranchManagementDialog` + конфликтный флоу в «Изменениях»: refresh при входе во вкладку, баннер операции (Continue/Abort), секция «Конфликты», префилл MERGE_MSG, флип ours/theirs при rebase. _(2026-07-04)_
@@ -133,14 +134,35 @@
   ```kotlin
   if (request?.isForMainFrame != true) return
   ```
-- [ ] **Средний срок — миграция на Custom Tabs.** `androidx.browser` уже в зависимостях,
-  `activity-alias` с `gitflow://oauth` уже экспортирован в манифесте — инфраструктура готова.
-  Custom Tabs снимает и вопрос доверия WebView, и риск блокировки embedded-браузеров провайдерами.
+- [x] **Миграция на Custom Tabs** _(2026-07-04)_ `OAuthActivity` больше не использует WebView.
+  Вместо него — `CustomTabsIntent` (реальный браузер устройства, свой адресный бар и проверка
+  сертификатов), плюс `launchMode="singleTask"` в манифесте: та же Activity-инстанция ловит
+  редирект через `onNewIntent` (via `.OAuthCallbackActivity` alias) вместо создания новой —
+  стандартный паттерн для OAuth+Custom Tabs (тот же, что использует AppAuth). Контракт
+  `startActivityForResult` в `AuthScreen`/`AuthViewModel` не изменился — миграция полностью
+  локализована в `OAuthActivity.kt` + манифесте.
+  `isHostAllowed`/allowlist хостов, JS/SSL-настройки WebView удалены как мёртвый код — весь
+  вопрос доверия к странице провайдера теперь на стороне браузера пользователя, а не нашего кода.
+  **Известное ограничение:** если процесс приложения убьётся, пока открыт браузер (редко, но
+  возможно на слабой памяти), возврат по deep link создаст новую Activity без сохранённого
+  `expectedState`/`redirectUri` — попытка входа тихо отменяется, нужно повторить логин.
+  Тот же класс ограничений есть у большинства мобильных OAuth+external-browser реализаций.
 - [ ] **`client_secret` в APK.** Секрет из `assets/oauth.properties` извлекается из любой сборки.
   PKCE есть, но GitHub/GitLab при наличии секрета опираются на него. Долгосрочные варианты:
-  GitHub Device Flow (без секрета) либо микро-бэкенд для обмена `code` → `token`.
+  GitHub Device Flow (без секрета) либо микро-бэкенд для обмена `code` → `token`. Оба требуют
+  либо смены OAuth-флоу у части провайдеров, либо серверной инфраструктуры — вне рамок
+  клиентского рефакторинга, требует отдельного решения о бэкенде.
   Минимум сейчас: не публиковать APK с боевым секретом; `oauth.properties` в `.gitignore` (уже сделано).
-- [ ] Проверить отсутствие секретов в логах auth/network и в crash-репортах.
+- [x] **Аудит секретов в логах/крашах** _(2026-07-04)_ — чисто, фиксацию не потребовало.
+  Ни один `Timber`-вызов в auth/network/repository-коде не интерполирует токен, код или секрет
+  (проверены все вызовы в `AuthManager`, `OAuthConfig`, `CloneRepositoryService`,
+  `TokenRefreshWorker`). `HttpLoggingInterceptor` — задекларированная, но нигде не подключённая
+  зависимость (в `buildRetrofit` интерсепторов нет) — тела запросов/ответов никогда не логируются.
+  JGit использует SLF4J без биндинга → его внутренние логи уходят в NOP, никуда не пишутся.
+  Crash-репортер (Crashlytics/Sentry/т.п.) в проекте не подключён — утекать некуда.
+  Единственный теоретический край: если пользователь вручную вставит URL с токеном в userinfo
+  (`https://token@host/...`), сообщение об ошибке транспорта может показать его на экране
+  (Snackbar) — это не лог/краш-репорт, а собственный экран пользователя; отдельно не чинил.
 
 ---
 

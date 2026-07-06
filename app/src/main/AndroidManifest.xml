@@ -31,11 +31,17 @@
             </intent-filter>
         </activity>
         
+        <!--
+          singleTask: the OAuth redirect (below, via the alias) must reach THIS SAME Activity
+          instance through onNewIntent rather than spawning a new one, so it can still fulfil
+          the startActivityForResult contract AuthScreen/AuthViewModel are waiting on.
+        -->
         <activity
             android:name=".ui.auth.OAuthActivity"
             android:exported="false"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.GitFlow" />
-            
+
         <!-- OAuth callback handling -->
         <activity-alias
             android:name=".OAuthCallbackActivity"

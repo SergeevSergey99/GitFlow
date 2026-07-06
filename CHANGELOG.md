@@ -2,6 +2,23 @@
 
 Все заметные изменения проекта фиксируются здесь.
 
+## 2026-07-04 (13)
+
+### Changed — миграция OAuth WebView → Custom Tabs (P0.5)
+- `OAuthActivity` больше не встраивает `WebView`. Вместо неё — `CustomTabsIntent`, открывающий реальный браузер устройства (свой адресный бар, HTTPS-индикация, обработка сертификатов) — снимает весь класс рисков «доверия к встроенному браузеру» (allowlist хостов, JS/SSL-настройки WebView, детектирование embedded-браузера некоторыми провайдерами).
+- `AndroidManifest.xml`: `OAuthActivity` получил `android:launchMode="singleTask"` — та же инстанция ловит редирект через `onNewIntent` (по уже существовавшему `.OAuthCallbackActivity` alias, `gitflow://oauth/...`), вместо создания новой Activity. Стандартный паттерн для OAuth поверх Custom Tabs (тот же, что использует AppAuth).
+- Контракт `startActivityForResult`, на котором стоят `AuthScreen`/`AuthViewModel`, не менялся — миграция полностью локализована в `OAuthActivity.kt` + манифесте, остальной auth-флоу не тронут.
+- Удалены как мёртвый код: `isHostAllowed`/allowlist хостов, JS/DOM storage/SSL-настройки WebView, `SslErrorHandler`.
+- Новые строки: `oauth_waiting_browser`, `oauth_error_no_browser`; убраны ставшие мёртвыми `oauth_loading`, `oauth_error_load`.
+- **Известное ограничение:** если процесс приложения убьётся, пока открыт браузер, возврат по deep link создаёт новую Activity без сохранённого `expectedState` — попытка входа молча отменяется, нужно повторить логин. Класс ограничений, общий для большинства мобильных OAuth+external-browser реализаций.
+
+### Verified — аудит секретов в логах/крашах (P0.5)
+- Проверены все `Timber`-вызовы в auth/network/repository-слоях (`AuthManager`, `OAuthConfig`, `CloneRepositoryService`, `TokenRefreshWorker`) — ни один не логирует токен/код/секрет.
+- `okhttp3:logging-interceptor` — задекларированная, но нигде не подключённая зависимость; `buildRetrofit` не добавляет интерсепторов вообще, тела запросов не логируются.
+- JGit пишет через SLF4J без биндинга → уходит в NOP-логгер, никуда не попадает.
+- Crash-репортер (Crashlytics/Sentry/ACRA/т.п.) в проекте не подключён.
+- Итог: чисто, фиксаций не потребовалось. Единственный теоретический край — ручной ввод URL с токеном в userinfo может показать его в сообщении об ошибке на экране (не лог/краш), не в scope этого пункта.
+
 ## 2026-07-04 (12)
 
 ### Added — push отдельной ветки (P2 #6)
