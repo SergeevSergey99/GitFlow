@@ -299,7 +299,7 @@
 
 ### 6. Мелочи
 
-- [ ] Rename ветки (`git.branchRename().setOldName().setNewName()`) — уже в backlog.
+- [x] Rename ветки — ✅ 2026-07-04. `renameBranch` в data-слое + пункт меню в `BranchManagementDialog` (работает и для текущей, и для других локальных веток; недоступно для remote).
 - [ ] Push отдельной ветки (`git.push().setRefSpecs(RefSpec("refs/heads/x:refs/heads/x"))`).
 - [ ] Per-app language: `android:localeConfig` в манифесте + `LocaleManager` на API 33+,
   текущий `attachBaseContext`-механизм оставить для API < 33. Fallback неизвестного

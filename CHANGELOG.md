@@ -2,6 +2,13 @@
 
 Все заметные изменения проекта фиксируются здесь.
 
+## 2026-07-04 (11)
+
+### Added — переименование веток (P2 #6)
+- `IGitRepository.renameBranch(repo, oldName, newName)` + `GitRepositoryBranches.renameBranchImpl` через `git.branchRename()`; понятная ошибка при существующем имени (`RefAlreadyExistsException`).
+- `BranchesViewModel.renameBranch(branch, newName)` по стандартному паттерну `runOp`.
+- В `BranchManagementDialog`: пункт «Rename branch» в контекстном меню (⋮) — теперь доступно и для **текущей** ветки (раньше меню у текущей ветки не показывалось вовсе), только для локальных веток. Диалог переименования — поле с текущим именем, кнопка подтверждения активна только при непустом и отличающемся от исходного имени.
+
 ## 2026-07-04 (10)
 
 ### Changed — Reset с выбором режима (Soft/Mixed/Hard)

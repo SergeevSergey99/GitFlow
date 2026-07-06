@@ -203,6 +203,27 @@ internal suspend fun GitRepository.deleteBranchImpl(
     }
 }
 
+internal suspend fun GitRepository.renameBranchImpl(
+    repository: Repository,
+    oldName: String,
+    newName: String
+): GitResult<Unit> = withContext(Dispatchers.IO) {
+    try {
+        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
+        git.use { g ->
+            // oldName always refers to a local branch ref — renaming works whether or not
+            // it's the currently checked-out one (JGit updates HEAD's symref accordingly).
+            g.branchRename().setOldName(oldName).setNewName(newName).call()
+        }
+        refreshRepository(repository)
+        GitResult.Success(Unit)
+    } catch (e: RefAlreadyExistsException) {
+        GitResult.Failure.Generic("Branch '$newName' already exists")
+    } catch (e: Exception) {
+        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+    }
+}
+
 internal suspend fun GitRepository.fetchImpl(repository: Repository): GitResult<Unit> = withContext(Dispatchers.IO) {
     try {
         val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")

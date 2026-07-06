@@ -49,6 +49,7 @@ fun BranchManagementDialog(
     var branchToDelete by remember { mutableStateOf<Branch?>(null) }
     var mergeTarget by remember { mutableStateOf<Branch?>(null) }
     var rebaseTarget by remember { mutableStateOf<Branch?>(null) }
+    var renameTarget by remember { mutableStateOf<Branch?>(null) }
 
     // Refresh the host repo state after any successful mutation, but keep the dialog open —
     // conflicts from merge/rebase need the user to stay here (and then resolve in Changes).
@@ -247,7 +248,8 @@ fun BranchManagementDialog(
                                     onCheckout = { viewModel.checkoutBranch(branch) },
                                     onDelete = { branchToDelete = branch },
                                     onMerge = { mergeTarget = branch },
-                                    onRebase = { rebaseTarget = branch }
+                                    onRebase = { rebaseTarget = branch },
+                                    onRename = { renameTarget = branch }
                                 )
                             }
                         }
@@ -271,7 +273,8 @@ fun BranchManagementDialog(
                                     onCheckout = { viewModel.checkoutBranch(branch) },
                                     onDelete = null,
                                     onMerge = { mergeTarget = branch },
-                                    onRebase = { rebaseTarget = branch }
+                                    onRebase = { rebaseTarget = branch },
+                                    onRename = null
                                 )
                             }
                         }
@@ -380,6 +383,18 @@ fun BranchManagementDialog(
             onDismiss = { rebaseTarget = null }
         )
     }
+
+    // Rename branch dialog
+    renameTarget?.let { branch ->
+        RenameBranchDialog(
+            currentName = branch.name,
+            onConfirm = { newName ->
+                viewModel.renameBranch(branch, newName)
+                renameTarget = null
+            },
+            onDismiss = { renameTarget = null }
+        )
+    }
 }
 
 @Composable
@@ -400,7 +415,9 @@ private fun BranchRow(
     onCheckout: () -> Unit,
     onDelete: (() -> Unit)?,
     onMerge: () -> Unit,
-    onRebase: () -> Unit
+    onRebase: () -> Unit,
+    /** Non-null for local branches only (renaming a remote-tracking ref doesn't make sense here). */
+    onRename: (() -> Unit)?
 ) {
     val isCurrent = branch.name == currentBranch
     var menuExpanded by remember { mutableStateOf(false) }
@@ -454,7 +471,9 @@ private fun BranchRow(
                 modifier = Modifier.size(20.dp)
             )
         }
-        if (!isCurrent) {
+        // Show the menu whenever there's at least one applicable action: Rename works even on
+        // the current branch, while Merge/Rebase/Delete only make sense for other branches.
+        if (onRename != null || !isCurrent) {
             Box {
                 IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(32.dp)) {
                     Icon(
@@ -467,43 +486,57 @@ private fun BranchRow(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false }
                 ) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.branches_action_merge)) },
-                        onClick = {
-                            menuExpanded = false
-                            onMerge()
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.branches_action_rebase)) },
-                        onClick = {
-                            menuExpanded = false
-                            onRebase()
-                        }
-                    )
-                    // Delete is available for local branches only.
-                    val delete = onDelete
-                    if (branch.isLocal && delete != null) {
-                        HorizontalDivider()
+                    onRename?.let { rename ->
                         DropdownMenuItem(
-                            text = {
-                                Text(
-                                    stringResource(R.string.branches_action_delete),
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            },
+                            text = { Text(stringResource(R.string.branches_action_rename)) },
                             leadingIcon = {
-                                Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.error
-                                )
+                                Icon(Icons.Default.Edit, contentDescription = null)
                             },
                             onClick = {
                                 menuExpanded = false
-                                delete()
+                                rename()
                             }
                         )
+                    }
+                    if (!isCurrent) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.branches_action_merge)) },
+                            onClick = {
+                                menuExpanded = false
+                                onMerge()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.branches_action_rebase)) },
+                            onClick = {
+                                menuExpanded = false
+                                onRebase()
+                            }
+                        )
+                        // Delete is available for local branches only.
+                        val delete = onDelete
+                        if (branch.isLocal && delete != null) {
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        stringResource(R.string.branches_action_delete),
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    delete()
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -571,6 +604,44 @@ private fun MergeRebaseConfirmDialog(
         text = { Text(text) },
         confirmButton = {
             Button(onClick = onConfirm) {
+                Text(stringResource(R.string.branches_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.graph_commit_cancel))
+            }
+        }
+    )
+}
+
+@Composable
+private fun RenameBranchDialog(
+    currentName: String,
+    onConfirm: (newName: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var newName by remember { mutableStateOf(currentName) }
+    val trimmed = newName.trim()
+    val isValid = trimmed.isNotBlank() && trimmed != currentName
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.branches_rename_title)) },
+        text = {
+            OutlinedTextField(
+                value = newName,
+                onValueChange = { newName = it },
+                label = { Text(stringResource(R.string.branches_rename_label)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(trimmed) },
+                enabled = isValid
+            ) {
                 Text(stringResource(R.string.branches_confirm))
             }
         },

@@ -200,6 +200,7 @@ class GitRepository(
     override suspend fun checkoutBranch(repository: Repository, branchName: String, isLocal: Boolean): GitResult<Unit> = checkoutBranchImpl(repository, branchName, isLocal)
     override suspend fun createBranch(repository: Repository, branchName: String, checkout: Boolean): GitResult<Unit> = createBranchImpl(repository, branchName, checkout)
     override suspend fun deleteBranch(repository: Repository, branchName: String, force: Boolean): GitResult<Unit> = deleteBranchImpl(repository, branchName, force)
+    override suspend fun renameBranch(repository: Repository, oldName: String, newName: String): GitResult<Unit> = renameBranchImpl(repository, oldName, newName)
     override suspend fun mergeBranch(repository: Repository, branchName: String): GitResult<Unit> = mergeBranchImpl(repository, branchName)
     override suspend fun abortMerge(repository: Repository): GitResult<Unit> = abortMergeImpl(repository)
     override suspend fun rebaseCurrentOnto(repository: Repository, branchName: String): GitResult<Unit> = rebaseCurrentOntoImpl(repository, branchName)

@@ -431,6 +431,9 @@
     <string name="branches_action_merge">Влить в текущую</string>
     <string name="branches_action_rebase">Rebase текущей на эту</string>
     <string name="branches_action_delete">Удалить ветку</string>
+    <string name="branches_action_rename">Переименовать ветку</string>
+    <string name="branches_rename_title">Переименовать ветку</string>
+    <string name="branches_rename_label">Новое имя</string>
     <string name="branches_confirm">Подтвердить</string>
     <string name="branches_merge_confirm_title">Слить ветку?</string>
     <string name="branches_merge_confirm_text">Влить «%1$s» в текущую ветку «%2$s»?</string>

@@ -81,6 +81,17 @@ class BranchesViewModel(
         }
     }
 
+    fun renameBranch(branch: Branch, newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isBlank() || trimmed == branch.name) return
+        runOp {
+            when (val result = gitRepository.renameBranch(repository, branch.name, trimmed)) {
+                is GitResult.Success -> succeed("Branch renamed to $trimmed")
+                is GitResult.Failure -> fail(result.message)
+            }
+        }
+    }
+
     fun mergeBranch(branch: Branch) {
         runOp {
             when (val result = gitRepository.mergeBranch(repository, branch.name)) {
