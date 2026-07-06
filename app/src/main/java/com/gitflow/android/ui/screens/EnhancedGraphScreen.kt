@@ -72,6 +72,7 @@ import com.gitflow.android.R
 import com.gitflow.android.data.models.Commit
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.models.GitResult
+import com.gitflow.android.data.models.ResetMode
 import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.ui.config.GraphConfig
 import com.gitflow.android.ui.screens.main.EmptyStateMessage
@@ -404,17 +405,52 @@ fun EnhancedGraphView(
 
     when (val dialogState = pendingDialog) {
         is CommitActionDialog.Reset -> {
+            // Mixed is git's own default `reset` behavior — safer to default to than Hard,
+            // since it doesn't discard any working-tree changes.
+            var selectedMode by remember(dialogState) { mutableStateOf(ResetMode.MIXED) }
+            val confirmMessageRes = when (selectedMode) {
+                ResetMode.SOFT -> R.string.graph_commit_reset_confirm_message_soft
+                ResetMode.MIXED -> R.string.graph_commit_reset_confirm_message_mixed
+                ResetMode.HARD -> R.string.graph_commit_reset_confirm_message_hard
+            }
             AlertDialog(
                 onDismissRequest = { if (!isOperationRunning) pendingDialog = null },
                 title = { Text(stringResource(R.string.graph_commit_reset_confirm_title)) },
                 text = {
-                    Text(
-                        text = stringResource(
-                            R.string.graph_commit_reset_confirm_message,
-                            currentBranchName,
-                            dialogState.commit.hash.take(7)
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            text = stringResource(
+                                confirmMessageRes,
+                                currentBranchName,
+                                dialogState.commit.hash.take(7)
+                            )
                         )
-                    )
+                        Column {
+                            Text(
+                                text = stringResource(R.string.graph_commit_reset_mode_label),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            ResetModeOption(
+                                selected = selectedMode == ResetMode.SOFT,
+                                titleRes = R.string.graph_commit_reset_mode_soft_title,
+                                descriptionRes = R.string.graph_commit_reset_mode_soft_desc,
+                                onSelect = { selectedMode = ResetMode.SOFT }
+                            )
+                            ResetModeOption(
+                                selected = selectedMode == ResetMode.MIXED,
+                                titleRes = R.string.graph_commit_reset_mode_mixed_title,
+                                descriptionRes = R.string.graph_commit_reset_mode_mixed_desc,
+                                onSelect = { selectedMode = ResetMode.MIXED }
+                            )
+                            ResetModeOption(
+                                selected = selectedMode == ResetMode.HARD,
+                                titleRes = R.string.graph_commit_reset_mode_hard_title,
+                                descriptionRes = R.string.graph_commit_reset_mode_hard_desc,
+                                onSelect = { selectedMode = ResetMode.HARD }
+                            )
+                        }
+                    }
                 },
                 confirmButton = {
                     TextButton(
@@ -428,7 +464,7 @@ fun EnhancedGraphView(
                                     dialogState.commit.hash.take(7)
                                 )
                             ) {
-                                gitRepository.hardResetToCommit(repository, dialogState.commit.hash)
+                                gitRepository.resetToCommit(repository, dialogState.commit.hash, selectedMode)
                             }
                         }
                     ) {
@@ -848,6 +884,35 @@ private fun CommitActionListItem(
             .alpha(if (enabled) 1f else 0.5f)
             .clickable(enabled = enabled) { onClick() }
     )
+}
+
+/** One row of the reset-mode selector: radio button + title + short explanation. */
+@Composable
+private fun ResetModeOption(
+    selected: Boolean,
+    titleRes: Int,
+    descriptionRes: Int,
+    onSelect: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { onSelect() }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(selected = selected, onClick = onSelect)
+        Spacer(modifier = Modifier.width(4.dp))
+        Column {
+            Text(text = stringResource(titleRes), style = MaterialTheme.typography.bodyMedium)
+            Text(
+                text = stringResource(descriptionRes),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
 }
 
 private sealed class CommitActionDialog {

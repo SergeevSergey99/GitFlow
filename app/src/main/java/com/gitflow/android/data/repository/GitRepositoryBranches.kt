@@ -295,11 +295,16 @@ internal suspend fun GitRepository.pushWithProgressImpl(
     }
 }
 
-internal suspend fun GitRepository.hardResetToCommitImpl(repository: Repository, commitHash: String): GitResult<Unit> = withContext(Dispatchers.IO) {
+internal suspend fun GitRepository.resetToCommitImpl(repository: Repository, commitHash: String, mode: ResetMode): GitResult<Unit> = withContext(Dispatchers.IO) {
     try {
         val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
+        val jgitMode = when (mode) {
+            ResetMode.SOFT -> ResetCommand.ResetType.SOFT
+            ResetMode.MIXED -> ResetCommand.ResetType.MIXED
+            ResetMode.HARD -> ResetCommand.ResetType.HARD
+        }
         git.use { g ->
-            g.reset().setRef(commitHash).setMode(ResetCommand.ResetType.HARD).call()
+            g.reset().setRef(commitHash).setMode(jgitMode).call()
         }
         refreshRepository(repository)
         GitResult.Success(Unit)

@@ -2,6 +2,13 @@
 
 Все заметные изменения проекта фиксируются здесь.
 
+## 2026-07-04 (10)
+
+### Changed — Reset с выбором режима (Soft/Mixed/Hard)
+- Действие в графе переименовано из «Hard reset» в «Reset». По клику открывается тот же диалог подтверждения, но теперь с выбором режима (radio-группа с описанием под каждым): Soft — изменения остаются в Stage; Mixed — остаются, но не в Stage; Hard — отбрасываются полностью. По умолчанию выбран Mixed (штатное поведение `git reset` без флагов) — безопаснее, чем раньше подразумевавшийся Hard.
+- Текст предупреждения меняется вместе с выбором режима: для Soft/Mixed — «изменения сохранятся», для Hard — «изменения будут безвозвратно потеряны».
+- Data-слой: `IGitRepository.hardResetToCommit(repo, hash)` заменён на `resetToCommit(repo, hash, mode: ResetMode)`; новый enum `ResetMode` (SOFT/MIXED/HARD) маппится на `ResetCommand.ResetType` в JGit. Единственный вызывающий код (`EnhancedGraphScreen`) обновлён.
+
 ## 2026-07-04 (9)
 
 ### Added — просмотр Pull/Merge Requests (P2 #3)

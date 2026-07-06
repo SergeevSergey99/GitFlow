@@ -33,7 +33,7 @@ interface IGitRepository {
     suspend fun getMergeConflict(repository: Repository, path: String): MergeConflict?
     suspend fun resolveConflict(repository: Repository, path: String, strategy: ConflictResolutionStrategy): GitResult<Unit>
     suspend fun resolveConflictWithContent(repository: Repository, path: String, resolvedContent: String): GitResult<Unit>
-    suspend fun hardResetToCommit(repository: Repository, commitHash: String): GitResult<Unit>
+    suspend fun resetToCommit(repository: Repository, commitHash: String, mode: ResetMode): GitResult<Unit>
     suspend fun createTag(repository: Repository, tagName: String, commitHash: String, force: Boolean = false): GitResult<Unit>
     suspend fun deleteTag(repository: Repository, tagName: String): GitResult<Unit>
     suspend fun getTagsForCommit(repository: Repository, commitHash: String): List<String>
