@@ -12,7 +12,9 @@ interface IGitRepository {
         url: String,
         localPath: String,
         customDestination: String? = null,
-        progressCallback: CloneProgressCallback? = null
+        progressCallback: CloneProgressCallback? = null,
+        /** When non-null, clone only this branch (single-branch clone). Null clones all branches. */
+        singleBranch: String? = null
     ): GitResult<Repository>
     suspend fun removeRepository(repositoryId: String)
     suspend fun removeRepositoryWithFiles(repositoryId: String): GitResult<Unit>

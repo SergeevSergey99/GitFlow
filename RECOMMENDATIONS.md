@@ -263,17 +263,14 @@
   (`repository.readMergeHeads()?.isNotEmpty()`) коммит разрешён. Покрыто тестом
   `commit_afterMergeResolvedToOurs_succeeds`.
 
-### 2. Клонирование одной ветки (быстрая экономия трафика)
+### 2. Клонирование одной ветки — ✅ ВЫПОЛНЕНО 2026-07-04
 
-JGit 5.13 **не** умеет shallow clone (`setDepth` появился в JGit 6.3), но умеет single-branch:
-```kotlin
-cloneCommand
-    .setBranchesToClone(listOf("refs/heads/$branch"))
-    .setBranch("refs/heads/$branch")
-    .setCloneAllBranches(false)
-```
-- UI: в `AddRepositoryDialog` / `RemoteRepositoriesScreen` — выбор «все ветки / только дефолтная».
-- Полноценный shallow clone — только после апгрейда JGit (см. Технические заметки).
+> `cloneRepositoryImpl` получил параметр `singleBranch: String?`; при непустом значении —
+> `setCloneAllBranches(false).setBranchesToClone(listOf("refs/heads/$b")).setBranch(...)`.
+> Проброшено через всю цепочку: `IGitRepository` → `CloneRepositoryService` (новый intent-extra
+> `EXTRA_SINGLE_BRANCH`) → `RemoteRepositoriesViewModel.startCloneInBackground`. В `CloneDialog`
+> добавлен чекбокс «Клонировать только основную ветку (%branch)» (передаётся `repository.defaultBranch`).
+> Полноценный shallow clone (`--depth`) — только после апгрейда JGit (см. Технические заметки).
 
 ### 3. Просмотр Pull Requests / Merge Requests
 

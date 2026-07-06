@@ -173,7 +173,7 @@ class GitRepository(
 
     override suspend fun addRepository(path: String): GitResult<Repository> = addRepositoryImpl(path)
     override suspend fun createRepository(name: String, localPath: String): GitResult<Repository> = createRepositoryImpl(name, localPath)
-    override suspend fun cloneRepository(url: String, localPath: String, customDestination: String?, progressCallback: CloneProgressCallback?): GitResult<Repository> = cloneRepositoryImpl(url, localPath, customDestination, progressCallback)
+    override suspend fun cloneRepository(url: String, localPath: String, customDestination: String?, progressCallback: CloneProgressCallback?, singleBranch: String?): GitResult<Repository> = cloneRepositoryImpl(url, localPath, customDestination, progressCallback, singleBranch)
     override suspend fun removeRepositoryWithFiles(repositoryId: String): GitResult<Unit> = removeRepositoryWithFilesImpl(repositoryId)
     override suspend fun refreshRepository(repository: Repository): Repository? = refreshRepositoryImpl(repository)
 

@@ -98,7 +98,8 @@ internal suspend fun GitRepository.cloneRepositoryImpl(
     url: String,
     localPath: String,
     customDestination: String?,
-    progressCallback: CloneProgressCallback?
+    progressCallback: CloneProgressCallback?,
+    singleBranch: String?
 ): GitResult<Repository> = withContext(Dispatchers.IO) {
     try {
         val targetDir = if (!customDestination.isNullOrEmpty()) File(customDestination) else File(localPath)
@@ -118,6 +119,16 @@ internal suspend fun GitRepository.cloneRepositoryImpl(
 
         credentials?.let { cloneCommand.setCredentialsProvider(it) }
         progressCallback?.let { cloneCommand.setProgressMonitor(it) }
+
+        // Single-branch clone: fetch only the given branch (JGit 5.13 has no shallow --depth,
+        // but this still cuts traffic for repos with many branches).
+        if (!singleBranch.isNullOrBlank()) {
+            val ref = "refs/heads/$singleBranch"
+            cloneCommand
+                .setCloneAllBranches(false)
+                .setBranchesToClone(listOf(ref))
+                .setBranch(ref)
+        }
 
         val git = try {
             cloneCommand.call()

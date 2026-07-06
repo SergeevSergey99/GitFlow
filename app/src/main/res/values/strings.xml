@@ -121,6 +121,7 @@
     <string name="remote_repos_private">Private</string>
     <string name="remote_repos_updated">Updated %1$s</string>
     <string name="remote_repos_clone">Clone</string>
+    <string name="remote_repos_default_branch_only">Clone only the default branch (%1$s)</string>
     <string name="remote_repos_large_title">Large repository</string>
     <string name="remote_repos_large_message_size">Approximate size: %1$s. Clone anyway?</string>
     <string name="remote_repos_large_message">Repository size is over 50 MB. Clone anyway?</string>

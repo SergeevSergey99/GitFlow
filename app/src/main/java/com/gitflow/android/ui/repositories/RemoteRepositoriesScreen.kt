@@ -30,6 +30,7 @@ import com.gitflow.android.data.models.GitRemoteRepository
 import com.gitflow.android.data.settings.AppSettingsManager
 import com.gitflow.android.ui.auth.providerDisplayName
 import com.gitflow.android.ui.auth.providerIcon
+import androidx.compose.foundation.clickable
 import com.gitflow.android.ui.auth.providerIconColor
 import com.gitflow.android.ui.components.CloneProgressOverlay
 import com.gitflow.android.ui.util.formatBytes
@@ -60,7 +61,7 @@ fun RemoteRepositoriesScreen(
         viewModel.refreshAuthState()
     }
 
-    data class PendingClone(val repository: GitRemoteRepository, val localPath: String)
+    data class PendingClone(val repository: GitRemoteRepository, val localPath: String, val defaultBranchOnly: Boolean)
     var pendingClone by remember { mutableStateOf<PendingClone?>(null) }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -72,6 +73,7 @@ fun RemoteRepositoriesScreen(
                 context = context,
                 repository = request.repository,
                 localPath = request.localPath,
+                singleBranch = if (request.defaultBranchOnly) request.repository.defaultBranch else null,
                 onStarted = onRepositoryCloned
             )
         } else if (!granted) {
@@ -133,17 +135,18 @@ fun RemoteRepositoriesScreen(
                     RepositoriesList(
                         repositories = repositories,
                         isCloning = isCloning,
-                        onCloneRepository = { repository, localPath ->
+                        onCloneRepository = { repository, localPath, defaultBranchOnly ->
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                                 ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
                             ) {
-                                pendingClone = PendingClone(repository, localPath)
+                                pendingClone = PendingClone(repository, localPath, defaultBranchOnly)
                                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                             } else {
                                 viewModel.startCloneInBackground(
                                     context = context,
                                     repository = repository,
                                     localPath = localPath,
+                                    singleBranch = if (defaultBranchOnly) repository.defaultBranch else null,
                                     onStarted = onRepositoryCloned
                                 )
                             }
@@ -268,7 +271,7 @@ fun EmptyRepositoriesMessage(selectedProvider: GitProvider?) {
 fun RepositoriesList(
     repositories: List<GitRemoteRepository>,
     isCloning: Boolean,
-    onCloneRepository: (GitRemoteRepository, String) -> Unit
+    onCloneRepository: (GitRemoteRepository, String, Boolean) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -279,8 +282,8 @@ fun RepositoriesList(
             RepositoryCard(
                 repository = repository,
                 isCloning = isCloning,
-                onClone = { localPath ->
-                    onCloneRepository(repository, localPath)
+                onClone = { localPath, defaultBranchOnly ->
+                    onCloneRepository(repository, localPath, defaultBranchOnly)
                 }
             )
         }
@@ -291,11 +294,12 @@ fun RepositoriesList(
 fun RepositoryCard(
     repository: GitRemoteRepository,
     isCloning: Boolean,
-    onClone: (String) -> Unit
+    onClone: (localPath: String, defaultBranchOnly: Boolean) -> Unit
 ) {
     var showCloneDialog by remember { mutableStateOf(false) }
     var showSizeWarning by remember { mutableStateOf(false) }
     var pendingClonePath by remember { mutableStateOf<String?>(null) }
+    var pendingCloneDefaultOnly by remember { mutableStateOf(false) }
     
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -383,15 +387,17 @@ fun RepositoryCard(
         CloneDialog(
             repositoryName = repository.name,
             approximateSizeBytes = repository.approximateSizeBytes,
+            defaultBranch = repository.defaultBranch,
             onDismiss = { showCloneDialog = false },
-            onConfirm = { localPath ->
+            onConfirm = { localPath, defaultBranchOnly ->
                 showCloneDialog = false
                 val requiresWarning = shouldWarnAboutRepositorySize(repository.approximateSizeBytes)
                 if (requiresWarning) {
                     pendingClonePath = localPath
+                    pendingCloneDefaultOnly = defaultBranchOnly
                     showSizeWarning = true
                 } else {
-                    onClone(localPath)
+                    onClone(localPath, defaultBranchOnly)
                 }
             }
         )
@@ -418,10 +424,11 @@ fun RepositoryCard(
                 Button(
                     onClick = {
                         val path = pendingClonePath
+                        val defaultOnly = pendingCloneDefaultOnly
                         showSizeWarning = false
                         pendingClonePath = null
                         if (path != null) {
-                            onClone(path)
+                            onClone(path, defaultOnly)
                         }
                     }
                 ) {
@@ -446,8 +453,9 @@ fun RepositoryCard(
 fun CloneDialog(
     repositoryName: String,
     approximateSizeBytes: Long?,
+    defaultBranch: String,
     onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
+    onConfirm: (localPath: String, defaultBranchOnly: Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val settingsManager: AppSettingsManager = koinInject()
@@ -456,6 +464,7 @@ fun CloneDialog(
         File(baseDir, repositoryName).absolutePath
     }
     var localPath by remember(defaultLocalPath) { mutableStateOf(defaultLocalPath) }
+    var defaultBranchOnly by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -475,11 +484,25 @@ fun CloneDialog(
                     label = { Text(stringResource(R.string.remote_repos_local_path)) },
                     modifier = Modifier.fillMaxWidth()
                 )
+                if (defaultBranch.isNotBlank()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { defaultBranchOnly = !defaultBranchOnly },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(checked = defaultBranchOnly, onCheckedChange = { defaultBranchOnly = it })
+                        Text(
+                            text = stringResource(R.string.remote_repos_default_branch_only, defaultBranch),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
             Button(
-                onClick = { onConfirm(localPath) },
+                onClick = { onConfirm(localPath, defaultBranchOnly) },
                 enabled = localPath.isNotBlank()
             ) {
                 Text(stringResource(R.string.remote_repos_clone))

@@ -2,6 +2,13 @@
 
 Все заметные изменения проекта фиксируются здесь.
 
+## 2026-07-04 (8)
+
+### Added — клонирование одной ветки (P2 #2)
+- `cloneRepositoryImpl` + `IGitRepository.cloneRepository` получили параметр `singleBranch: String?`. При непустом — JGit клонирует только эту ветку (`setCloneAllBranches(false)` + `setBranchesToClone` + `setBranch`). Экономит трафик/место для репозиториев с многими ветками (полноценный `--depth` недоступен в JGit 5.13).
+- Проброшено сквозь фоновый клон: `CloneRepositoryService` (новый intent-extra `EXTRA_SINGLE_BRANCH`) → `RemoteRepositoriesViewModel.startCloneInBackground` → UI.
+- `CloneDialog`: чекбокс «Клонировать только основную ветку (<branch>)». Работает и через путь size-warning, и через запрос разрешения на уведомления. По умолчанию выключен (клонируются все ветки, как раньше). Параметры с дефолтами — существующий вызов клона из списка репозиториев не затронут.
+
 ## 2026-07-04 (7)
 
 ### Changed — локализация auth-флоу (P1.5)

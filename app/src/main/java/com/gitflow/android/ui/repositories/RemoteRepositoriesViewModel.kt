@@ -97,6 +97,7 @@ class RemoteRepositoriesViewModel(private val authManager: AuthManager) : ViewMo
         context: Context,
         repository: GitRemoteRepository,
         localPath: String,
+        singleBranch: String? = null,
         onStarted: () -> Unit
     ) {
         viewModelScope.launch {
@@ -115,7 +116,8 @@ class RemoteRepositoriesViewModel(private val authManager: AuthManager) : ViewMo
                     context = context,
                     repository = repository,
                     cloneUrl = cloneUrl,
-                    localPath = localPath
+                    localPath = localPath,
+                    singleBranch = singleBranch
                 )
                 if (!started) {
                     _errorMessage.value = context.getString(R.string.clone_wifi_only_error)

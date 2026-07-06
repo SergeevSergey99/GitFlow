@@ -83,6 +83,7 @@ class CloneRepositoryService : Service() {
         val repoName = intent.getStringExtra(EXTRA_REPO_NAME)
         val repoFullName = intent.getStringExtra(EXTRA_REPO_FULL_NAME)
         val customDestination = intent.getStringExtra(EXTRA_CUSTOM_DESTINATION)
+        val singleBranch = intent.getStringExtra(EXTRA_SINGLE_BRANCH)
         val approximateSize = intent.getLongExtra(EXTRA_REPO_SIZE, -1L).takeIf { intent.hasExtra(EXTRA_REPO_SIZE) && it >= 0 }
 
         if (cloneUrl.isNullOrBlank() || localPath.isNullOrBlank() || repoName.isNullOrBlank() || repoFullName.isNullOrBlank()) {
@@ -107,7 +108,8 @@ class CloneRepositoryService : Service() {
             customDestination = customDestination,
             repoName = repoName,
             repoFullName = repoFullName,
-            approximateSize = approximateSize
+            approximateSize = approximateSize,
+            singleBranch = singleBranch
         )
     }
 
@@ -118,7 +120,8 @@ class CloneRepositoryService : Service() {
         customDestination: String?,
         repoName: String,
         repoFullName: String,
-        approximateSize: Long?
+        approximateSize: Long?,
+        singleBranch: String?
     ) {
         // Missing POST_NOTIFICATIONS does not prevent a foreground service from running:
         // startForeground() still requires a Notification object, but the system simply
@@ -152,7 +155,8 @@ class CloneRepositoryService : Service() {
                     url = cloneUrl,
                     localPath = localPath,
                     customDestination = customDestination,
-                    progressCallback = callback
+                    progressCallback = callback,
+                    singleBranch = singleBranch
                 )
             }
 
@@ -320,6 +324,7 @@ class CloneRepositoryService : Service() {
         private const val EXTRA_REPO_NAME = "extra_repo_name"
         private const val EXTRA_REPO_FULL_NAME = "extra_repo_full_name"
         private const val EXTRA_REPO_SIZE = "extra_repo_size"
+        private const val EXTRA_SINGLE_BRANCH = "extra_single_branch"
         private const val CHANNEL_ID = "clone_repository_channel"
         private const val NOTIFICATION_ID = 1001
         private const val REQUEST_CODE_CANCEL = 2001
@@ -329,7 +334,8 @@ class CloneRepositoryService : Service() {
             repository: GitRemoteRepository,
             cloneUrl: String,
             localPath: String,
-            customDestination: String? = null
+            customDestination: String? = null,
+            singleBranch: String? = null
         ): Boolean {
             return start(
                 context = context,
@@ -338,7 +344,8 @@ class CloneRepositoryService : Service() {
                 cloneUrl = cloneUrl,
                 localPath = localPath,
                 approximateSize = repository.approximateSizeBytes,
-                customDestination = customDestination
+                customDestination = customDestination,
+                singleBranch = singleBranch
             )
         }
 
@@ -349,7 +356,8 @@ class CloneRepositoryService : Service() {
             cloneUrl: String,
             localPath: String,
             approximateSize: Long? = null,
-            customDestination: String? = null
+            customDestination: String? = null,
+            singleBranch: String? = null
         ): Boolean {
             val appContext = context.applicationContext
             if (!isConnected(appContext)) {
@@ -377,6 +385,7 @@ class CloneRepositoryService : Service() {
                 putExtra(EXTRA_REPO_FULL_NAME, repoFullName)
                 approximateSize?.let { putExtra(EXTRA_REPO_SIZE, it) }
                 customDestination?.let { putExtra(EXTRA_CUSTOM_DESTINATION, it) }
+                singleBranch?.takeIf { it.isNotBlank() }?.let { putExtra(EXTRA_SINGLE_BRANCH, it) }
             }
             ContextCompat.startForegroundService(context, intent)
             return true
