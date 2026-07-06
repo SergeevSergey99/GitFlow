@@ -249,7 +249,8 @@ fun BranchManagementDialog(
                                     onDelete = { branchToDelete = branch },
                                     onMerge = { mergeTarget = branch },
                                     onRebase = { rebaseTarget = branch },
-                                    onRename = { renameTarget = branch }
+                                    onRename = { renameTarget = branch },
+                                    onPush = { viewModel.pushBranch(branch) }
                                 )
                             }
                         }
@@ -274,7 +275,8 @@ fun BranchManagementDialog(
                                     onDelete = null,
                                     onMerge = { mergeTarget = branch },
                                     onRebase = { rebaseTarget = branch },
-                                    onRename = null
+                                    onRename = null,
+                                    onPush = null
                                 )
                             }
                         }
@@ -417,7 +419,9 @@ private fun BranchRow(
     onMerge: () -> Unit,
     onRebase: () -> Unit,
     /** Non-null for local branches only (renaming a remote-tracking ref doesn't make sense here). */
-    onRename: (() -> Unit)?
+    onRename: (() -> Unit)?,
+    /** Non-null for local branches only — pushes this branch to its remote without checking it out. */
+    onPush: (() -> Unit)?
 ) {
     val isCurrent = branch.name == currentBranch
     var menuExpanded by remember { mutableStateOf(false) }
@@ -471,9 +475,9 @@ private fun BranchRow(
                 modifier = Modifier.size(20.dp)
             )
         }
-        // Show the menu whenever there's at least one applicable action: Rename works even on
-        // the current branch, while Merge/Rebase/Delete only make sense for other branches.
-        if (onRename != null || !isCurrent) {
+        // Show the menu whenever there's at least one applicable action: Rename/Push work even
+        // on the current branch, while Merge/Rebase/Delete only make sense for other branches.
+        if (onRename != null || onPush != null || !isCurrent) {
             Box {
                 IconButton(onClick = { menuExpanded = true }, modifier = Modifier.size(32.dp)) {
                     Icon(
@@ -495,6 +499,18 @@ private fun BranchRow(
                             onClick = {
                                 menuExpanded = false
                                 rename()
+                            }
+                        )
+                    }
+                    onPush?.let { push ->
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.branches_action_push)) },
+                            leadingIcon = {
+                                Icon(Icons.Default.CloudUpload, contentDescription = null)
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                push()
                             }
                         )
                     }

@@ -81,6 +81,15 @@ class BranchesViewModel(
         }
     }
 
+    fun pushBranch(branch: Branch) {
+        runOp {
+            when (val result = gitRepository.pushBranch(repository, branch.name)) {
+                is GitResult.Success -> succeed("Pushed ${branch.name}")
+                is GitResult.Failure -> fail(result.message)
+            }
+        }
+    }
+
     fun renameBranch(branch: Branch, newName: String) {
         val trimmed = newName.trim()
         if (trimmed.isBlank() || trimmed == branch.name) return

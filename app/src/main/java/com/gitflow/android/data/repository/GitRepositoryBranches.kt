@@ -15,6 +15,7 @@ import org.eclipse.jgit.api.ResetCommand
 import org.eclipse.jgit.lib.Constants
 import org.eclipse.jgit.lib.RepositoryState
 import org.eclipse.jgit.transport.PushResult
+import org.eclipse.jgit.transport.RefSpec
 import org.eclipse.jgit.transport.RemoteRefUpdate
 import org.eclipse.jgit.lib.ProgressMonitor
 import org.eclipse.jgit.revwalk.RevWalk
@@ -273,6 +274,37 @@ internal suspend fun GitRepository.pushImpl(repository: Repository): GitResult<U
         val credentials = resolveCredentialsProvider(remoteUrl)
         git.use { g ->
             val pushCommand = g.push()
+            credentials?.let { pushCommand.setCredentialsProvider(it) }
+            val result = pushCommand.call()
+            when (val pushResult = evaluatePushResult(result)) {
+                is GitResult.Success -> {
+                    refreshRepository(repository)
+                    GitResult.Success(Unit)
+                }
+                is GitResult.Failure -> pushResult
+            }
+        }
+    } catch (e: Exception) {
+        classifyNetworkException(e)
+    }
+}
+
+/**
+ * Pushes a specific local branch to its remote, regardless of which branch is currently
+ * checked out — unlike [pushImpl], which (via JGit's default push behavior) always targets
+ * HEAD. Uses an explicit refspec so a branch other than the current one can be published
+ * without first switching to it.
+ */
+internal suspend fun GitRepository.pushBranchImpl(repository: Repository, branchName: String): GitResult<Unit> = withContext(Dispatchers.IO) {
+    try {
+        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
+        val remoteUrl = git.repository.config.let {
+            it.getString("remote", "origin", "pushurl") ?: it.getString("remote", "origin", "url")
+        }
+        val credentials = resolveCredentialsProvider(remoteUrl)
+        git.use { g ->
+            val refSpec = RefSpec("refs/heads/$branchName:refs/heads/$branchName")
+            val pushCommand = g.push().setRefSpecs(refSpec)
             credentials?.let { pushCommand.setCredentialsProvider(it) }
             val result = pushCommand.call()
             when (val pushResult = evaluatePushResult(result)) {

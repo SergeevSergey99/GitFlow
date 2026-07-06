@@ -432,6 +432,7 @@
     <string name="branches_action_rebase">Rebase current onto this</string>
     <string name="branches_action_delete">Delete branch</string>
     <string name="branches_action_rename">Rename branch</string>
+    <string name="branches_action_push">Push branch</string>
     <string name="branches_rename_title">Rename branch</string>
     <string name="branches_rename_label">New name</string>
     <string name="branches_confirm">Confirm</string>

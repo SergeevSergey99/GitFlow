@@ -212,6 +212,7 @@ class GitRepository(
     override suspend fun fetch(repository: Repository): GitResult<Unit> = fetchImpl(repository)
     override suspend fun pull(repository: Repository): GitResult<Unit> = pullImpl(repository)
     override suspend fun push(repository: Repository): GitResult<Unit> = pushImpl(repository)
+    override suspend fun pushBranch(repository: Repository, branchName: String): GitResult<Unit> = pushBranchImpl(repository, branchName)
     override suspend fun pushWithProgress(repository: Repository, onProgress: (SyncProgress) -> Unit): GitResult<Unit> = pushWithProgressImpl(repository, onProgress)
     override suspend fun resetToCommit(repository: Repository, commitHash: String, mode: ResetMode): GitResult<Unit> = resetToCommitImpl(repository, commitHash, mode)
     override suspend fun createTag(repository: Repository, tagName: String, commitHash: String, force: Boolean): GitResult<Unit> = createTagImpl(repository, tagName, commitHash, force)

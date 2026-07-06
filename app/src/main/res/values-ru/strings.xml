@@ -432,6 +432,7 @@
     <string name="branches_action_rebase">Rebase текущей на эту</string>
     <string name="branches_action_delete">Удалить ветку</string>
     <string name="branches_action_rename">Переименовать ветку</string>
+    <string name="branches_action_push">Push ветку</string>
     <string name="branches_rename_title">Переименовать ветку</string>
     <string name="branches_rename_label">Новое имя</string>
     <string name="branches_confirm">Подтвердить</string>
