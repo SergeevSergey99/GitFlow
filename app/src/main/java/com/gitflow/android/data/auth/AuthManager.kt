@@ -825,6 +825,128 @@ class AuthManager(private val context: Context) {
     }
 
     // ---------------------------------------------------------------------------
+    // Pull / merge requests
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Open pull/merge requests for [repository]. Repo identity is taken from the fields the
+     * providers already return: GitHub/Gitea — fullName "owner/repo"; GitLab — numeric project
+     * id; Bitbucket — fullName "workspace/slug"; Azure — fullName "project/repoName".
+     */
+    suspend fun getPullRequests(repository: GitRemoteRepository): List<GitPullRequest> = withContext(Dispatchers.IO) {
+        when (repository.provider) {
+            GitProvider.GITHUB -> {
+                val token = getAccessToken(GitProvider.GITHUB)
+                    ?: throw IllegalStateException(context.getString(R.string.auth_error_token_not_found, "GitHub"))
+                val (owner, repo) = repository.fullName.split('/', limit = 2)
+                    .takeIf { it.size == 2 } ?: return@withContext emptyList()
+                val response = githubApi.getPullRequests("Bearer $token", owner, repo)
+                if (!response.isSuccessful) throw IllegalStateException(context.getString(R.string.pr_error_load, response.code()))
+                response.body().orEmpty().map { pr ->
+                    GitPullRequest(
+                        number = pr.number,
+                        title = pr.title,
+                        author = pr.user?.login,
+                        sourceBranch = pr.head?.ref ?: "?",
+                        targetBranch = pr.base?.ref ?: "?",
+                        isDraft = pr.draft == true,
+                        updatedAt = pr.updated_at.orEmpty(),
+                        htmlUrl = pr.html_url.orEmpty()
+                    )
+                }
+            }
+            GitProvider.GITLAB -> {
+                if (refreshGitLabTokenIfNeeded() != RefreshResult.OK) {
+                    throw IllegalStateException(context.getString(R.string.auth_error_gitlab_session_expired))
+                }
+                val token = getAccessToken(GitProvider.GITLAB)
+                    ?: throw IllegalStateException(context.getString(R.string.auth_error_token_not_found, "GitLab"))
+                val response = gitLabApiForCurrentSession().getMergeRequests("Bearer $token", repository.id)
+                if (!response.isSuccessful) throw IllegalStateException(context.getString(R.string.pr_error_load, response.code()))
+                response.body().orEmpty().map { mr ->
+                    GitPullRequest(
+                        number = mr.iid,
+                        title = mr.title,
+                        author = mr.author?.username ?: mr.author?.name,
+                        sourceBranch = mr.source_branch ?: "?",
+                        targetBranch = mr.target_branch ?: "?",
+                        isDraft = mr.draft == true,
+                        updatedAt = mr.updated_at.orEmpty(),
+                        htmlUrl = mr.web_url.orEmpty()
+                    )
+                }
+            }
+            GitProvider.BITBUCKET -> {
+                if (refreshBitbucketTokenIfNeeded() != RefreshResult.OK) {
+                    throw IllegalStateException(context.getString(R.string.auth_error_bitbucket_session_expired))
+                }
+                val token = getAccessToken(GitProvider.BITBUCKET)
+                    ?: throw IllegalStateException(context.getString(R.string.auth_error_token_not_found, "Bitbucket"))
+                val (workspace, slug) = repository.fullName.split('/', limit = 2)
+                    .takeIf { it.size == 2 } ?: return@withContext emptyList()
+                val response = bitbucketApi.getPullRequests("Bearer $token", workspace, slug)
+                if (!response.isSuccessful) throw IllegalStateException(context.getString(R.string.pr_error_load, response.code()))
+                response.body()?.values.orEmpty().map { pr ->
+                    GitPullRequest(
+                        number = pr.id,
+                        title = pr.title,
+                        author = pr.author?.username ?: pr.author?.display_name,
+                        sourceBranch = pr.source?.branch?.name ?: "?",
+                        targetBranch = pr.destination?.branch?.name ?: "?",
+                        updatedAt = pr.updated_on.orEmpty(),
+                        htmlUrl = pr.links?.html?.href.orEmpty()
+                    )
+                }
+            }
+            GitProvider.GITEA -> {
+                val token = getAccessToken(GitProvider.GITEA)
+                    ?: throw IllegalStateException(context.getString(R.string.auth_error_token_not_found, "Gitea"))
+                val instanceUrl = preferences.getString(KEY_GITEA_INSTANCE_URL, null)
+                    ?: throw IllegalStateException(context.getString(R.string.auth_error_gitea_instance_not_found))
+                val url = "$instanceUrl/api/v1/repos/${repository.fullName}/pulls"
+                val response = giteaApi.getPullRequests(url = url, authorization = "token $token")
+                if (!response.isSuccessful) throw IllegalStateException(context.getString(R.string.pr_error_load, response.code()))
+                response.body().orEmpty().map { pr ->
+                    GitPullRequest(
+                        number = pr.number,
+                        title = pr.title,
+                        author = pr.user?.login,
+                        sourceBranch = pr.head?.ref ?: "?",
+                        targetBranch = pr.base?.ref ?: "?",
+                        updatedAt = pr.updated_at.orEmpty(),
+                        htmlUrl = pr.html_url.orEmpty()
+                    )
+                }
+            }
+            GitProvider.AZURE_DEVOPS -> {
+                val token = getAccessToken(GitProvider.AZURE_DEVOPS)
+                    ?: throw IllegalStateException(context.getString(R.string.auth_error_token_not_found, "Azure DevOps"))
+                val orgUrl = preferences.getString(KEY_AZURE_DEVOPS_ORG_URL, null)
+                    ?: throw IllegalStateException(context.getString(R.string.auth_error_azure_org_not_found))
+                val (project, repoName) = repository.fullName.split('/', limit = 2)
+                    .takeIf { it.size == 2 } ?: return@withContext emptyList()
+                val basicAuth = "Basic " + Base64.encodeToString(":$token".toByteArray(), Base64.NO_WRAP)
+                val url = "$orgUrl/$project/_apis/git/repositories/$repoName/pullrequests?searchCriteria.status=active&api-version=7.0"
+                val response = azureApi.getPullRequests(url = url, authorization = basicAuth)
+                if (!response.isSuccessful) throw IllegalStateException(context.getString(R.string.pr_error_load, response.code()))
+                response.body()?.value.orEmpty().map { pr ->
+                    GitPullRequest(
+                        number = pr.pullRequestId,
+                        title = pr.title,
+                        author = pr.createdBy?.displayName ?: pr.createdBy?.uniqueName,
+                        sourceBranch = pr.sourceRefName?.removePrefix("refs/heads/") ?: "?",
+                        targetBranch = pr.targetRefName?.removePrefix("refs/heads/") ?: "?",
+                        isDraft = pr.isDraft == true,
+                        updatedAt = pr.creationDate.orEmpty(),
+                        // Azure PR web URL is predictable from org/project/repo
+                        htmlUrl = "$orgUrl/$project/_git/$repoName/pullrequest/${pr.pullRequestId}"
+                    )
+                }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------------
     // Auth state queries
     // ---------------------------------------------------------------------------
 

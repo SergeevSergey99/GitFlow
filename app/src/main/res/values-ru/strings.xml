@@ -122,6 +122,14 @@
     <string name="remote_repos_updated">Обновлен %1$s</string>
     <string name="remote_repos_clone">Клонировать</string>
     <string name="remote_repos_default_branch_only">Клонировать только основную ветку (%1$s)</string>
+    <string name="pr_button">Pull requests</string>
+    <string name="pr_dialog_title">Pull requests — %1$s</string>
+    <string name="pr_empty">Нет открытых pull requests</string>
+    <string name="pr_error_load">Не удалось загрузить pull requests: %1$d</string>
+    <string name="pr_draft_badge">Черновик</string>
+    <string name="pr_branches">%1$s → %2$s</string>
+    <string name="pr_open_in_browser">Открыть в браузере</string>
+    <string name="pr_number">#%1$d</string>
     <string name="remote_repos_large_title">Большой репозиторий</string>
     <string name="remote_repos_large_message_size">Примерный размер: %1$s. Точно хотите клонировать?</string>
     <string name="remote_repos_large_message">Размер репозитория больше 50 МБ. Точно хотите клонировать?</string>

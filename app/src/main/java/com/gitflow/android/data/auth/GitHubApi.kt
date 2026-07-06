@@ -88,7 +88,31 @@ interface GitHubApi {
         @Query("per_page") perPage: Int = 100,
         @Query("page") page: Int = 1
     ): Response<List<GitHubRepository>>
+
+    @GET("repos/{owner}/{repo}/pulls")
+    suspend fun getPullRequests(
+        @Header("Authorization") authorization: String,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Query("state") state: String = "open",
+        @Query("per_page") perPage: Int = 50
+    ): Response<List<GitHubPullRequest>>
 }
+
+data class GitHubPullRequest(
+    val number: Long,
+    val title: String,
+    val user: GitHubUser?,
+    val head: GitHubPullRequestRef?,
+    val base: GitHubPullRequestRef?,
+    val draft: Boolean? = null,
+    val updated_at: String?,
+    val html_url: String?
+)
+
+data class GitHubPullRequestRef(
+    val ref: String?
+)
 
 data class GitHubOrganization(
     val id: Long,

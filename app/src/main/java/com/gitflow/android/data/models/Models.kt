@@ -241,6 +241,21 @@ data class GitRemoteRepository(
     val approximateSizeBytes: Long? = null
 )
 
+/** Unified pull/merge request model across all providers. */
+data class GitPullRequest(
+    val number: Long,
+    val title: String,
+    val author: String?,
+    val sourceBranch: String,
+    val targetBranch: String,
+    /** true when the PR is a draft (where the provider reports it). */
+    val isDraft: Boolean = false,
+    /** ISO-8601 timestamp of the last update (empty when unknown). */
+    val updatedAt: String = "",
+    /** Web URL to open the PR in a browser (empty when unavailable). */
+    val htmlUrl: String = ""
+)
+
 // Результат авторизации
 data class AuthResult(
     val success: Boolean,

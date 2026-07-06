@@ -298,6 +298,7 @@ fun RepositoryCard(
 ) {
     var showCloneDialog by remember { mutableStateOf(false) }
     var showSizeWarning by remember { mutableStateOf(false) }
+    var showPullRequests by remember { mutableStateOf(false) }
     var pendingClonePath by remember { mutableStateOf<String?>(null) }
     var pendingCloneDefaultOnly by remember { mutableStateOf(false) }
     
@@ -366,21 +367,40 @@ fun RepositoryCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 
-                Button(
-                    onClick = { showCloneDialog = true },
-                    enabled = !isCloning
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (isCloning) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp
+                    IconButton(onClick = { showPullRequests = true }) {
+                        Icon(
+                            Icons.Default.CallMerge,
+                            contentDescription = stringResource(R.string.pr_button),
+                            tint = MaterialTheme.colorScheme.primary
                         )
-                    } else {
-                        Text(stringResource(R.string.remote_repos_clone))
+                    }
+                    Button(
+                        onClick = { showCloneDialog = true },
+                        enabled = !isCloning
+                    ) {
+                        if (isCloning) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Text(stringResource(R.string.remote_repos_clone))
+                        }
                     }
                 }
             }
         }
+    }
+
+    if (showPullRequests) {
+        PullRequestsDialog(
+            repository = repository,
+            onDismiss = { showPullRequests = false }
+        )
     }
     
     if (showCloneDialog) {

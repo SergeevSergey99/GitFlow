@@ -48,4 +48,26 @@ interface GiteaApi {
         @Query("page") page: Int = 1,
         @Query("sort") sort: String = "newest"
     ): Response<GiteaSearchResult>
+
+    @GET
+    suspend fun getPullRequests(
+        @Url url: String,
+        @Header("Authorization") authorization: String,
+        @Query("state") state: String = "open",
+        @Query("limit") limit: Int = 50
+    ): Response<List<GiteaPullRequest>>
 }
+
+data class GiteaPullRequest(
+    val number: Long,
+    val title: String,
+    val user: GiteaUser?,
+    val head: GiteaPrRef?,
+    val base: GiteaPrRef?,
+    val updated_at: String?,
+    val html_url: String?
+)
+
+data class GiteaPrRef(
+    val ref: String?
+)

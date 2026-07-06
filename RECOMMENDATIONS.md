@@ -272,17 +272,14 @@
 > добавлен чекбокс «Клонировать только основную ветку (%branch)» (передаётся `repository.defaultBranch`).
 > Полноценный shallow clone (`--depth`) — только после апгрейда JGit (см. Технические заметки).
 
-### 3. Просмотр Pull Requests / Merge Requests
+### 3. Просмотр Pull Requests / Merge Requests — ✅ ВЫПОЛНЕНО 2026-07-04
 
-Retrofit-слой для всех 5 провайдеров уже есть — добавить по одному endpoint:
-- GitHub: `GET /repos/{owner}/{repo}/pulls`;
-- GitLab: `GET /projects/{id}/merge_requests?state=opened`;
-- Bitbucket: `GET /repositories/{workspace}/{slug}/pullrequests`;
-- Gitea: `GET /repos/{owner}/{repo}/pulls`; Azure: `GET .../pullrequests?api-version=7.0`.
-
-Новый экран `PullRequestsScreen` + VM по образцу `RemoteRepositoriesViewModel`
-(список, статус, автор, ветки; открытие в браузере через `htmlUrl`). DTO не забыть
-покрыть keep-правилами (см. P0.1 — после фикса покрываются автоматически).
+> Endpoints добавлены во все 5 API; единая модель `GitPullRequest`;
+> `AuthManager.getPullRequests(repo)` с refresh токенов; `PullRequestsViewModel` +
+> `PullRequestsDialog` (список открытых PR, тап → браузер); кнопка на карточке репозитория
+> в Remote Repositories. DTO в `data.auth` — под keep-правилом R8 из P0.1 автоматически.
+> Возможные доработки: список PR для текущего локального репо (маппинг remote URL → провайдер),
+> фильтр по состоянию (open/merged/closed), детали PR внутри приложения.
 
 ### 4. SSH-ключи
 

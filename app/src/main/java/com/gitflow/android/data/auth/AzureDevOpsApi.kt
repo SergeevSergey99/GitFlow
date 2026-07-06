@@ -52,7 +52,28 @@ interface AzureDevOpsApi {
         @Url url: String,
         @Header("Authorization") authorization: String
     ): Response<AzurePagedResponse<AzureRepository>>
+
+    @GET
+    suspend fun getPullRequests(
+        @Url url: String,
+        @Header("Authorization") authorization: String
+    ): Response<AzurePagedResponse<AzurePullRequest>>
 }
+
+data class AzurePullRequest(
+    val pullRequestId: Long,
+    val title: String,
+    val createdBy: AzurePrIdentity? = null,
+    val sourceRefName: String? = null,
+    val targetRefName: String? = null,
+    val isDraft: Boolean? = null,
+    val creationDate: String? = null
+)
+
+data class AzurePrIdentity(
+    val displayName: String? = null,
+    val uniqueName: String? = null
+)
 
 // Azure DevOps profile API (separate base URL)
 interface AzureDevOpsProfileApi {

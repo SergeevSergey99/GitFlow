@@ -119,4 +119,31 @@ interface BitbucketApi {
         @Query("pagelen") pagelen: Int = 100,
         @Query("sort") sort: String = "-updated_on"
     ): Response<BitbucketPagedResponse<BitbucketRepository>>
+
+    @GET("2.0/repositories/{workspace}/{repoSlug}/pullrequests")
+    suspend fun getPullRequests(
+        @Header("Authorization") authorization: String,
+        @Path("workspace") workspace: String,
+        @Path("repoSlug") repoSlug: String,
+        @Query("state") state: String = "OPEN",
+        @Query("pagelen") pagelen: Int = 50
+    ): Response<BitbucketPagedResponse<BitbucketPullRequest>>
 }
+
+data class BitbucketPullRequest(
+    val id: Long,
+    val title: String,
+    val author: BitbucketOwner?,
+    val source: BitbucketPrEndpoint?,
+    val destination: BitbucketPrEndpoint?,
+    val updated_on: String?,
+    val links: BitbucketPrLinks?
+)
+
+data class BitbucketPrEndpoint(
+    val branch: BitbucketBranch?
+)
+
+data class BitbucketPrLinks(
+    val html: BitbucketLink?
+)

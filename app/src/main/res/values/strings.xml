@@ -122,6 +122,14 @@
     <string name="remote_repos_updated">Updated %1$s</string>
     <string name="remote_repos_clone">Clone</string>
     <string name="remote_repos_default_branch_only">Clone only the default branch (%1$s)</string>
+    <string name="pr_button">Pull requests</string>
+    <string name="pr_dialog_title">Pull requests — %1$s</string>
+    <string name="pr_empty">No open pull requests</string>
+    <string name="pr_error_load">Failed to load pull requests: %1$d</string>
+    <string name="pr_draft_badge">Draft</string>
+    <string name="pr_branches">%1$s → %2$s</string>
+    <string name="pr_open_in_browser">Open in browser</string>
+    <string name="pr_number">#%1$d</string>
     <string name="remote_repos_large_title">Large repository</string>
     <string name="remote_repos_large_message_size">Approximate size: %1$s. Clone anyway?</string>
     <string name="remote_repos_large_message">Repository size is over 50 MB. Clone anyway?</string>

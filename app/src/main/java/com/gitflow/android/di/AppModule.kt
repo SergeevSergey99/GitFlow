@@ -12,7 +12,9 @@ import com.gitflow.android.ui.screens.main.BranchesViewModel
 import com.gitflow.android.ui.screens.main.ChangesViewModel
 import com.gitflow.android.ui.screens.main.RepositoryListViewModel
 import com.gitflow.android.ui.screens.main.SettingsViewModel
+import com.gitflow.android.data.models.GitRemoteRepository
 import com.gitflow.android.ui.auth.AuthViewModel
+import com.gitflow.android.ui.repositories.PullRequestsViewModel
 import com.gitflow.android.ui.repositories.RemoteRepositoriesViewModel
 import org.koin.android.ext.koin.androidApplication
 import org.koin.android.ext.koin.androidContext
@@ -41,5 +43,8 @@ val appModule = module {
     }
     viewModel { params ->
         BranchesViewModel(androidApplication(), params.get<Repository>(), get())
+    }
+    viewModel { params ->
+        PullRequestsViewModel(get(), params.get<GitRemoteRepository>())
     }
 }

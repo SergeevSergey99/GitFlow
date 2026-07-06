@@ -99,6 +99,19 @@ fun ChangesScreen(
         viewModel.refresh()
     }
 
+    // Also reload when the app itself comes back to the foreground: the user may have edited
+    // files in another app (file manager, editor) and expects the list to reflect that.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                viewModel.refresh()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     // The header aborted/continued the operation — reload from scratch (drops the now-moot
     // prefilled merge message).
     LaunchedEffect(externalRefreshSignal) {

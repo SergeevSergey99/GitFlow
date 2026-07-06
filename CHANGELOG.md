@@ -2,6 +2,18 @@
 
 Все заметные изменения проекта фиксируются здесь.
 
+## 2026-07-04 (9)
+
+### Added — просмотр Pull/Merge Requests (P2 #3)
+- Единая модель `GitPullRequest` (number, title, author, source→target, draft, updatedAt, htmlUrl).
+- Endpoints во всех 5 API: GitHub `repos/{o}/{r}/pulls`, GitLab `projects/{id}/merge_requests`, Bitbucket `2.0/repositories/{ws}/{slug}/pullrequests`, Gitea `@Url .../pulls`, Azure `@Url .../pullrequests?searchCriteria.status=active`. DTO в `data.auth` — покрыты keep-правилом R8 автоматически.
+- `AuthManager.getPullRequests(repo)` — единая точка с конвертерами и refresh токенов GitLab/Bitbucket; идентификация репо из уже имеющихся полей (`fullName`/`id`).
+- `PullRequestsViewModel` (Koin, параметр `GitRemoteRepository`) + `PullRequestsDialog`: список открытых PR (номер, заголовок, Draft-бейдж, автор, ветки, дата), тап — открытие в браузере, retry при ошибке.
+- Кнопка PR (иконка CallMerge) на карточке репозитория в Remote Repositories, рядом с Clone.
+
+### Fixed — актуальность «Изменений» при возврате в приложение
+- `ChangesScreen` перечитывает состояние по `ON_RESUME`: правки файлов во внешнем приложении (файловый менеджер, редактор) теперь видны сразу при возврате, без перезахода во вкладку.
+
 ## 2026-07-04 (8)
 
 ### Added — клонирование одной ветки (P2 #2)

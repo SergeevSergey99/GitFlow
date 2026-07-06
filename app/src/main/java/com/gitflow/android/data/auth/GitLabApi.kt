@@ -123,4 +123,28 @@ interface GitLabApi {
         @Path("id", encoded = true) projectId: String,
         @Query("statistics") statistics: Boolean = true
     ): Response<GitLabRepository>
+
+    @GET("api/v4/projects/{id}/merge_requests")
+    suspend fun getMergeRequests(
+        @Header("Authorization") authorization: String,
+        @Path("id") projectId: Long,
+        @Query("state") state: String = "opened",
+        @Query("per_page") perPage: Int = 50
+    ): Response<List<GitLabMergeRequest>>
 }
+
+data class GitLabMergeRequest(
+    val iid: Long,
+    val title: String,
+    val author: GitLabMrAuthor?,
+    val source_branch: String?,
+    val target_branch: String?,
+    val draft: Boolean? = null,
+    val updated_at: String?,
+    val web_url: String?
+)
+
+data class GitLabMrAuthor(
+    val username: String?,
+    val name: String?
+)
