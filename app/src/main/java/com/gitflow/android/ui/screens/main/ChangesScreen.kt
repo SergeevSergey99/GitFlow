@@ -44,12 +44,10 @@ import com.gitflow.android.data.models.RepoOperationState
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.models.StashEntry
 import com.gitflow.android.data.models.SyncProgress
-import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.ui.components.FileChangeCard
 import com.gitflow.android.ui.components.StartEllipsizedText
 import com.gitflow.android.ui.screens.SideBySideDiffView
 import com.gitflow.android.ui.screens.UnifiedDiffView
-import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -58,7 +56,6 @@ import java.util.Locale
 @Composable
 fun ChangesScreen(
     repository: Repository?,
-    gitRepository: IGitRepository,
     onGoToSettings: () -> Unit = {}
 ) {
     if (repository == null) {
@@ -72,18 +69,9 @@ fun ChangesScreen(
         parameters = { parametersOf(repository) }
     )
     val uiState by viewModel.uiState.collectAsState()
-    val scope = rememberCoroutineScope()
 
-    var selectedDiff by remember { mutableStateOf<FileDiff?>(null) }
     var diffOldLabel by remember { mutableStateOf<String?>(null) }
     var diffNewLabel by remember { mutableStateOf<String?>(null) }
-    var isDiffLoading by remember { mutableStateOf(false) }
-    var diffError by remember { mutableStateOf<String?>(null) }
-
-    var historyTargetPath by remember { mutableStateOf<String?>(null) }
-    var historyCommits by remember { mutableStateOf<List<Commit>>(emptyList()) }
-    var isHistoryLoading by remember { mutableStateOf(false) }
-    var historyError by remember { mutableStateOf<String?>(null) }
 
     // Reload when the app itself comes back to the foreground: the user may have edited
     // files in another app (file manager, editor) and expects the list to reflect that.
@@ -164,42 +152,9 @@ fun ChangesScreen(
                     diffOldLabel = null
                     diffNewLabel = null
                 }
-                scope.launch {
-                    isDiffLoading = true
-                    diffError = null
-                    try {
-                        val diff = gitRepository.getWorkingFileDiff(repository, file.path, file.stage)
-                        if (diff != null) {
-                            selectedDiff = diff
-                        } else {
-                            diffError = context.getString(R.string.changes_diff_unavailable)
-                        }
-                    } catch (_: Exception) {
-                        diffError = context.getString(R.string.changes_diff_unavailable)
-                    } finally {
-                        isDiffLoading = false
-                    }
-                }
+                viewModel.openDiff(file)
             },
-            onOpenFileHistory = { path ->
-                historyTargetPath = path
-                isHistoryLoading = true
-                historyError = null
-                historyCommits = emptyList()
-                scope.launch {
-                    try {
-                        val commits = gitRepository.getFileHistoryForPath(repository, path)
-                        historyCommits = commits
-                        if (commits.isEmpty()) {
-                            historyError = context.getString(R.string.commit_detail_history_no_changes)
-                        }
-                    } catch (_: Exception) {
-                        historyError = context.getString(R.string.commit_detail_history_error)
-                    } finally {
-                        isHistoryLoading = false
-                    }
-                }
-            },
+            onOpenFileHistory = viewModel::openFileHistory,
             onResolveConflict = viewModel::openConflict,
             onAcceptOurs = viewModel::acceptOurs,
             onAcceptTheirs = viewModel::acceptTheirs,
@@ -262,7 +217,7 @@ fun ChangesScreen(
         )
     }
 
-    if (isDiffLoading) {
+    if (uiState.isDiffLoading) {
         AlertDialog(
             onDismissRequest = {},
             confirmButton = {},
@@ -277,35 +232,35 @@ fun ChangesScreen(
         )
     }
 
-    diffError?.let { error ->
+    uiState.diffError?.let { error ->
         AlertDialog(
-            onDismissRequest = { diffError = null },
+            onDismissRequest = viewModel::closeDiff,
             title = { Text(stringResource(R.string.changes_diff_title)) },
             text = { Text(error) },
             confirmButton = {
-                TextButton(onClick = { diffError = null }) {
+                TextButton(onClick = viewModel::closeDiff) {
                     Text(stringResource(R.string.commit_detail_history_close))
                 }
             }
         )
     }
 
-    selectedDiff?.let { diff ->
+    uiState.openedDiff?.let { diff ->
         WorkingTreeDiffDialog(
             diff = diff,
-            onDismiss = { selectedDiff = null },
+            onDismiss = viewModel::closeDiff,
             oldLabel = diffOldLabel,
             newLabel = diffNewLabel
         )
     }
 
-    historyTargetPath?.let { path ->
+    uiState.historyPath?.let { path ->
         FileHistoryDialog(
             path = path,
-            commits = historyCommits,
-            isLoading = isHistoryLoading,
-            error = historyError,
-            onDismiss = { historyTargetPath = null }
+            commits = uiState.fileHistory,
+            isLoading = uiState.isHistoryLoading,
+            error = uiState.historyError,
+            onDismiss = viewModel::closeFileHistory
         )
     }
 }

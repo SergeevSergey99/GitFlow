@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.gitflow.android.R
 import com.gitflow.android.data.models.ChangeStage
+import com.gitflow.android.data.models.Commit
+import com.gitflow.android.data.models.FileDiff
 import com.gitflow.android.data.models.ConflictResolutionStrategy
 import com.gitflow.android.data.models.FileChange
 import com.gitflow.android.data.models.GitResult
@@ -58,7 +60,14 @@ data class ChangesUiState(
      */
     val conflictOursLabel: String? = null,
     /** Label for the "take incoming" side. */
-    val conflictTheirsLabel: String? = null
+    val conflictTheirsLabel: String? = null,
+    val openedDiff: FileDiff? = null,
+    val isDiffLoading: Boolean = false,
+    val diffError: String? = null,
+    val historyPath: String? = null,
+    val fileHistory: List<Commit> = emptyList(),
+    val isHistoryLoading: Boolean = false,
+    val historyError: String? = null
 )
 
 class ChangesViewModel(
@@ -420,6 +429,44 @@ class ChangesViewModel(
                 emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_conflict_resolve_failed))
             }
         }
+    }
+
+    fun openDiff(file: FileChange) {
+        _uiState.update { it.copy(isDiffLoading = true, diffError = null) }
+        viewModelScope.launch {
+            val diff = runCatching { gitRepository.getWorkingFileDiff(repository, file.path, file.stage) }.getOrNull()
+            _uiState.update {
+                it.copy(
+                    isDiffLoading = false,
+                    openedDiff = diff,
+                    diffError = if (diff == null) str(R.string.changes_diff_unavailable) else null
+                )
+            }
+        }
+    }
+
+    fun closeDiff() {
+        _uiState.update { it.copy(openedDiff = null, diffError = null) }
+    }
+
+    fun openFileHistory(path: String) {
+        _uiState.update {
+            it.copy(historyPath = path, fileHistory = emptyList(), isHistoryLoading = true, historyError = null)
+        }
+        viewModelScope.launch {
+            val history = runCatching { gitRepository.getFileHistoryForPath(repository, path) }
+            val commits = history.getOrDefault(emptyList())
+            val error = when {
+                history.isFailure -> str(R.string.commit_detail_history_error)
+                commits.isEmpty() -> str(R.string.commit_detail_history_no_changes)
+                else -> null
+            }
+            _uiState.update { it.copy(fileHistory = commits, isHistoryLoading = false, historyError = error) }
+        }
+    }
+
+    fun closeFileHistory() {
+        _uiState.update { it.copy(historyPath = null) }
     }
 
     fun dismissConflict() {

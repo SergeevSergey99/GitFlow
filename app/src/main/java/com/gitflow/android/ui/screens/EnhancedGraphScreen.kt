@@ -72,7 +72,6 @@ import com.gitflow.android.R
 import com.gitflow.android.data.models.Commit
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.models.ResetMode
-import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.ui.config.GraphConfig
 import com.gitflow.android.ui.screens.main.EmptyStateMessage
 import com.gitflow.android.ui.util.timeAgo
@@ -92,7 +91,6 @@ import java.util.*
 @Composable
 fun EnhancedGraphView(
     repository: Repository?,
-    gitRepository: IGitRepository,
     config: GraphConfig = GraphConfig.Default,
     /** Commits involved in an in-progress conflicted merge/rebase — marked with a red dashed outline. */
     conflictHashes: Set<String> = emptySet()
@@ -210,7 +208,6 @@ fun EnhancedGraphView(
             CommitDetailDialog(
                 commit = commit,
                 repository = repository,
-                gitRepository = gitRepository,
                 onDismiss = {
                     showCommitDetail = false
                     selectedCommit = null

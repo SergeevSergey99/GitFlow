@@ -42,7 +42,6 @@ fun MainScreen(navController: NavController) {
     val isRestoringSession by viewModel.isRestoringSession.collectAsState()
     val repositories by viewModel.repositoriesFlow.collectAsState(initial = emptyList())
     val isRefreshing by viewModel.isRefreshing.collectAsState()
-    val gitRepository = viewModel.getGitRepository()
 
     var showBranchDialog by remember { mutableStateOf(false) }
 
@@ -199,7 +198,6 @@ fun MainScreen(navController: NavController) {
                 MainTab.REPOSITORIES -> RepositoryListScreen(
                     repositories = repositories,
                     selectedRepositoryId = selectedRepository?.id,
-                    gitRepository = gitRepository,
                     onRepositorySelected = { viewModel.selectRepository(it) },
                     isRefreshing = isRefreshing,
                     onRefresh = { viewModel.refreshRepositories() },
@@ -208,14 +206,12 @@ fun MainScreen(navController: NavController) {
                 MainTab.GRAPH -> {
                     EnhancedGraphView(
                         repository = selectedRepository,
-                        gitRepository = gitRepository,
                         config = getGraphConfig(selectedGraphPreset),
                         conflictHashes = setOfNotNull(conflictInfo.sourceHash, conflictInfo.targetHash)
                     )
                 }
                 MainTab.CHANGES -> ChangesScreen(
                     repository = selectedRepository,
-                    gitRepository = gitRepository,
                     onGoToSettings = { viewModel.selectTab(MainTab.SETTINGS) }
                 )
                 MainTab.SETTINGS -> SettingsScreen(

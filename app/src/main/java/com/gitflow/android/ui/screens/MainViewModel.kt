@@ -25,8 +25,6 @@ class MainViewModel(
     private val session: RepositorySession
 ) : AndroidViewModel(application) {
 
-    fun getGitRepository(): IGitRepository = gitRepository
-
     val repositoriesFlow: Flow<List<Repository>> = gitRepository.getRepositoriesFlow()
 
     val snapshot: StateFlow<RepositorySnapshot?> = session.snapshot

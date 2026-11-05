@@ -61,7 +61,6 @@ import com.gitflow.android.ui.util.formatBytes
 import com.gitflow.android.ui.util.formatDate
 import com.gitflow.android.ui.util.formatHistoryDate
 import com.gitflow.android.data.models.*
-import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.data.settings.AppSettingsManager
 import java.io.File
 import java.text.SimpleDateFormat
@@ -80,7 +79,6 @@ private const val MAX_PARENT_NAV_DEPTH = 10
 fun CommitDetailDialog(
     commit: Commit,
     repository: Repository,
-    gitRepository: IGitRepository,
     onDismiss: () -> Unit
 ) {
     val navHistory = remember { mutableStateListOf<Commit>() }
@@ -95,7 +93,6 @@ fun CommitDetailDialog(
         CommitDetailContent(
             commit = currentCommit,
             repository = repository,
-            gitRepository = gitRepository,
             onDismiss = effectiveOnDismiss,
             onClose = onDismiss,
             onNavigateToCommit = { target ->
@@ -110,7 +107,6 @@ fun CommitDetailDialog(
 private fun CommitDetailContent(
     commit: Commit,
     repository: Repository,
-    gitRepository: IGitRepository,
     onDismiss: () -> Unit,
     onClose: () -> Unit = onDismiss,
     onNavigateToCommit: (Commit) -> Unit = {}
@@ -375,8 +371,6 @@ private fun CommitDetailContent(
                     )
                     CommitDetailTab.FileTree -> FileTreeView(
                         commit = commit,
-                        repository = repository,
-                        gitRepository = gitRepository,
                         viewModel = viewModel,
                         onRequestRestoreToCommit = ::requestRestoreToCommit,
                         onRequestRestoreToParent = ::requestRestoreToParent,
@@ -1626,8 +1620,6 @@ fun getFileIconColor(fileName: String): Color {
 @Composable
 fun FileTreeView(
     commit: Commit,
-    repository: Repository,
-    gitRepository: IGitRepository,
     viewModel: CommitDetailViewModel,
     onRequestRestoreToCommit: (fileName: String, filePath: String) -> Unit,
     onRequestRestoreToParent: (fileName: String, filePath: String) -> Unit,
@@ -1636,7 +1628,6 @@ fun FileTreeView(
     val uiState by viewModel.uiState.collectAsState()
 
     // Pure UI state stays local
-    var selectedFileForViewing by remember { mutableStateOf<FileTreeNode?>(null) }
     var pendingFileAction by remember { mutableStateOf<FileTreeNode?>(null) }
     var isExternalOpening by remember { mutableStateOf(false) }
 
@@ -1851,7 +1842,7 @@ fun FileTreeView(
             canPreviewInApp = allowPreview,
             isExternalLoading = isExternalOpening,
             onOpenInApp = {
-                selectedFileForViewing = file
+                viewModel.openFileViewer(file)
                 pendingFileAction = null
             },
             onOpenExternal = {
@@ -1861,10 +1852,9 @@ fun FileTreeView(
                         val opened = try {
                             openFileInExternalApp(
                                 context = context,
-                                gitRepository = gitRepository,
+                                bytes = viewModel.loadFileBytes(file.path),
                                 commit = commit,
-                                file = file,
-                                repository = repository
+                                file = file
                             )
                         } finally {
                             isExternalOpening = false
@@ -1884,13 +1874,13 @@ fun FileTreeView(
     }
 
     // File viewer dialog
-    selectedFileForViewing?.let { file ->
+    uiState.viewedFile?.let { file ->
         FileViewerDialog(
             file = file,
-            commit = commit,
-            repository = repository,
-            gitRepository = gitRepository,
-            onDismiss = { selectedFileForViewing = null }
+            fileContent = uiState.viewedFileContent,
+            isLoading = uiState.isViewedFileLoading,
+            loadErrorReason = uiState.viewedFileError,
+            onDismiss = viewModel::closeFileViewer
         )
     }
 
@@ -2169,28 +2159,12 @@ fun FileOpenOptionsDialog(
 @Composable
 fun FileViewerDialog(
     file: FileTreeNode,
-    commit: Commit,
-    repository: Repository,
-    gitRepository: IGitRepository,
+    fileContent: String?,
+    isLoading: Boolean,
+    loadErrorReason: String?,
     onDismiss: () -> Unit
 ) {
-    var fileContent by remember { mutableStateOf<String?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
-    var loadError by remember { mutableStateOf<String?>(null) }
-    val context = LocalContext.current
-
-    LaunchedEffect(file, repository) {
-        isLoading = true
-        loadError = null
-        try {
-            fileContent = gitRepository.getFileContent(commit, file.path, repository)
-        } catch (e: Exception) {
-            Timber.e(e, "Failed to load file content")
-            loadError = context.getString(R.string.commit_detail_viewer_load_error, e.message ?: "Unknown error")
-        } finally {
-            isLoading = false
-        }
-    }
+    val loadError = loadErrorReason?.let { stringResource(R.string.commit_detail_viewer_load_error, it) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -2997,13 +2971,10 @@ fun isPreviewSupported(
 
 suspend fun openFileInExternalApp(
     context: Context,
-    gitRepository: IGitRepository,
+    bytes: ByteArray?,
     commit: Commit,
-    file: FileTreeNode,
-    repository: Repository
+    file: FileTreeNode
 ): Boolean {
-    val bytes = gitRepository.getFileContentBytes(commit, file.path, repository)
-
     if (bytes == null) {
         Toast.makeText(context, context.getString(R.string.commit_detail_toast_load_failed), Toast.LENGTH_SHORT).show()
         return false

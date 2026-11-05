@@ -40,7 +40,11 @@ data class CommitDetailUiState(
     val historyDiffCommit: Commit? = null,
     val historyDiff: FileDiff? = null,
     val isHistoryDiffLoading: Boolean = false,
-    val historyDiffError: String? = null
+    val historyDiffError: String? = null,
+    val viewedFile: FileTreeNode? = null,
+    val viewedFileContent: String? = null,
+    val isViewedFileLoading: Boolean = false,
+    val viewedFileError: String? = null
 )
 
 class CommitDetailViewModel(
@@ -193,6 +197,29 @@ class CommitDetailViewModel(
             }
         }
     }
+
+    fun openFileViewer(file: FileTreeNode) {
+        _uiState.update {
+            it.copy(viewedFile = file, viewedFileContent = null, isViewedFileLoading = true, viewedFileError = null)
+        }
+        viewModelScope.launch {
+            val content = runCatching { gitRepository.getFileContent(commit, file.path, repository) }
+            _uiState.update {
+                it.copy(
+                    viewedFileContent = content.getOrNull(),
+                    isViewedFileLoading = false,
+                    viewedFileError = content.exceptionOrNull()?.let { error -> error.message ?: "Unknown error" }
+                )
+            }
+        }
+    }
+
+    fun closeFileViewer() {
+        _uiState.update { it.copy(viewedFile = null, viewedFileContent = null, viewedFileError = null) }
+    }
+
+    suspend fun loadFileBytes(filePath: String): ByteArray? =
+        gitRepository.getFileContentBytes(commit, filePath, repository)
 
     fun dismissHistoryDiff() {
         _uiState.update { it.copy(historyDiffCommit = null, historyDiff = null, historyDiffError = null, isHistoryDiffLoading = false) }

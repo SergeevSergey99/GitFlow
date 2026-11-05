@@ -27,7 +27,6 @@ import androidx.navigation.NavController
 import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.Repository
-import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.ui.components.RepositoryCard
 import com.gitflow.android.ui.components.dialogs.AddRepositoryDialog
 import com.gitflow.android.ui.components.dialogs.DeleteRepositoryDialog
@@ -37,7 +36,6 @@ import com.gitflow.android.ui.components.dialogs.DeleteRepositoryDialog
 fun RepositoryListScreen(
     repositories: List<Repository>,
     selectedRepositoryId: String? = null,
-    gitRepository: IGitRepository,
     onRepositorySelected: (Repository) -> Unit,
     isRefreshing: Boolean = false,
     onRefresh: () -> Unit = {},
