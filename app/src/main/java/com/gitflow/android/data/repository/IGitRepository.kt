@@ -4,6 +4,13 @@ import com.gitflow.android.data.models.*
 import kotlinx.coroutines.flow.Flow
 
 interface IGitRepository {
+    /**
+     * Id of a repository right after an operation that may have changed its working tree,
+     * index, refs or in-progress merge/rebase — also when the operation failed, since a
+     * conflicting merge still changes state. Adding/removing repositories shows up in
+     * [getRepositoriesFlow] instead.
+     */
+    val repositoryChanges: Flow<String>
     fun getRepositoriesFlow(): Flow<List<Repository>>
     suspend fun getRepositories(): List<Repository>
     suspend fun addRepository(path: String): GitResult<Repository>

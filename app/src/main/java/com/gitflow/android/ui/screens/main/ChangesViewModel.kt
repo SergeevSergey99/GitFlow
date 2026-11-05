@@ -14,9 +14,14 @@ import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.models.StashEntry
 import com.gitflow.android.data.models.SyncProgress
 import com.gitflow.android.data.repository.IGitRepository
+import com.gitflow.android.data.repository.RepositorySession
+import com.gitflow.android.data.repository.RepositorySnapshot
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -59,6 +64,7 @@ data class ChangesUiState(
 class ChangesViewModel(
     application: Application,
     private val gitRepository: IGitRepository,
+    private val session: RepositorySession,
     private val repository: Repository
 ) : AndroidViewModel(application) {
 
@@ -76,42 +82,25 @@ class ChangesViewModel(
     )
     val uiState: StateFlow<ChangesUiState> = _uiState.asStateFlow()
 
+    /** The MERGE_MSG prefilled into the commit fields, so it can be dropped if the merge is aborted. */
+    private var mergeMessagePrefill: Pair<String, String>? = null
+
     init {
-        loadChanges()
-    }
-
-    // Called by the composable when the repository object is updated externally
-    // (e.g. pendingPushCommits changed via another screen)
-    fun onRepositoryUpdated(updated: Repository) {
-        _uiState.update {
-            it.copy(
-                canPush = updated.hasRemoteOrigin,
-                pendingPushCommits = updated.pendingPushCommits
-            )
-        }
-        refreshPullCount()
-    }
-
-    /** Full reset + reload: clears in-progress commit input. Used once, on creation. */
-    fun loadChanges() {
-        _uiState.update {
-            it.copy(
-                conflictDetails = null,
-                commitMessage = "",
-                commitDescription = "",
-                isAmendMode = false,
-                isProcessing = false,
-                isConflictLoading = false
-            )
-        }
         refresh()
+        viewModelScope.launch {
+            session.snapshot
+                .filterNotNull()
+                .filter { it.repository.id == repository.id }
+                .collect { applySnapshot(it) }
+        }
+        viewModelScope.launch {
+            gitRepository.repositoryChanges
+                .filter { it == repository.id }
+                .collectLatest { runCatching { reloadChanges() } }
+        }
     }
 
-    /**
-     * Reloads the working-tree state WITHOUT clobbering commit input. Safe to call every
-     * time the tab becomes visible — a merge/rebase started elsewhere (branch dialog)
-     * surfaces its conflicts here through this path.
-     */
+    /** Reloads the working-tree state without clobbering commit input. */
     fun refresh() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
@@ -127,37 +116,45 @@ class ChangesViewModel(
 
     private suspend fun reloadChanges() {
         val files = gitRepository.getChangedFiles(repository)
-        val refreshed = gitRepository.refreshRepository(repository)
-        val pullCount = loadPendingPullCount()
-        val info = gitRepository.getConflictInfo(repository)
-        val opState = info.operation
+        _uiState.update { it.copy(changes = files) }
+    }
+
+    private suspend fun applySnapshot(snapshot: RepositorySnapshot) {
+        val info = snapshot.conflictInfo
+        val operation = info.operation
         // ConflictInfo uses source = the operation's subject branch, target = its base.
         // "Keep current branch" = ours: for a merge that's the base (current branch); for a
         // rebase git swaps sides, so ours is the subject (the branch being rebased).
-        val (oursLabel, theirsLabel) = if (opState == RepoOperationState.REBASING) {
+        val (oursLabel, theirsLabel) = if (operation == RepoOperationState.REBASING) {
             info.sourceLabel to info.targetLabel
         } else {
             info.targetLabel to info.sourceLabel
         }
         _uiState.update {
             it.copy(
-                changes = files,
-                canPush = refreshed?.hasRemoteOrigin ?: it.canPush,
-                pendingPushCommits = refreshed?.pendingPushCommits ?: it.pendingPushCommits,
-                pendingPullCommits = pullCount,
-                operationState = opState,
+                canPush = snapshot.repository.hasRemoteOrigin,
+                pendingPushCommits = snapshot.repository.pendingPushCommits,
+                pendingPullCommits = snapshot.pendingPullCommits,
+                operationState = operation,
                 conflictOursLabel = oursLabel,
                 conflictTheirsLabel = theirsLabel
             )
         }
+
+        val prefill = mergeMessagePrefill
+        val current = _uiState.value
+        if (operation != RepoOperationState.MERGING && prefill != null) {
+            mergeMessagePrefill = null
+            if (current.commitMessage to current.commitDescription == prefill) {
+                _uiState.update { it.copy(commitMessage = "", commitDescription = "") }
+            }
+        }
         // During a merge, offer git's prepared message (.git/MERGE_MSG) so the user can
         // commit the merge right away without inventing a message.
-        if (opState == RepoOperationState.MERGING &&
-            _uiState.value.commitMessage.isBlank() &&
-            !_uiState.value.isAmendMode
-        ) {
-            gitRepository.getMergeMessage(repository)?.let { mergeMsg ->
-                val split = splitCommitMessage(mergeMsg)
+        if (operation == RepoOperationState.MERGING && current.commitMessage.isBlank() && !current.isAmendMode) {
+            gitRepository.getMergeMessage(repository)?.let { mergeMessage ->
+                val split = splitCommitMessage(mergeMessage)
+                mergeMessagePrefill = split
                 _uiState.update { it.copy(commitMessage = split.first, commitDescription = split.second) }
             }
         }
@@ -209,7 +206,6 @@ class ChangesViewModel(
             if (result !is GitResult.Success) {
                 emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_unable_to_stage))
             }
-            reloadChanges()
         }
     }
 
@@ -236,7 +232,6 @@ class ChangesViewModel(
             }
             if (result is GitResult.Success) {
                 _uiState.update { it.copy(commitMessage = "", commitDescription = "", isAmendMode = false) }
-                reloadChanges()
                 emit(str(R.string.changes_commit_created))
             } else {
                 emit(failureMessage(result, R.string.changes_commit_failed))
@@ -266,7 +261,6 @@ class ChangesViewModel(
             val result = gitRepository.fetch(repository)
             when (result) {
                 is GitResult.Success -> {
-                    reloadChanges()
                     emit(str(R.string.changes_fetch_successful))
                 }
                 is GitResult.Failure.AuthRequired -> setReAuthRequired()
@@ -282,11 +276,9 @@ class ChangesViewModel(
             val result = gitRepository.pull(repository)
             when (result) {
                 is GitResult.Success -> {
-                    reloadChanges()
                     emit(str(R.string.changes_pull_successful))
                 }
                 is GitResult.Failure.Conflict -> {
-                    reloadChanges()
                     emit(str(R.string.changes_pull_conflicts))
                 }
                 is GitResult.Failure.AuthRequired -> setReAuthRequired()
@@ -337,7 +329,6 @@ class ChangesViewModel(
                     str(R.string.changes_unable_to_stage_file)
                 emit((result as? GitResult.Failure)?.message ?: fallback)
             }
-            reloadChanges()
         }
     }
 
@@ -351,7 +342,6 @@ class ChangesViewModel(
                     gitRepository.stageFile(repository, file)
                 }
             }
-            reloadChanges()
         }
     }
 
@@ -359,7 +349,6 @@ class ChangesViewModel(
         guard {
             val result = gitRepository.discardFileChanges(repository, path)
             if (result is GitResult.Success) {
-                reloadChanges()
                 emit(str(R.string.changes_discard_success))
             } else {
                 emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_discard_failed))
@@ -391,7 +380,6 @@ class ChangesViewModel(
             }
             val result = gitRepository.resolveConflict(repository, file.path, effective)
             if (result is GitResult.Success) {
-                reloadChanges()
                 emit(str(successMsgId))
             } else {
                 emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_conflict_resolve_failed))
@@ -427,7 +415,6 @@ class ChangesViewModel(
             val result = gitRepository.resolveConflictWithContent(repository, path, resolvedContent)
             if (result is GitResult.Success) {
                 _uiState.update { it.copy(conflictDetails = null) }
-                reloadChanges()
                 emit(str(R.string.changes_conflict_manual_success))
             } else {
                 emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_conflict_resolve_failed))
@@ -455,7 +442,6 @@ class ChangesViewModel(
         guard {
             val result = gitRepository.stashSave(repository, message)
             if (result is GitResult.Success) {
-                reloadChanges()
                 emit(str(R.string.changes_stash_saved))
                 // Reload stash list if dialog is open
                 val entries = gitRepository.stashList(repository)
@@ -470,7 +456,6 @@ class ChangesViewModel(
         guard {
             val result = gitRepository.stashApply(repository, stashIndex)
             if (result is GitResult.Success) {
-                reloadChanges()
                 emit(str(R.string.changes_stash_applied))
             } else {
                 emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_stash_apply_failed))
@@ -482,7 +467,6 @@ class ChangesViewModel(
         guard {
             val result = gitRepository.stashPop(repository, stashIndex)
             if (result is GitResult.Success) {
-                reloadChanges()
                 val entries = gitRepository.stashList(repository)
                 _uiState.update { it.copy(stashList = entries) }
                 emit(str(R.string.changes_stash_applied))
@@ -517,22 +501,6 @@ class ChangesViewModel(
 
     private fun emit(message: String) {
         _uiState.update { it.copy(message = message) }
-    }
-
-    private fun refreshPullCount() {
-        viewModelScope.launch {
-            val count = loadPendingPullCount()
-            _uiState.update { it.copy(pendingPullCommits = count) }
-        }
-    }
-
-    private suspend fun loadPendingPullCount(): Int {
-        return try {
-            val branches = gitRepository.getBranches(repository)
-            branches.firstOrNull { it.isLocal && it.name == repository.currentBranch }?.behind ?: 0
-        } catch (_: Exception) {
-            0
-        }
     }
 
     private fun splitCommitMessage(message: String): Pair<String, String> {

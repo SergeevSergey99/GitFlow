@@ -8,9 +8,12 @@ import com.gitflow.android.data.models.GitResult
 import com.gitflow.android.data.models.RepoOperationState
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.repository.IGitRepository
+import com.gitflow.android.data.repository.RepositorySession
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -21,15 +24,14 @@ data class BranchesUiState(
     val message: String? = null,
     val errorMessage: String? = null,
     /** In-progress git operation (merge/rebase) whose conflicts are awaiting resolution. */
-    val operationState: RepoOperationState = RepoOperationState.NONE,
-    /** Incremented on every successful mutation so the host can refresh without closing the dialog. */
-    val mutationSignal: Int = 0
+    val operationState: RepoOperationState = RepoOperationState.NONE
 )
 
 class BranchesViewModel(
     application: Application,
     private val repository: Repository,
-    private val gitRepository: IGitRepository
+    private val gitRepository: IGitRepository,
+    session: RepositorySession
 ) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(BranchesUiState())
@@ -39,14 +41,24 @@ class BranchesViewModel(
 
     init {
         loadBranches()
+        viewModelScope.launch {
+            session.snapshot
+                .filterNotNull()
+                .filter { it.repository.id == repository.id }
+                .collect { snapshot -> _uiState.update { it.copy(operationState = snapshot.conflictInfo.operation) } }
+        }
+        viewModelScope.launch {
+            gitRepository.repositoryChanges
+                .filter { it == repository.id }
+                .collect { loadBranches() }
+        }
     }
 
     fun loadBranches() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             val branches = gitRepository.getBranches(repository)
-            val state = gitRepository.getRepositoryState(repository)
-            _uiState.update { it.copy(branches = branches, operationState = state, isLoading = false) }
+            _uiState.update { it.copy(branches = branches, isLoading = false) }
         }
     }
 
@@ -152,7 +164,7 @@ class BranchesViewModel(
     // Internal helpers
     // ---------------------------------------------------------------------------
 
-    /** Runs [block] under the single-operation guard, then reloads branch + operation state. */
+    /** Runs [block] under the single-operation guard; branches reload on the repository change event. */
     private fun runOp(block: suspend () -> Unit) {
         if (isProcessing) return
         isProcessing = true
@@ -163,23 +175,20 @@ class BranchesViewModel(
             } finally {
                 isProcessing = false
                 _uiState.update { it.copy(operationInProgress = false) }
-                loadBranches()
             }
         }
     }
 
-    private fun succeed(msg: String) {
-        _uiState.update { it.copy(message = msg, mutationSignal = it.mutationSignal + 1) }
+    private fun succeed(message: String) {
+        _uiState.update { it.copy(message = message) }
     }
 
     /**
      * A conflict left an operation in progress. No message is set — the OperationBanner
-     * (driven by operationState from the follow-up loadBranches) already conveys it, and a
-     * second error card would be redundant. Just signal the host to re-check state.
+     * (driven by operationState from the session snapshot) already conveys it, and a
+     * second error card would be redundant.
      */
-    private fun conflict() {
-        _uiState.update { it.copy(mutationSignal = it.mutationSignal + 1) }
-    }
+    private fun conflict() = Unit
 
     private fun fail(msg: String) {
         _uiState.update { it.copy(errorMessage = msg) }

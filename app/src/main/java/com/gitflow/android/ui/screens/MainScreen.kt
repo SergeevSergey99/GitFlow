@@ -36,7 +36,8 @@ fun MainScreen(navController: NavController) {
     val viewModel: MainViewModel = koinViewModel()
 
     val selectedTab by viewModel.selectedTab.collectAsState()
-    val selectedRepository by viewModel.selectedRepository.collectAsState()
+    val snapshot by viewModel.snapshot.collectAsState()
+    val selectedRepository = snapshot?.repository
     val selectedGraphPreset by viewModel.selectedGraphPreset.collectAsState()
     val selectedColorTheme by viewModel.selectedColorTheme.collectAsState()
     val selectedDarkMode by viewModel.selectedDarkMode.collectAsState()
@@ -48,40 +49,12 @@ fun MainScreen(navController: NavController) {
     var showOperationsSheet by remember { mutableStateOf(false) }
     var showBranchDialog by remember { mutableStateOf(false) }
 
-    // Number of commits the current branch is behind its upstream (i.e. pullable), shown in
-    // the header before the branch name — same source the Changes tab uses for "Pull (N)".
-    var pendingPullCount by remember { mutableStateOf(0) }
-
-    val conflictInfo by viewModel.conflictInfo.collectAsState()
-    val operationSignal by viewModel.operationSignal.collectAsState()
+    val pendingPullCount = snapshot?.pendingPullCommits ?: 0
+    val conflictInfo = snapshot?.conflictInfo ?: ConflictInfo()
     val operationState = conflictInfo.operation
     val conflictPaths = conflictInfo.conflictPaths
     val inConflict = operationState != RepoOperationState.NONE
     var showConflictInfo by remember { mutableStateOf(false) }
-
-    // Обновляем выбранный репозиторий если он изменился в списке
-    LaunchedEffect(repositories) {
-        viewModel.updateSelectedRepositoryIfChanged(repositories)
-    }
-
-    LaunchedEffect(selectedRepository) {
-        val repo = selectedRepository
-        pendingPullCount = if (repo != null) {
-            try {
-                gitRepository.getBranches(repo)
-                    .firstOrNull { it.isLocal && it.name == repo.currentBranch }?.behind ?: 0
-            } catch (_: Exception) {
-                0
-            }
-        } else {
-            0
-        }
-    }
-
-    // Re-check merge/rebase state whenever the repo or the active tab changes.
-    LaunchedEffect(selectedRepository, selectedTab) {
-        viewModel.refreshOperationState()
-    }
 
     Scaffold(
         topBar = {
@@ -240,18 +213,13 @@ fun MainScreen(navController: NavController) {
                         repository = selectedRepository,
                         gitRepository = gitRepository,
                         config = getGraphConfig(selectedGraphPreset),
-                        conflictHashes = setOfNotNull(conflictInfo.sourceHash, conflictInfo.targetHash),
-                        onRepoStateChanged = { viewModel.refreshOperationState() }
+                        conflictHashes = setOfNotNull(conflictInfo.sourceHash, conflictInfo.targetHash)
                     )
                 }
                 MainTab.CHANGES -> ChangesScreen(
                     repository = selectedRepository,
                     gitRepository = gitRepository,
-                    onGoToSettings = { viewModel.selectTab(MainTab.SETTINGS) },
-                    // Keep the conflict header in sync when conflicts are resolved here.
-                    onRepoStateChanged = { viewModel.refreshOperationState() },
-                    // Bumped when the header aborts/continues so this tab reloads.
-                    externalRefreshSignal = operationSignal
+                    onGoToSettings = { viewModel.selectTab(MainTab.SETTINGS) }
                 )
                 MainTab.SETTINGS -> SettingsScreen(
                     selectedGraphPreset = selectedGraphPreset,
@@ -289,15 +257,7 @@ fun MainScreen(navController: NavController) {
             BranchManagementDialog(
                 repository = repo,
                 currentBranch = repo.currentBranch,
-                onDismiss = { showBranchDialog = false },
-                // Refresh the underlying repo state after a mutation, but let the dialog stay
-                // open — merge/rebase conflicts require the user to remain and act on them.
-                // A merge/rebase doesn't change Repository fields, so also re-check the
-                // operation state directly, otherwise the conflict header lags until a tab switch.
-                onBranchChanged = {
-                    viewModel.refreshRepositories()
-                    viewModel.refreshOperationState()
-                }
+                onDismiss = { showBranchDialog = false }
             )
         }
     }

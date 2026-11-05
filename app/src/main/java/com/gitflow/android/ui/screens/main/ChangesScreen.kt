@@ -59,9 +59,7 @@ import java.util.Locale
 fun ChangesScreen(
     repository: Repository?,
     gitRepository: IGitRepository,
-    onGoToSettings: () -> Unit = {},
-    onRepoStateChanged: () -> Unit = {},
-    externalRefreshSignal: Int = 0
+    onGoToSettings: () -> Unit = {}
 ) {
     if (repository == null) {
         EmptyStateMessage(stringResource(R.string.changes_select_repo))
@@ -87,19 +85,7 @@ fun ChangesScreen(
     var isHistoryLoading by remember { mutableStateOf(false) }
     var historyError by remember { mutableStateOf<String?>(null) }
 
-    // Sync repository metadata (pendingPushCommits, canPush) when MainScreen's flow updates them
-    LaunchedEffect(repository.pendingPushCommits, repository.hasRemoteOrigin) {
-        viewModel.onRepositoryUpdated(repository)
-    }
-
-    // Reload the working tree every time this tab becomes visible. The ViewModel outlives tab
-    // switches, so without this a merge/rebase started elsewhere (branch dialog) would not
-    // surface its conflicts here until a manual pull-to-refresh.
-    LaunchedEffect(Unit) {
-        viewModel.refresh()
-    }
-
-    // Also reload when the app itself comes back to the foreground: the user may have edited
+    // Reload when the app itself comes back to the foreground: the user may have edited
     // files in another app (file manager, editor) and expects the list to reflect that.
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -110,17 +96,6 @@ fun ChangesScreen(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    // The header aborted/continued the operation — reload from scratch (drops the now-moot
-    // prefilled merge message).
-    LaunchedEffect(externalRefreshSignal) {
-        if (externalRefreshSignal > 0) viewModel.loadChanges()
-    }
-
-    // Notify the host so the conflict header reflects resolutions made here.
-    LaunchedEffect(uiState.operationState, uiState.changes) {
-        onRepoStateChanged()
     }
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -149,7 +124,6 @@ fun ChangesScreen(
         isRefreshing = isManualRefreshing,
         onRefresh = {
             isManualRefreshing = true
-            // refresh() (not loadChanges()) keeps the commit message the user is typing.
             viewModel.refresh()
         },
         modifier = Modifier.fillMaxSize()

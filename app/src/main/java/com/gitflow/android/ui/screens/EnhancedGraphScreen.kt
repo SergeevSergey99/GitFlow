@@ -95,8 +95,7 @@ fun EnhancedGraphView(
     gitRepository: IGitRepository,
     config: GraphConfig = GraphConfig.Default,
     /** Commits involved in an in-progress conflicted merge/rebase — marked with a red dashed outline. */
-    conflictHashes: Set<String> = emptySet(),
-    onRepoStateChanged: () -> Unit = {}
+    conflictHashes: Set<String> = emptySet()
 ) {
     if (repository == null) {
         EmptyStateMessage(stringResource(R.string.graph_select_repo))
@@ -195,7 +194,6 @@ fun EnhancedGraphView(
                 actionCommit = null
                 pendingDialog = null
                 showActionsSheet = false
-                onRepoStateChanged()
                 showSnackbarMessage(context.getString(R.string.graph_commit_operation_conflicts))
             } else {
                 val fallback = context.getString(R.string.graph_commit_operation_failed_generic)

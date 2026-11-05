@@ -6,7 +6,9 @@ import com.gitflow.android.data.models.*
 import com.gitflow.android.data.settings.AppSettingsManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
@@ -150,6 +152,13 @@ class GitRepository(
 
     internal val dataStore = RepositoryDataStore(context)
 
+    private val changes = MutableSharedFlow<String>(extraBufferCapacity = 64)
+    override val repositoryChanges: Flow<String> = changes.asSharedFlow()
+
+    private fun notifyChanged(repository: Repository) {
+        changes.tryEmit(repository.id)
+    }
+
     // ---------- Simple inline overrides ----------
 
     override fun getRepositoriesFlow(): Flow<List<Repository>> = dataStore.repositories
@@ -183,55 +192,55 @@ class GitRepository(
 
     override suspend fun getChangedFiles(repository: Repository): List<FileChange> = getChangedFilesImpl(repository)
     override suspend fun getWorkingFileDiff(repository: Repository, filePath: String, stage: ChangeStage): FileDiff? = getWorkingFileDiffImpl(repository, filePath, stage)
-    override suspend fun stageFile(repository: Repository, file: FileChange): GitResult<Unit> = stageFileImpl(repository, file)
-    override suspend fun unstageFile(repository: Repository, filePath: String): GitResult<Unit> = unstageFileImpl(repository, filePath)
-    override suspend fun discardFileChanges(repository: Repository, filePath: String): GitResult<Unit> = discardFileChangesImpl(repository, filePath)
-    override suspend fun stageAll(repository: Repository): GitResult<Unit> = stageAllImpl(repository)
+    override suspend fun stageFile(repository: Repository, file: FileChange): GitResult<Unit> = stageFileImpl(repository, file).also { notifyChanged(repository) }
+    override suspend fun unstageFile(repository: Repository, filePath: String): GitResult<Unit> = unstageFileImpl(repository, filePath).also { notifyChanged(repository) }
+    override suspend fun discardFileChanges(repository: Repository, filePath: String): GitResult<Unit> = discardFileChangesImpl(repository, filePath).also { notifyChanged(repository) }
+    override suspend fun stageAll(repository: Repository): GitResult<Unit> = stageAllImpl(repository).also { notifyChanged(repository) }
     override suspend fun getMergeConflicts(repository: Repository): List<MergeConflict> = getMergeConflictsImpl(repository)
-    override suspend fun resolveConflict(repository: Repository, path: String, strategy: ConflictResolutionStrategy): GitResult<Unit> = resolveConflictImpl(repository, path, strategy)
-    override suspend fun resolveConflictWithContent(repository: Repository, path: String, resolvedContent: String): GitResult<Unit> = resolveConflictWithContentImpl(repository, path, resolvedContent)
-    override suspend fun commit(repository: Repository, message: String): GitResult<Unit> = commitImpl(repository, message)
-    override suspend fun amendLastCommit(repository: Repository, message: String): GitResult<Unit> = amendLastCommitImpl(repository, message)
+    override suspend fun resolveConflict(repository: Repository, path: String, strategy: ConflictResolutionStrategy): GitResult<Unit> = resolveConflictImpl(repository, path, strategy).also { notifyChanged(repository) }
+    override suspend fun resolveConflictWithContent(repository: Repository, path: String, resolvedContent: String): GitResult<Unit> = resolveConflictWithContentImpl(repository, path, resolvedContent).also { notifyChanged(repository) }
+    override suspend fun commit(repository: Repository, message: String): GitResult<Unit> = commitImpl(repository, message).also { notifyChanged(repository) }
+    override suspend fun amendLastCommit(repository: Repository, message: String): GitResult<Unit> = amendLastCommitImpl(repository, message).also { notifyChanged(repository) }
     override suspend fun getLastCommitMessage(repository: Repository): String? = getLastCommitMessageImpl(repository)
 
     override suspend fun getBranches(repository: Repository): List<Branch> = getBranchesImpl(repository)
-    override suspend fun checkoutBranch(repository: Repository, branchName: String, isLocal: Boolean): GitResult<Unit> = checkoutBranchImpl(repository, branchName, isLocal)
-    override suspend fun createBranch(repository: Repository, branchName: String, checkout: Boolean): GitResult<Unit> = createBranchImpl(repository, branchName, checkout)
-    override suspend fun deleteBranch(repository: Repository, branchName: String, force: Boolean): GitResult<Unit> = deleteBranchImpl(repository, branchName, force)
-    override suspend fun renameBranch(repository: Repository, oldName: String, newName: String): GitResult<Unit> = renameBranchImpl(repository, oldName, newName)
-    override suspend fun mergeBranch(repository: Repository, branchName: String): GitResult<Unit> = mergeBranchImpl(repository, branchName)
-    override suspend fun abortMerge(repository: Repository): GitResult<Unit> = abortMergeImpl(repository)
-    override suspend fun rebaseCurrentOnto(repository: Repository, branchName: String): GitResult<Unit> = rebaseCurrentOntoImpl(repository, branchName)
-    override suspend fun rebaseContinue(repository: Repository): GitResult<Unit> = rebaseContinueImpl(repository)
-    override suspend fun rebaseAbort(repository: Repository): GitResult<Unit> = rebaseAbortImpl(repository)
+    override suspend fun checkoutBranch(repository: Repository, branchName: String, isLocal: Boolean): GitResult<Unit> = checkoutBranchImpl(repository, branchName, isLocal).also { notifyChanged(repository) }
+    override suspend fun createBranch(repository: Repository, branchName: String, checkout: Boolean): GitResult<Unit> = createBranchImpl(repository, branchName, checkout).also { notifyChanged(repository) }
+    override suspend fun deleteBranch(repository: Repository, branchName: String, force: Boolean): GitResult<Unit> = deleteBranchImpl(repository, branchName, force).also { notifyChanged(repository) }
+    override suspend fun renameBranch(repository: Repository, oldName: String, newName: String): GitResult<Unit> = renameBranchImpl(repository, oldName, newName).also { notifyChanged(repository) }
+    override suspend fun mergeBranch(repository: Repository, branchName: String): GitResult<Unit> = mergeBranchImpl(repository, branchName).also { notifyChanged(repository) }
+    override suspend fun abortMerge(repository: Repository): GitResult<Unit> = abortMergeImpl(repository).also { notifyChanged(repository) }
+    override suspend fun rebaseCurrentOnto(repository: Repository, branchName: String): GitResult<Unit> = rebaseCurrentOntoImpl(repository, branchName).also { notifyChanged(repository) }
+    override suspend fun rebaseContinue(repository: Repository): GitResult<Unit> = rebaseContinueImpl(repository).also { notifyChanged(repository) }
+    override suspend fun rebaseAbort(repository: Repository): GitResult<Unit> = rebaseAbortImpl(repository).also { notifyChanged(repository) }
     override suspend fun getRepositoryState(repository: Repository): RepoOperationState = getRepositoryStateImpl(repository)
     override suspend fun getConflictInfo(repository: Repository): ConflictInfo = getConflictInfoImpl(repository)
     override suspend fun getMergeMessage(repository: Repository): String? = getMergeMessageImpl(repository)
-    override suspend fun fetch(repository: Repository): GitResult<Unit> = fetchImpl(repository)
-    override suspend fun pull(repository: Repository): GitResult<Unit> = pullImpl(repository)
-    override suspend fun push(repository: Repository): GitResult<Unit> = pushImpl(repository)
-    override suspend fun pushBranch(repository: Repository, branchName: String): GitResult<Unit> = pushBranchImpl(repository, branchName)
-    override suspend fun pushWithProgress(repository: Repository, onProgress: (SyncProgress) -> Unit): GitResult<Unit> = pushWithProgressImpl(repository, onProgress)
-    override suspend fun resetToCommit(repository: Repository, commitHash: String, mode: ResetMode): GitResult<Unit> = resetToCommitImpl(repository, commitHash, mode)
-    override suspend fun createTag(repository: Repository, tagName: String, commitHash: String, force: Boolean): GitResult<Unit> = createTagImpl(repository, tagName, commitHash, force)
-    override suspend fun deleteTag(repository: Repository, tagName: String): GitResult<Unit> = deleteTagImpl(repository, tagName)
+    override suspend fun fetch(repository: Repository): GitResult<Unit> = fetchImpl(repository).also { notifyChanged(repository) }
+    override suspend fun pull(repository: Repository): GitResult<Unit> = pullImpl(repository).also { notifyChanged(repository) }
+    override suspend fun push(repository: Repository): GitResult<Unit> = pushImpl(repository).also { notifyChanged(repository) }
+    override suspend fun pushBranch(repository: Repository, branchName: String): GitResult<Unit> = pushBranchImpl(repository, branchName).also { notifyChanged(repository) }
+    override suspend fun pushWithProgress(repository: Repository, onProgress: (SyncProgress) -> Unit): GitResult<Unit> = pushWithProgressImpl(repository, onProgress).also { notifyChanged(repository) }
+    override suspend fun resetToCommit(repository: Repository, commitHash: String, mode: ResetMode): GitResult<Unit> = resetToCommitImpl(repository, commitHash, mode).also { notifyChanged(repository) }
+    override suspend fun createTag(repository: Repository, tagName: String, commitHash: String, force: Boolean): GitResult<Unit> = createTagImpl(repository, tagName, commitHash, force).also { notifyChanged(repository) }
+    override suspend fun deleteTag(repository: Repository, tagName: String): GitResult<Unit> = deleteTagImpl(repository, tagName).also { notifyChanged(repository) }
     override suspend fun getTagsForCommit(repository: Repository, commitHash: String): List<String> = getTagsForCommitImpl(repository, commitHash)
-    override suspend fun cherryPickCommit(repository: Repository, commitHash: String): GitResult<Unit> = cherryPickCommitImpl(repository, commitHash)
-    override suspend fun mergeCommitIntoCurrentBranch(repository: Repository, commitHash: String): GitResult<Unit> = mergeCommitIntoCurrentBranchImpl(repository, commitHash)
+    override suspend fun cherryPickCommit(repository: Repository, commitHash: String): GitResult<Unit> = cherryPickCommitImpl(repository, commitHash).also { notifyChanged(repository) }
+    override suspend fun mergeCommitIntoCurrentBranch(repository: Repository, commitHash: String): GitResult<Unit> = mergeCommitIntoCurrentBranchImpl(repository, commitHash).also { notifyChanged(repository) }
 
     override suspend fun getCommitFileTree(commit: Commit, repository: Repository): FileTreeNode = getCommitFileTreeImpl(commit, repository)
     override suspend fun getFileContent(commit: Commit, filePath: String, repository: Repository): String? = getFileContentImpl(commit, filePath, repository)
     override suspend fun getFileContentBytes(commit: Commit, filePath: String, repository: Repository): ByteArray? = getFileContentBytesImpl(commit, filePath, repository)
-    override suspend fun restoreFileToCommit(commit: Commit, filePath: String, repository: Repository): GitResult<Unit> = restoreFileToCommitImpl(commit, filePath, repository)
-    override suspend fun restoreFileToParentCommit(commit: Commit, filePath: String, repository: Repository): GitResult<Unit> = restoreFileToParentCommitImpl(commit, filePath, repository)
+    override suspend fun restoreFileToCommit(commit: Commit, filePath: String, repository: Repository): GitResult<Unit> = restoreFileToCommitImpl(commit, filePath, repository).also { notifyChanged(repository) }
+    override suspend fun restoreFileToParentCommit(commit: Commit, filePath: String, repository: Repository): GitResult<Unit> = restoreFileToParentCommitImpl(commit, filePath, repository).also { notifyChanged(repository) }
     override suspend fun getFileHistory(commit: Commit, filePath: String, repository: Repository): List<Commit> = getFileHistoryImpl(commit, filePath, repository)
     override suspend fun getFileHistoryForPath(repository: Repository, filePath: String): List<Commit> = getFileHistoryForPathImpl(repository, filePath)
 
-    override suspend fun stashSave(repository: Repository, message: String): GitResult<Unit> = stashSaveImpl(repository, message)
+    override suspend fun stashSave(repository: Repository, message: String): GitResult<Unit> = stashSaveImpl(repository, message).also { notifyChanged(repository) }
     override suspend fun stashList(repository: Repository): List<StashEntry> = stashListImpl(repository)
-    override suspend fun stashApply(repository: Repository, stashIndex: Int): GitResult<Unit> = stashApplyImpl(repository, stashIndex)
-    override suspend fun stashPop(repository: Repository, stashIndex: Int): GitResult<Unit> = stashPopImpl(repository, stashIndex)
-    override suspend fun stashDrop(repository: Repository, stashIndex: Int): GitResult<Unit> = stashDropImpl(repository, stashIndex)
+    override suspend fun stashApply(repository: Repository, stashIndex: Int): GitResult<Unit> = stashApplyImpl(repository, stashIndex).also { notifyChanged(repository) }
+    override suspend fun stashPop(repository: Repository, stashIndex: Int): GitResult<Unit> = stashPopImpl(repository, stashIndex).also { notifyChanged(repository) }
+    override suspend fun stashDrop(repository: Repository, stashIndex: Int): GitResult<Unit> = stashDropImpl(repository, stashIndex).also { notifyChanged(repository) }
 
     // ---------- Shared internal helpers ----------
 

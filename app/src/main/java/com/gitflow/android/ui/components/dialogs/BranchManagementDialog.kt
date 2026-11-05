@@ -32,8 +32,7 @@ import com.gitflow.android.ui.screens.main.BranchesViewModel
 fun BranchManagementDialog(
     repository: Repository,
     currentBranch: String,
-    onDismiss: () -> Unit,
-    onBranchChanged: () -> Unit
+    onDismiss: () -> Unit
 ) {
     val viewModel: BranchesViewModel = koinViewModel(
         key = "branches_${repository.id}",
@@ -51,21 +50,10 @@ fun BranchManagementDialog(
     var rebaseTarget by remember { mutableStateOf<Branch?>(null) }
     var renameTarget by remember { mutableStateOf<Branch?>(null) }
 
-    // Refresh the host repo state after any successful mutation, but keep the dialog open —
-    // conflicts from merge/rebase need the user to stay here (and then resolve in Changes).
-    LaunchedEffect(uiState.mutationSignal) {
-        if (uiState.mutationSignal > 0) {
-            onBranchChanged()
-        }
-    }
-
-    // Re-read branch and merge/rebase state each time the dialog opens, so a merge/rebase
-    // resolved/aborted elsewhere (Changes screen or the conflict header) is reflected here.
-    // Also drop any stale message from a previous session so it doesn't linger.
+    // The ViewModel outlives the dialog: drop a message left from the previous opening.
     LaunchedEffect(Unit) {
         viewModel.clearError()
         viewModel.clearMessage()
-        viewModel.loadBranches()
     }
 
     Dialog(
