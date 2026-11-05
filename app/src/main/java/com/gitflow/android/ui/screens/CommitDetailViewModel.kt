@@ -64,11 +64,7 @@ class CommitDetailViewModel(
     fun loadParentCommits() {
         _uiState.update { it.copy(isLoadingParents = true) }
         viewModelScope.launch {
-            val loaded = commit.parents.mapNotNull { hash ->
-                try {
-                    gitRepository.getCommitByHash(hash, repository)
-                } catch (_: Exception) { null }
-            }
+            val loaded = commit.parents.mapNotNull { hash -> gitRepository.getCommitByHash(hash, repository).getOrNull() }
             _uiState.update { it.copy(parentCommits = loaded, isLoadingParents = false) }
         }
     }
@@ -76,11 +72,9 @@ class CommitDetailViewModel(
     fun loadDiffs() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoadingDiffs = true, diffsLoadError = null) }
-            try {
-                val diffs = gitRepository.getCommitDiffs(commit, repository)
-                _uiState.update { it.copy(fileDiffs = diffs, isLoadingDiffs = false) }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isLoadingDiffs = false, diffsLoadError = e.message) }
+            when (val result = gitRepository.getCommitDiffs(commit, repository)) {
+                is GitResult.Success -> _uiState.update { it.copy(fileDiffs = result.data, isLoadingDiffs = false) }
+                is GitResult.Failure -> _uiState.update { it.copy(isLoadingDiffs = false, diffsLoadError = result.message) }
             }
         }
     }
@@ -89,11 +83,9 @@ class CommitDetailViewModel(
         if (_uiState.value.fileTree != null || _uiState.value.isLoadingTree) return
         viewModelScope.launch {
             _uiState.update { it.copy(isLoadingTree = true, treeLoadError = null) }
-            try {
-                val tree = gitRepository.getCommitFileTree(commit, repository)
-                _uiState.update { it.copy(fileTree = tree, isLoadingTree = false) }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isLoadingTree = false, treeLoadError = e.message) }
+            when (val result = gitRepository.getCommitFileTree(commit, repository)) {
+                is GitResult.Success -> _uiState.update { it.copy(fileTree = result.data, isLoadingTree = false) }
+                is GitResult.Failure -> _uiState.update { it.copy(isLoadingTree = false, treeLoadError = result.message) }
             }
         }
     }
@@ -154,11 +146,9 @@ class CommitDetailViewModel(
     fun loadFileHistory(file: FileTreeNode) {
         _uiState.update { it.copy(historyDialogFile = file, isHistoryLoading = true, historyError = null, fileHistory = emptyList()) }
         viewModelScope.launch {
-            try {
-                val history = gitRepository.getFileHistory(commit, file.path, repository)
-                _uiState.update { it.copy(fileHistory = history, isHistoryLoading = false) }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isHistoryLoading = false, historyError = e.message) }
+            when (val result = gitRepository.getFileHistory(commit, file.path, repository)) {
+                is GitResult.Success -> _uiState.update { it.copy(fileHistory = result.data, isHistoryLoading = false) }
+                is GitResult.Failure -> _uiState.update { it.copy(isHistoryLoading = false, historyError = result.message) }
             }
         }
     }
@@ -182,18 +172,18 @@ class CommitDetailViewModel(
         _uiState.update { it.copy(historyDiffCommit = historyCommit, historyDiff = null, historyDiffError = null, isHistoryDiffLoading = true) }
         val filePath = _uiState.value.historyDialogFile?.path ?: return
         viewModelScope.launch {
-            try {
-                val diffs = gitRepository.getCommitDiffs(historyCommit, repository)
-                val matchingDiff = diffs.firstOrNull { it.path == filePath || it.oldPath == filePath }
-                _uiState.update {
-                    it.copy(
-                        historyDiff = matchingDiff,
-                        historyDiffError = if (matchingDiff == null) "No diff found for this file" else null,
-                        isHistoryDiffLoading = false
-                    )
+            when (val result = gitRepository.getCommitDiffs(historyCommit, repository)) {
+                is GitResult.Success -> {
+                    val matchingDiff = result.data.firstOrNull { it.path == filePath || it.oldPath == filePath }
+                    _uiState.update {
+                        it.copy(
+                            historyDiff = matchingDiff,
+                            historyDiffError = if (matchingDiff == null) "No diff found for this file" else null,
+                            isHistoryDiffLoading = false
+                        )
+                    }
                 }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isHistoryDiffLoading = false, historyDiffError = e.message) }
+                is GitResult.Failure -> _uiState.update { it.copy(isHistoryDiffLoading = false, historyDiffError = result.message) }
             }
         }
     }
@@ -203,12 +193,12 @@ class CommitDetailViewModel(
             it.copy(viewedFile = file, viewedFileContent = null, isViewedFileLoading = true, viewedFileError = null)
         }
         viewModelScope.launch {
-            val content = runCatching { gitRepository.getFileContent(commit, file.path, repository) }
+            val content = gitRepository.getFileContent(commit, file.path, repository)
             _uiState.update {
                 it.copy(
                     viewedFileContent = content.getOrNull(),
                     isViewedFileLoading = false,
-                    viewedFileError = content.exceptionOrNull()?.let { error -> error.message ?: "Unknown error" }
+                    viewedFileError = (content as? GitResult.Failure)?.message
                 )
             }
         }
@@ -219,7 +209,7 @@ class CommitDetailViewModel(
     }
 
     suspend fun loadFileBytes(filePath: String): ByteArray? =
-        gitRepository.getFileContentBytes(commit, filePath, repository)
+        gitRepository.getFileContentBytes(commit, filePath, repository).getOrNull()
 
     fun dismissHistoryDiff() {
         _uiState.update { it.copy(historyDiffCommit = null, historyDiff = null, historyDiffError = null, isHistoryDiffLoading = false) }

@@ -57,8 +57,10 @@ class BranchesViewModel(
     fun loadBranches() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
-            val branches = gitRepository.getBranches(repository)
-            _uiState.update { it.copy(branches = branches, isLoading = false) }
+            when (val result = gitRepository.getBranches(repository)) {
+                is GitResult.Success -> _uiState.update { it.copy(branches = result.data, isLoading = false) }
+                is GitResult.Failure -> _uiState.update { it.copy(isLoading = false, errorMessage = result.message) }
+            }
         }
     }
 

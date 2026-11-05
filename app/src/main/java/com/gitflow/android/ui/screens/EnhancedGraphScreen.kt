@@ -129,6 +129,12 @@ fun EnhancedGraphView(
         snackbarHostState.showSnackbar(result.message)
     }
 
+    // With history already on screen a failed reload keeps it and only reports the error.
+    val loadErrorMessage = uiState.loadError?.let { stringResource(R.string.graph_load_error, it) }
+    LaunchedEffect(loadErrorMessage) {
+        if (loadErrorMessage != null && commits.isNotEmpty()) snackbarHostState.showSnackbar(loadErrorMessage)
+    }
+
     val graphData = remember(commits) { buildGraphData(commits) }
 
     var searchQuery by remember { mutableStateOf("") }
@@ -161,6 +167,8 @@ fun EnhancedGraphView(
                 ) {
                     CircularProgressIndicator()
                 }
+            } else if (commits.isEmpty() && uiState.loadError != null) {
+                GraphLoadError(message = uiState.loadError.orEmpty(), onRetry = viewModel::retry)
             } else if (commits.isEmpty()) {
                 EmptyStateMessage(stringResource(R.string.graph_no_commits))
             } else if (searchQuery.isNotBlank()) {
@@ -590,6 +598,27 @@ fun EnhancedGraphView(
         }
 
         null -> Unit
+    }
+}
+
+@Composable
+private fun GraphLoadError(message: String, onRetry: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = stringResource(R.string.graph_load_error, message),
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Button(onClick = onRetry) {
+            Text(stringResource(R.string.network_error_retry))
+        }
     }
 }
 

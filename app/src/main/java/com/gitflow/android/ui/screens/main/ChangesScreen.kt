@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.automirrored.filled.*
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -190,6 +191,15 @@ fun ChangesScreen(
                     onRetry = viewModel::retryNetworkOp,
                     onDismiss = viewModel::dismissNetworkError,
                     modifier = Modifier.align(Alignment.BottomCenter)
+                )
+            } ?: uiState.changesError?.let { reason ->
+                NetworkErrorBanner(
+                    message = stringResource(R.string.changes_load_error, reason),
+                    isRetryable = true,
+                    onRetry = viewModel::refresh,
+                    onDismiss = viewModel::dismissChangesError,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    icon = Icons.Default.ErrorOutline
                 )
             }
         }
@@ -1686,7 +1696,8 @@ private fun NetworkErrorBanner(
     isRetryable: Boolean,
     onRetry: () -> Unit,
     onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    icon: ImageVector = Icons.Default.CloudOff
 ) {
     Card(
         modifier = modifier
@@ -1701,7 +1712,7 @@ private fun NetworkErrorBanner(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Icon(
-                Icons.Default.CloudOff,
+                icon,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onErrorContainer,
                 modifier = Modifier.size(20.dp)

@@ -395,6 +395,8 @@
     <string name="graph_commit_confirm">Confirm</string>
     <string name="graph_commit_cancel">Cancel</string>
     <string name="graph_commit_operation_failed">Operation failed: %1$s</string>
+    <string name="graph_load_error">Couldn\'t load history: %1$s</string>
+    <string name="changes_load_error">Couldn\'t read changes: %1$s</string>
     <string name="graph_commit_operation_conflicts">Stopped on conflicts — resolve them in the Changes tab</string>
     <string name="graph_commit_operation_failed_generic">Unknown error</string>
     <string name="graph_commit_add_tag_title">Add tag to commit</string>

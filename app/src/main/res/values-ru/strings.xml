@@ -395,6 +395,8 @@
     <string name="graph_commit_confirm">Подтвердить</string>
     <string name="graph_commit_cancel">Отмена</string>
     <string name="graph_commit_operation_failed">Не удалось выполнить операцию: %1$s</string>
+    <string name="graph_load_error">Не удалось загрузить историю: %1$s</string>
+    <string name="changes_load_error">Не удалось прочитать изменения: %1$s</string>
     <string name="graph_commit_operation_conflicts">Остановлено на конфликтах — разрешите их во вкладке «Изменения»</string>
     <string name="graph_commit_operation_failed_generic">Неизвестная ошибка</string>
     <string name="graph_commit_add_tag_title">Добавить тег к коммиту</string>

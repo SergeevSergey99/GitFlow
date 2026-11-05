@@ -8,6 +8,7 @@ import com.gitflow.android.data.models.Commit
 import com.gitflow.android.data.models.GitResult
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.models.ResetMode
+import com.gitflow.android.data.models.getOrNull
 import com.gitflow.android.data.repository.IGitRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,6 +24,7 @@ data class GraphOperationResult(val message: String, val closeDialogs: Boolean)
 data class GraphUiState(
     val commits: List<Commit> = emptyList(),
     val isLoading: Boolean = true,
+    val loadError: String? = null,
     val hasMoreCommits: Boolean = true,
     val actionCommit: Commit? = null,
     val actionCommitTags: List<String> = emptyList(),
@@ -92,12 +94,21 @@ class GraphViewModel(
         _uiState.update { it.copy(operationResult = null) }
     }
 
+    fun retry() = loadCommits()
+
     private fun loadCommits() {
         commitsJob?.cancel()
         commitsJob = viewModelScope.launch {
-            val commits = gitRepository.getCommits(repository, page = 0, pageSize = pageSize)
-            _uiState.update {
-                it.copy(commits = commits, hasMoreCommits = commits.size >= pageSize, isLoading = false)
+            when (val result = gitRepository.getCommits(repository, page = 0, pageSize = pageSize)) {
+                is GitResult.Success -> _uiState.update {
+                    it.copy(
+                        commits = result.data,
+                        hasMoreCommits = result.data.size >= pageSize,
+                        isLoading = false,
+                        loadError = null
+                    )
+                }
+                is GitResult.Failure -> _uiState.update { it.copy(isLoading = false, loadError = result.message) }
             }
         }
     }
@@ -106,7 +117,7 @@ class GraphViewModel(
         tagsJob?.cancel()
         _uiState.update { it.copy(isTagsLoading = true) }
         tagsJob = viewModelScope.launch {
-            val tags = gitRepository.getTagsForCommit(repository, commit.hash)
+            val tags = gitRepository.getTagsForCommit(repository, commit.hash).getOrNull().orEmpty()
             _uiState.update { it.copy(actionCommitTags = tags, isTagsLoading = false) }
         }
     }

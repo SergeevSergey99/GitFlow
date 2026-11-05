@@ -15,6 +15,7 @@ import com.gitflow.android.data.models.RepoOperationState
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.models.StashEntry
 import com.gitflow.android.data.models.SyncProgress
+import com.gitflow.android.data.models.getOrNull
 import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.data.repository.RepositorySession
 import com.gitflow.android.data.repository.RepositorySnapshot
@@ -61,6 +62,7 @@ data class ChangesUiState(
     val conflictOursLabel: String? = null,
     /** Label for the "take incoming" side. */
     val conflictTheirsLabel: String? = null,
+    val changesError: String? = null,
     val openedDiff: FileDiff? = null,
     val isDiffLoading: Boolean = false,
     val diffError: String? = null,
@@ -105,7 +107,7 @@ class ChangesViewModel(
         viewModelScope.launch {
             gitRepository.repositoryChanges
                 .filter { it == repository.id }
-                .collectLatest { runCatching { reloadChanges() } }
+                .collectLatest { reloadChanges() }
         }
     }
 
@@ -113,19 +115,27 @@ class ChangesViewModel(
     fun refresh() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
-            try {
-                reloadChanges()
-            } catch (_: Exception) {
-                // keep whatever state we had
-            } finally {
-                _uiState.update { it.copy(isLoading = false) }
-            }
+            reloadChanges()
+            _uiState.update { it.copy(isLoading = false) }
         }
     }
 
+    // On failure the previous list stays visible under the error banner.
     private suspend fun reloadChanges() {
-        val files = gitRepository.getChangedFiles(repository)
-        _uiState.update { it.copy(changes = files) }
+        when (val result = gitRepository.getChangedFiles(repository)) {
+            is GitResult.Success -> _uiState.update { it.copy(changes = result.data, changesError = null) }
+            is GitResult.Failure -> _uiState.update { it.copy(changesError = result.message) }
+        }
+    }
+
+    private suspend fun reloadStashList() {
+        when (val result = gitRepository.stashList(repository)) {
+            is GitResult.Success -> _uiState.update { it.copy(stashList = result.data, isStashLoading = false) }
+            is GitResult.Failure -> {
+                _uiState.update { it.copy(isStashLoading = false) }
+                emit(result.message)
+            }
+        }
     }
 
     private suspend fun applySnapshot(snapshot: RepositorySnapshot) {
@@ -434,15 +444,19 @@ class ChangesViewModel(
     fun openDiff(file: FileChange) {
         _uiState.update { it.copy(isDiffLoading = true, diffError = null) }
         viewModelScope.launch {
-            val diff = runCatching { gitRepository.getWorkingFileDiff(repository, file.path, file.stage) }.getOrNull()
-            _uiState.update {
-                it.copy(
-                    isDiffLoading = false,
-                    openedDiff = diff,
-                    diffError = if (diff == null) str(R.string.changes_diff_unavailable) else null
-                )
+            val result = gitRepository.getWorkingFileDiff(repository, file.path, file.stage)
+            val diff = result.getOrNull()
+            val error = when {
+                result is GitResult.Failure -> result.message
+                diff == null -> str(R.string.changes_diff_unavailable)
+                else -> null
             }
+            _uiState.update { it.copy(isDiffLoading = false, openedDiff = diff, diffError = error) }
         }
+    }
+
+    fun dismissChangesError() {
+        _uiState.update { it.copy(changesError = null) }
     }
 
     fun closeDiff() {
@@ -454,10 +468,10 @@ class ChangesViewModel(
             it.copy(historyPath = path, fileHistory = emptyList(), isHistoryLoading = true, historyError = null)
         }
         viewModelScope.launch {
-            val history = runCatching { gitRepository.getFileHistoryForPath(repository, path) }
-            val commits = history.getOrDefault(emptyList())
+            val history = gitRepository.getFileHistoryForPath(repository, path)
+            val commits = history.getOrNull().orEmpty()
             val error = when {
-                history.isFailure -> str(R.string.commit_detail_history_error)
+                history is GitResult.Failure -> str(R.string.commit_detail_history_error)
                 commits.isEmpty() -> str(R.string.commit_detail_history_no_changes)
                 else -> null
             }
@@ -475,10 +489,7 @@ class ChangesViewModel(
 
     fun openStashDialog() {
         _uiState.update { it.copy(showStashDialog = true, isStashLoading = true) }
-        viewModelScope.launch {
-            val entries = gitRepository.stashList(repository)
-            _uiState.update { it.copy(stashList = entries, isStashLoading = false) }
-        }
+        viewModelScope.launch { reloadStashList() }
     }
 
     fun dismissStashDialog() {
@@ -490,9 +501,7 @@ class ChangesViewModel(
             val result = gitRepository.stashSave(repository, message)
             if (result is GitResult.Success) {
                 emit(str(R.string.changes_stash_saved))
-                // Reload stash list if dialog is open
-                val entries = gitRepository.stashList(repository)
-                _uiState.update { it.copy(stashList = entries) }
+                reloadStashList()
             } else {
                 emit(failureMessage(result, R.string.changes_stash_save_failed))
             }
@@ -514,9 +523,8 @@ class ChangesViewModel(
         guard {
             val result = gitRepository.stashPop(repository, stashIndex)
             if (result is GitResult.Success) {
-                val entries = gitRepository.stashList(repository)
-                _uiState.update { it.copy(stashList = entries) }
                 emit(str(R.string.changes_stash_applied))
+                reloadStashList()
             } else {
                 emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_stash_apply_failed))
             }
@@ -527,9 +535,8 @@ class ChangesViewModel(
         guard {
             val result = gitRepository.stashDrop(repository, stashIndex)
             if (result is GitResult.Success) {
-                val entries = gitRepository.stashList(repository)
-                _uiState.update { it.copy(stashList = entries) }
                 emit(str(R.string.changes_stash_dropped))
+                reloadStashList()
             } else {
                 emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_stash_drop_failed))
             }

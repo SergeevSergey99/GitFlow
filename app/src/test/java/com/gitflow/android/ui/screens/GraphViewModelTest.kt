@@ -124,6 +124,29 @@ class GraphViewModelTest {
     }
 
     @Test
+    fun unreadableHistory_showsErrorAndRetryLoadsIt() = runBlocking {
+        val brokenDir = tempFolder.newFolder("broken")
+        val viewModel = GraphViewModel(application, gitRepository, model.copy(id = "broken", path = brokenDir.absolutePath))
+
+        val failed = viewModel.awaitState { !it.isLoading }
+        assertTrue(failed.loadError != null)
+        assertTrue(failed.commits.isEmpty())
+
+        Git.init().setDirectory(brokenDir).call().use { repaired ->
+            File(brokenDir, "a.txt").writeText("a")
+            repaired.add().addFilepattern("a.txt").call()
+            repaired.commit().setMessage("first")
+                .setAuthor("Test User", "test@example.com")
+                .setCommitter("Test User", "test@example.com")
+                .call()
+        }
+        viewModel.retry()
+
+        val loaded = viewModel.awaitState { it.commits.size == 1 }
+        assertNull(loaded.loadError)
+    }
+
+    @Test
     fun failedOperation_keepsDialogsOpenForRetry() = runBlocking {
         val viewModel = GraphViewModel(application, gitRepository, model)
         val head = viewModel.awaitState { !it.isLoading }.commits.first()

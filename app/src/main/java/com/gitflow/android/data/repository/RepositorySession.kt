@@ -2,12 +2,12 @@ package com.gitflow.android.data.repository
 
 import com.gitflow.android.data.models.ConflictInfo
 import com.gitflow.android.data.models.Repository
+import com.gitflow.android.data.models.getOrNull
 import com.gitflow.android.data.settings.AppSettingsManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -16,9 +16,8 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import java.io.File
 
 data class RepositorySnapshot(
@@ -38,10 +37,19 @@ class RepositorySession(
     private val _isRestoring = MutableStateFlow(selectedId.value != null)
     val isRestoring: StateFlow<Boolean> = _isRestoring.asStateFlow()
 
-    val snapshot: StateFlow<RepositorySnapshot?> = selectedId
-        .flatMapLatest { id -> if (id == null) flowOf(null) else snapshotsOf(id) }
-        .onEach { _isRestoring.value = false }
-        .stateIn(scope, SharingStarted.Eagerly, null)
+    private val _snapshot = MutableStateFlow<RepositorySnapshot?>(null)
+    val snapshot: StateFlow<RepositorySnapshot?> = _snapshot.asStateFlow()
+
+    init {
+        scope.launch {
+            selectedId
+                .flatMapLatest { id -> if (id == null) flowOf(null) else snapshotsOf(id) }
+                .collect { current ->
+                    _snapshot.value = current
+                    _isRestoring.value = false
+                }
+        }
+    }
 
     fun select(repository: Repository) {
         settingsManager.setLastRepositoryId(repository.id)
@@ -69,11 +77,15 @@ class RepositorySession(
                 }
             }
 
+    // A failed read keeps the previous value: a transient error must not look like
+    // "no merge in progress" and hide the conflict header.
     private suspend fun loadSnapshot(repository: Repository): RepositorySnapshot {
-        val conflictInfo = gitRepository.getConflictInfo(repository)
-        val pendingPullCommits = gitRepository.getBranches(repository)
-            .firstOrNull { it.isLocal && it.name == repository.currentBranch }
-            ?.behind ?: 0
+        val previous = _snapshot.value?.takeIf { it.repository.id == repository.id }
+        val conflictInfo = gitRepository.getConflictInfo(repository).getOrNull()
+            ?: previous?.conflictInfo ?: ConflictInfo()
+        val pendingPullCommits = gitRepository.getBranches(repository).getOrNull()
+            ?.let { branches -> branches.firstOrNull { it.isLocal && it.name == repository.currentBranch }?.behind ?: 0 }
+            ?: previous?.pendingPullCommits ?: 0
         return RepositorySnapshot(repository, conflictInfo, pendingPullCommits)
     }
 

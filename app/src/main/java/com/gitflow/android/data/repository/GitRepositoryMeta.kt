@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import com.gitflow.android.data.models.GitResult
 import com.gitflow.android.data.models.Repository
+import com.gitflow.android.data.models.getOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.eclipse.jgit.api.Git
@@ -191,28 +192,22 @@ internal suspend fun GitRepository.removeRepositoryWithFilesImpl(repositoryId: S
     }
 }
 
-internal suspend fun GitRepository.refreshRepositoryImpl(repository: Repository): Repository? = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext null
-        git.use { g ->
-            val currentBranch = g.repository.branch
-            val lastCommit = getLastCommitTime(g)
-            val branches = getBranchesInternal(g)
-            val hasRemoteOrigin = g.remoteList().call().any { it.name == "origin" }
-            val (aheadCount, _) = calculateAheadBehind(g)
+internal suspend fun GitRepository.refreshRepositoryImpl(repository: Repository): Repository? =
+    withGit(repository) { git ->
+        val currentBranch = git.repository.branch
+        val lastCommit = getLastCommitTime(git)
+        val branches = getBranchesInternal(git)
+        val hasRemoteOrigin = git.remoteList().call().any { it.name == "origin" }
+        val (aheadCount, _) = calculateAheadBehind(git)
 
-            val updated = repository.copy(
-                currentBranch = currentBranch,
-                lastUpdated = lastCommit,
-                totalBranches = branches.size,
-                hasRemoteOrigin = hasRemoteOrigin,
-                pendingPushCommits = aheadCount
-            )
+        val updated = repository.copy(
+            currentBranch = currentBranch,
+            lastUpdated = lastCommit,
+            totalBranches = branches.size,
+            hasRemoteOrigin = hasRemoteOrigin,
+            pendingPushCommits = aheadCount
+        )
 
-            updateRepository(updated)
-            updated
-        }
-    } catch (e: Exception) {
-        null
-    }
-}
+        updateRepository(updated)
+        GitResult.Success(updated)
+    }.getOrNull()

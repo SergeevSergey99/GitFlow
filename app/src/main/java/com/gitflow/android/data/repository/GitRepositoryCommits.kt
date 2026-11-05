@@ -1,8 +1,6 @@
 package com.gitflow.android.data.repository
 
 import com.gitflow.android.data.models.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.eclipse.jgit.api.ListBranchCommand
 import org.eclipse.jgit.diff.DiffFormatter
 import org.eclipse.jgit.revwalk.RevSort
@@ -13,155 +11,137 @@ import java.io.ByteArrayOutputStream
 
 internal suspend fun GitRepository.getCommitsImpl(
     repository: Repository, page: Int, pageSize: Int
-): List<Commit> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext emptyList()
-        git.use { g ->
-            RevWalk(g.repository).use { revWalk ->
-                revWalk.sort(RevSort.TOPO)
+): GitResult<List<Commit>> = withGit(repository) { git ->
+    val pageCommits = RevWalk(git.repository).use { revWalk ->
+        revWalk.sort(RevSort.TOPO)
 
-                val localRefs = g.branchList().call()
-                val remoteRefs = g.branchList().setListMode(ListBranchCommand.ListMode.REMOTE).call()
-                val allRefs = localRefs + remoteRefs
-                val processedCommits = mutableSetOf<String>()
+        val localRefs = git.branchList().call()
+        val remoteRefs = git.branchList().setListMode(ListBranchCommand.ListMode.REMOTE).call()
+        val allRefs = localRefs + remoteRefs
+        val processedCommits = mutableSetOf<String>()
 
-                val commitToBranchHeads = mutableMapOf<String, MutableList<String>>()
-                for (ref in allRefs) {
-                    try {
-                        val head = g.repository.resolve(ref.objectId.name)
-                        if (head != null) {
-                            commitToBranchHeads.getOrPut(head.name) { mutableListOf() }.add(getBranchName(ref))
-                        }
-                    } catch (_: Exception) {}
+        val commitToBranchHeads = mutableMapOf<String, MutableList<String>>()
+        for (ref in allRefs) {
+            try {
+                val head = git.repository.resolve(ref.objectId.name)
+                if (head != null) {
+                    commitToBranchHeads.getOrPut(head.name) { mutableListOf() }.add(getBranchName(ref))
                 }
-
-                for (ref in allRefs) {
-                    try {
-                        val head = g.repository.resolve(ref.objectId.name)
-                        if (head != null) revWalk.markStart(revWalk.parseCommit(head))
-                    } catch (_: Exception) {}
-                }
-
-                // Build tag map once — O(1) per commit instead of O(N)
-                val tagsByCommit = mutableMapOf<String, MutableList<String>>()
-                try {
-                    g.tagList().call().forEach { tagRef ->
-                        val peeled = g.repository.refDatabase.peel(tagRef)
-                        val targetId = (peeled.peeledObjectId ?: tagRef.objectId).name
-                        tagsByCommit.getOrPut(targetId) { mutableListOf() }
-                            .add(tagRef.name.removePrefix("refs/tags/"))
-                    }
-                } catch (_: Exception) {}
-
-                val commits = mutableListOf<Commit>()
-                val offset = page * pageSize
-                var skipped = 0
-                var loaded = 0
-
-                for (commit in revWalk) {
-                    if (processedCommits.contains(commit.id.name)) continue
-                    processedCommits.add(commit.id.name)
-
-                    if (skipped < offset) { skipped++; continue }
-                    if (loaded >= pageSize) break
-                    loaded++
-
-                    val branchHeads = commitToBranchHeads[commit.id.name] ?: emptyList()
-                    commits.add(Commit(
-                        hash = commit.id.name,
-                        message = commit.shortMessage,
-                        description = commit.fullMessage.removePrefix(commit.shortMessage).trim(),
-                        author = commit.authorIdent.name,
-                        email = commit.authorIdent.emailAddress,
-                        timestamp = commit.authorIdent.`when`.time,
-                        parents = commit.parents.map { it.id.name },
-                        branch = branchHeads.firstOrNull() ?: "unknown",
-                        tags = tagsByCommit[commit.id.name] ?: emptyList(),
-                        branchHeads = branchHeads,
-                        isMergeCommit = commit.parentCount > 1
-                    ))
-                }
-                commits
-            }
+            } catch (_: Exception) {}
         }
-    } catch (e: Exception) {
-        emptyList()
+
+        for (ref in allRefs) {
+            try {
+                val head = git.repository.resolve(ref.objectId.name)
+                if (head != null) revWalk.markStart(revWalk.parseCommit(head))
+            } catch (_: Exception) {}
+        }
+
+        // Build tag map once — O(1) per commit instead of O(N)
+        val tagsByCommit = mutableMapOf<String, MutableList<String>>()
+        try {
+            git.tagList().call().forEach { tagRef ->
+                val peeled = git.repository.refDatabase.peel(tagRef)
+                val targetId = (peeled.peeledObjectId ?: tagRef.objectId).name
+                tagsByCommit.getOrPut(targetId) { mutableListOf() }
+                    .add(tagRef.name.removePrefix("refs/tags/"))
+            }
+        } catch (_: Exception) {}
+
+        val commits = mutableListOf<Commit>()
+        val offset = page * pageSize
+        var skipped = 0
+        var loaded = 0
+
+        for (commit in revWalk) {
+            if (processedCommits.contains(commit.id.name)) continue
+            processedCommits.add(commit.id.name)
+
+            if (skipped < offset) { skipped++; continue }
+            if (loaded >= pageSize) break
+            loaded++
+
+            val branchHeads = commitToBranchHeads[commit.id.name] ?: emptyList()
+            commits.add(Commit(
+                hash = commit.id.name,
+                message = commit.shortMessage,
+                description = commit.fullMessage.removePrefix(commit.shortMessage).trim(),
+                author = commit.authorIdent.name,
+                email = commit.authorIdent.emailAddress,
+                timestamp = commit.authorIdent.`when`.time,
+                parents = commit.parents.map { it.id.name },
+                branch = branchHeads.firstOrNull() ?: "unknown",
+                tags = tagsByCommit[commit.id.name] ?: emptyList(),
+                branchHeads = branchHeads,
+                isMergeCommit = commit.parentCount > 1
+            ))
+        }
+        commits
     }
+    GitResult.Success(pageCommits)
 }
 
 // ---------------------------------------------------------------------------
 // getCommitByHash
 // ---------------------------------------------------------------------------
 
-internal suspend fun GitRepository.getCommitByHashImpl(hash: String, repository: Repository): Commit? = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext null
-        git.use { g ->
-            RevWalk(g.repository).use { rw ->
-                val objId = g.repository.resolve(hash) ?: return@withContext null
-                val revCommit = rw.parseCommit(objId)
-                Commit(
-                    hash = revCommit.id.name,
-                    message = revCommit.shortMessage,
-                    description = revCommit.fullMessage.removePrefix(revCommit.shortMessage).trim(),
-                    author = revCommit.authorIdent.name,
-                    email = revCommit.authorIdent.emailAddress,
-                    timestamp = revCommit.authorIdent.`when`.time,
-                    parents = revCommit.parents.map { it.id.name },
-                    isMergeCommit = revCommit.parentCount > 1
-                )
-            }
-        }
-    } catch (e: Exception) {
-        null
+internal suspend fun GitRepository.getCommitByHashImpl(hash: String, repository: Repository): GitResult<Commit> =
+    withGit(repository) { git ->
+        val objectId = git.repository.resolve(hash)
+            ?: return@withGit GitResult.Failure.Generic("Commit not found: $hash")
+        val revCommit = RevWalk(git.repository).use { revWalk -> revWalk.parseCommit(objectId) }
+        GitResult.Success(Commit(
+            hash = revCommit.id.name,
+            message = revCommit.shortMessage,
+            description = revCommit.fullMessage.removePrefix(revCommit.shortMessage).trim(),
+            author = revCommit.authorIdent.name,
+            email = revCommit.authorIdent.emailAddress,
+            timestamp = revCommit.authorIdent.`when`.time,
+            parents = revCommit.parents.map { it.id.name },
+            isMergeCommit = revCommit.parentCount > 1
+        ))
     }
-}
 
 // ---------------------------------------------------------------------------
 // getCommitDiffs
 // ---------------------------------------------------------------------------
 
-internal suspend fun GitRepository.getCommitDiffsImpl(commit: Commit, repository: Repository): List<FileDiff> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext emptyList()
-        git.use { g ->
-            val jRepo = g.repository
-            RevWalk(jRepo).use { rw ->
-                val revCommit = rw.parseCommit(jRepo.resolve(commit.hash))
-                val diffs = mutableListOf<FileDiff>()
+internal suspend fun GitRepository.getCommitDiffsImpl(commit: Commit, repository: Repository): GitResult<List<FileDiff>> =
+    withGit(repository) { git ->
+        val jRepo = git.repository
+        val fileDiffs = RevWalk(jRepo).use { revWalk ->
+            val revCommit = revWalk.parseCommit(jRepo.resolve(commit.hash))
+            val diffs = mutableListOf<FileDiff>()
 
-                if (revCommit.parentCount > 0) {
-                    val parent = rw.parseCommit(revCommit.getParent(0).id)
-                    val oldParser = CanonicalTreeParser()
-                    val newParser = CanonicalTreeParser()
-                    jRepo.newObjectReader().use { reader ->
-                        oldParser.reset(reader, parent.tree)
-                        newParser.reset(reader, revCommit.tree)
+            if (revCommit.parentCount > 0) {
+                val parent = revWalk.parseCommit(revCommit.getParent(0).id)
+                val oldParser = CanonicalTreeParser()
+                val newParser = CanonicalTreeParser()
+                jRepo.newObjectReader().use { reader ->
+                    oldParser.reset(reader, parent.tree)
+                    newParser.reset(reader, revCommit.tree)
+                }
+                git.diff().setOldTree(oldParser).setNewTree(newParser).call().forEach { entry ->
+                    val output = ByteArrayOutputStream()
+                    DiffFormatter(output).use { formatter ->
+                        formatter.setRepository(jRepo)
+                        formatter.format(entry)
                     }
-                    g.diff().setOldTree(oldParser).setNewTree(newParser).call().forEach { entry ->
-                        val out = ByteArrayOutputStream()
-                        DiffFormatter(out).use { fmt ->
-                            fmt.setRepository(jRepo)
-                            fmt.format(entry)
-                        }
-                        diffs.add(parseDiffText(entry, out.toString()))
-                    }
-                } else {
-                    TreeWalk(jRepo).use { treeWalk ->
-                        treeWalk.addTree(revCommit.tree)
-                        treeWalk.isRecursive = true
-                        while (treeWalk.next()) {
-                            diffs.add(buildAddedFileDiff(jRepo, revCommit, treeWalk.pathString))
-                        }
+                    diffs.add(parseDiffText(entry, output.toString()))
+                }
+            } else {
+                TreeWalk(jRepo).use { treeWalk ->
+                    treeWalk.addTree(revCommit.tree)
+                    treeWalk.isRecursive = true
+                    while (treeWalk.next()) {
+                        diffs.add(buildAddedFileDiff(jRepo, revCommit, treeWalk.pathString))
                     }
                 }
-                diffs
             }
+            diffs
         }
-    } catch (e: Exception) {
-        emptyList()
+        GitResult.Success(fileDiffs)
     }
-}
 
 // ---------------------------------------------------------------------------
 // Private helpers (file-local)
@@ -259,22 +239,17 @@ private fun parseHunkHeader(header: String): Tuple4<Int, Int, Int, Int> {
     }
 }
 
-// Shared with GitRepositoryFiles — internal so it can be reused
+/** Null when [filePath] is absent from [commit]; read errors propagate. Shared with GitRepositoryFiles. */
 internal fun getFileContentFromCommitBytes(
     repository: org.eclipse.jgit.lib.Repository,
     commit: org.eclipse.jgit.revwalk.RevCommit,
     filePath: String
 ): ByteArray? {
-    return try {
-        org.eclipse.jgit.treewalk.TreeWalk(repository).use { treeWalk ->
-            treeWalk.addTree(commit.tree)
-            treeWalk.isRecursive = true
-            treeWalk.filter = org.eclipse.jgit.treewalk.filter.PathFilter.create(filePath)
-            if (treeWalk.next()) {
-                repository.newObjectReader().use { reader -> reader.open(treeWalk.getObjectId(0)).bytes }
-            } else null
-        }
-    } catch (e: Exception) {
-        null
+    TreeWalk(repository).use { treeWalk ->
+        treeWalk.addTree(commit.tree)
+        treeWalk.isRecursive = true
+        treeWalk.filter = org.eclipse.jgit.treewalk.filter.PathFilter.create(filePath)
+        if (!treeWalk.next()) return null
+        return repository.newObjectReader().use { reader -> reader.open(treeWalk.getObjectId(0)).bytes }
     }
 }

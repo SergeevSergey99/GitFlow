@@ -94,6 +94,8 @@ class GitRepositoryIndexTest {
         File(repoDir, name).apply { parentFile?.mkdirs() }.writeText(content)
     }
 
+    private fun <T> GitResult<T>.value(): T = (this as GitResult.Success).data
+
     private fun commitAll(message: String) {
         git.add().addFilepattern(".").call()
         git.commit().setMessage(message)
@@ -164,6 +166,16 @@ class GitRepositoryIndexTest {
     }
 
     @Test
+    fun readsFromMissingRepository_reportFailureInsteadOfEmptyResults() = runBlocking {
+        val missing = model.copy(path = tempFolder.newFolder("not-a-repo").absolutePath)
+
+        assertTrue(repo.getCommits(missing) is GitResult.Failure)
+        assertTrue(repo.getChangedFiles(missing) is GitResult.Failure)
+        assertTrue(repo.getBranches(missing) is GitResult.Failure)
+        assertTrue(repo.stashList(missing) is GitResult.Failure)
+    }
+
+    @Test
     fun discardFileChanges_removesStagedNewFile() = runBlocking {
         writeFile("new.txt", "staged")
         git.add().addFilepattern("new.txt").call()
@@ -181,9 +193,9 @@ class GitRepositoryIndexTest {
         commitAll("add query")
         writeFile("query.sql", "select 1;\n++counter\n")
 
-        val diff = repo.getWorkingFileDiff(model, "query.sql", ChangeStage.UNSTAGED)!!
+        val diff = repo.getWorkingFileDiff(model, "query.sql", ChangeStage.UNSTAGED).value()!!
         val changedLines = diff.hunks.flatMap { it.lines }.filter { it.type != LineType.CONTEXT }
-        val listed = repo.getChangedFiles(model).single { it.path == "query.sql" }
+        val listed = repo.getChangedFiles(model).value().single { it.path == "query.sql" }
 
         assertEquals(
             listOf(LineType.DELETED to "-- old comment", LineType.ADDED to "++counter"),
@@ -197,9 +209,9 @@ class GitRepositoryIndexTest {
     fun commitDiff_parsesHunkHeaderWithoutLineCounts() = runBlocking {
         writeFile("initial.txt", "changed")
         commitAll("change initial")
-        val head = repo.getCommitByHash(git.repository.resolve("HEAD").name, model)!!
+        val head = repo.getCommitByHash(git.repository.resolve("HEAD").name, model).value()
 
-        val hunk = repo.getCommitDiffs(head, model).single { it.path == "initial.txt" }.hunks.single()
+        val hunk = repo.getCommitDiffs(head, model).value().single { it.path == "initial.txt" }.hunks.single()
 
         assertEquals(listOf(1, 1, 1, 1), listOf(hunk.oldStart, hunk.oldLines, hunk.newStart, hunk.newLines))
         assertEquals(1, hunk.lines.single { it.type == LineType.DELETED }.oldLineNumber)
@@ -249,7 +261,7 @@ class GitRepositoryIndexTest {
         writeFile("untracked.txt", "u")
         writeFile("initial.txt", "changed")
 
-        val byPath = repo.getChangedFiles(model).associateBy { it.path }
+        val byPath = repo.getChangedFiles(model).value().associateBy { it.path }
 
         assertEquals(ChangeStage.STAGED, byPath.getValue("staged.txt").stage)
         assertEquals(ChangeStatus.ADDED, byPath.getValue("staged.txt").status)
@@ -285,7 +297,7 @@ class GitRepositoryIndexTest {
         assertEquals(MergeResult.MergeStatus.CONFLICTING, mergeResult.mergeStatus)
 
         // The repository layer surfaces the conflict.
-        val conflicts = repo.getMergeConflicts(model)
+        val conflicts = repo.getMergeConflicts(model).value()
         assertEquals(1, conflicts.size)
         assertEquals("initial.txt", conflicts.first().path)
 
@@ -300,7 +312,7 @@ class GitRepositoryIndexTest {
 
         // The merge can now be committed and no conflicts remain.
         assertTrue(repo.commit(model, "merge feature") is GitResult.Success)
-        assertTrue(repo.getMergeConflicts(model).isEmpty())
+        assertTrue(repo.getMergeConflicts(model).value().isEmpty())
     }
 
     @Test

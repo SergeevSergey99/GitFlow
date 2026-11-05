@@ -1,8 +1,6 @@
 package com.gitflow.android.data.repository
 
 import com.gitflow.android.data.models.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.eclipse.jgit.api.CreateBranchCommand
 import org.eclipse.jgit.api.errors.RefAlreadyExistsException
 import org.eclipse.jgit.api.errors.TransportException
@@ -131,184 +129,121 @@ private fun evaluatePushResult(results: Iterable<PushResult>): GitResult<Unit> {
     }
 }
 
-internal suspend fun GitRepository.getBranchesImpl(repository: Repository): List<Branch> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext emptyList()
-        git.use { g -> getBranchesInternal(g) }
-    } catch (e: Exception) {
-        emptyList()
-    }
-}
+internal suspend fun GitRepository.getBranchesImpl(repository: Repository): GitResult<List<Branch>> =
+    withGit(repository) { git -> GitResult.Success(getBranchesInternal(git)) }
 
 internal suspend fun GitRepository.checkoutBranchImpl(
     repository: Repository,
     branchName: String,
     isLocal: Boolean
-): GitResult<Unit> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
-        git.use { g ->
-            if (isLocal) {
-                g.checkout().setName(branchName).call()
-            } else {
-                val localName = branchName.removePrefix("origin/")
-                try {
-                    g.checkout()
-                        .setCreateBranch(true)
-                        .setName(localName)
-                        .setStartPoint(branchName)
-                        .setUpstreamMode(CreateBranchCommand.SetupUpstreamMode.TRACK)
-                        .call()
-                } catch (e: RefAlreadyExistsException) {
-                    g.checkout().setName(localName).call()
-                }
-            }
+): GitResult<Unit> = withGit(repository) { git ->
+    if (isLocal) {
+        git.checkout().setName(branchName).call()
+    } else {
+        val localName = branchName.removePrefix("origin/")
+        try {
+            git.checkout()
+                .setCreateBranch(true)
+                .setName(localName)
+                .setStartPoint(branchName)
+                .setUpstreamMode(CreateBranchCommand.SetupUpstreamMode.TRACK)
+                .call()
+        } catch (_: RefAlreadyExistsException) {
+            git.checkout().setName(localName).call()
         }
-        refreshRepository(repository)
-        GitResult.Success(Unit)
-    } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
     }
+    refreshRepository(repository)
+    GitResult.Success(Unit)
 }
 
 internal suspend fun GitRepository.createBranchImpl(
     repository: Repository,
     branchName: String,
     checkout: Boolean
-): GitResult<Unit> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
-        git.use { g ->
-            if (checkout) {
-                g.checkout().setCreateBranch(true).setName(branchName).call()
-            } else {
-                g.branchCreate().setName(branchName).call()
-            }
-        }
-        refreshRepository(repository)
-        GitResult.Success(Unit)
-    } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+): GitResult<Unit> = withGit(repository) { git ->
+    if (checkout) {
+        git.checkout().setCreateBranch(true).setName(branchName).call()
+    } else {
+        git.branchCreate().setName(branchName).call()
     }
+    refreshRepository(repository)
+    GitResult.Success(Unit)
 }
 
 internal suspend fun GitRepository.deleteBranchImpl(
     repository: Repository,
     branchName: String,
     force: Boolean
-): GitResult<Unit> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
-        val deleted = git.use { g ->
-            g.branchDelete().setBranchNames(branchName).setForce(force).call()
-        }
-        if (deleted.isEmpty()) return@withContext GitResult.Failure.Generic("Branch not deleted")
-        refreshRepository(repository)
-        GitResult.Success(Unit)
-    } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
-    }
+): GitResult<Unit> = withGit(repository) { git ->
+    val deleted = git.branchDelete().setBranchNames(branchName).setForce(force).call()
+    if (deleted.isEmpty()) return@withGit GitResult.Failure.Generic("Branch not deleted")
+    refreshRepository(repository)
+    GitResult.Success(Unit)
 }
 
 internal suspend fun GitRepository.renameBranchImpl(
     repository: Repository,
     oldName: String,
     newName: String
-): GitResult<Unit> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
-        git.use { g ->
-            // oldName always refers to a local branch ref — renaming works whether or not
-            // it's the currently checked-out one (JGit updates HEAD's symref accordingly).
-            g.branchRename().setOldName(oldName).setNewName(newName).call()
-        }
+): GitResult<Unit> = withGit(
+    repository,
+    onError = { exception ->
+        if (exception is RefAlreadyExistsException) GitResult.Failure.Generic("Branch '$newName' already exists")
+        else genericFailure(exception)
+    }
+) { git ->
+    // oldName always refers to a local branch ref — renaming works whether or not
+    // it's the currently checked-out one (JGit updates HEAD's symref accordingly).
+    git.branchRename().setOldName(oldName).setNewName(newName).call()
+    refreshRepository(repository)
+    GitResult.Success(Unit)
+}
+
+// Resolves credentials (and refreshes an expiring GitLab/Bitbucket token) for the origin remote.
+private suspend fun GitRepository.originCredentials(git: Git) = resolveCredentialsProvider(
+    git.repository.config.let { it.getString("remote", "origin", "pushurl") ?: it.getString("remote", "origin", "url") }
+)
+
+internal suspend fun GitRepository.fetchImpl(repository: Repository): GitResult<Unit> =
+    withGit(repository, onError = ::classifyNetworkException) { git ->
+        val fetchCommand = git.fetch()
+        originCredentials(git)?.let { fetchCommand.setCredentialsProvider(it) }
+        fetchCommand.call()
         refreshRepository(repository)
         GitResult.Success(Unit)
-    } catch (e: RefAlreadyExistsException) {
-        GitResult.Failure.Generic("Branch '$newName' already exists")
-    } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
     }
-}
 
-internal suspend fun GitRepository.fetchImpl(repository: Repository): GitResult<Unit> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
-        val remoteUrl = git.repository.config.let {
-            it.getString("remote", "origin", "pushurl") ?: it.getString("remote", "origin", "url")
-        }
-        val credentials = resolveCredentialsProvider(remoteUrl)
-        git.use { g ->
-            val fetchCommand = g.fetch()
-            credentials?.let { fetchCommand.setCredentialsProvider(it) }
-            fetchCommand.call()
-        }
-        refreshRepository(repository)
-        GitResult.Success(Unit)
-    } catch (e: Exception) {
-        classifyNetworkException(e)
-    }
-}
-
-internal suspend fun GitRepository.pullImpl(repository: Repository): GitResult<Unit> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
-        // Resolve credentials (and refresh GitLab token if needed) before entering the use block
-        val remoteUrl = git.repository.config.let {
-            it.getString("remote", "origin", "pushurl") ?: it.getString("remote", "origin", "url")
-        }
-        val credentials = resolveCredentialsProvider(remoteUrl)
-        git.use { g ->
-            // Not refused without an identity: most pulls fast-forward and create no commit.
-            applyCommitIdentity(g)
-            val pullCommand = g.pull()
-            credentials?.let { pullCommand.setCredentialsProvider(it) }
-            val result = pullCommand.call()
-            val mergeConflicts = result.mergeResult
-                ?.takeIf { it.mergeStatus == MergeResult.MergeStatus.CONFLICTING }
-                ?.conflicts?.keys?.toList()
-            val rebaseStopped = result.rebaseResult?.status in listOf(RebaseResult.Status.STOPPED, RebaseResult.Status.CONFLICTS)
-            when {
-                result.isSuccessful -> GitResult.Success(Unit)
-                mergeConflicts != null || rebaseStopped -> {
-                    val paths = mergeConflicts ?: g.status().call().conflicting.toList()
-                    GitResult.Failure.Conflict(
-                        message = "Pull produced conflicts: ${paths.joinToString(", ").ifEmpty { "see working tree" }}",
-                        paths = paths
-                    )
-                }
-                else -> GitResult.Failure.Generic("Pull failed")
+internal suspend fun GitRepository.pullImpl(repository: Repository): GitResult<Unit> =
+    withGit(repository, onError = ::classifyNetworkException) { git ->
+        val credentials = originCredentials(git)
+        // Not refused without an identity: most pulls fast-forward and create no commit.
+        applyCommitIdentity(git)
+        val pullCommand = git.pull()
+        credentials?.let { pullCommand.setCredentialsProvider(it) }
+        val result = pullCommand.call()
+        val mergeConflicts = result.mergeResult
+            ?.takeIf { it.mergeStatus == MergeResult.MergeStatus.CONFLICTING }
+            ?.conflicts?.keys?.toList()
+        val rebaseStopped = result.rebaseResult?.status in listOf(RebaseResult.Status.STOPPED, RebaseResult.Status.CONFLICTS)
+        when {
+            result.isSuccessful -> GitResult.Success(Unit)
+            mergeConflicts != null || rebaseStopped -> {
+                val paths = mergeConflicts ?: git.status().call().conflicting.toList()
+                GitResult.Failure.Conflict(
+                    message = "Pull produced conflicts: ${paths.joinToString(", ").ifEmpty { "see working tree" }}",
+                    paths = paths
+                )
             }
+            else -> GitResult.Failure.Generic("Pull failed")
         }
-    } catch (e: Exception) {
-        classifyNetworkException(e)
     }
-}
 
-internal suspend fun GitRepository.pushImpl(repository: Repository): GitResult<Unit> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
-        // Resolve credentials (and refresh GitLab token if needed) before entering the use block
-        val remoteUrl = git.repository.config.let {
-            it.getString("remote", "origin", "pushurl") ?: it.getString("remote", "origin", "url")
-        }
-        val credentials = resolveCredentialsProvider(remoteUrl)
-        git.use { g ->
-            val pushCommand = g.push()
-            credentials?.let { pushCommand.setCredentialsProvider(it) }
-            val result = pushCommand.call()
-            when (val pushResult = evaluatePushResult(result)) {
-                is GitResult.Success -> {
-                    refreshRepository(repository)
-                    GitResult.Success(Unit)
-                }
-                is GitResult.Failure -> pushResult
-            }
-        }
-    } catch (e: Exception) {
-        classifyNetworkException(e)
+internal suspend fun GitRepository.pushImpl(repository: Repository): GitResult<Unit> =
+    withGit(repository, onError = ::classifyNetworkException) { git ->
+        val pushCommand = git.push()
+        originCredentials(git)?.let { pushCommand.setCredentialsProvider(it) }
+        finishPush(repository, evaluatePushResult(pushCommand.call()))
     }
-}
 
 /**
  * Pushes a specific local branch to its remote, regardless of which branch is currently
@@ -316,266 +251,174 @@ internal suspend fun GitRepository.pushImpl(repository: Repository): GitResult<U
  * HEAD. Uses an explicit refspec so a branch other than the current one can be published
  * without first switching to it.
  */
-internal suspend fun GitRepository.pushBranchImpl(repository: Repository, branchName: String): GitResult<Unit> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
-        val remoteUrl = git.repository.config.let {
-            it.getString("remote", "origin", "pushurl") ?: it.getString("remote", "origin", "url")
-        }
-        val credentials = resolveCredentialsProvider(remoteUrl)
-        git.use { g ->
-            val refSpec = RefSpec("refs/heads/$branchName:refs/heads/$branchName")
-            val pushCommand = g.push().setRefSpecs(refSpec)
-            credentials?.let { pushCommand.setCredentialsProvider(it) }
-            val result = pushCommand.call()
-            when (val pushResult = evaluatePushResult(result)) {
-                is GitResult.Success -> {
-                    refreshRepository(repository)
-                    GitResult.Success(Unit)
-                }
-                is GitResult.Failure -> pushResult
-            }
-        }
-    } catch (e: Exception) {
-        classifyNetworkException(e)
+internal suspend fun GitRepository.pushBranchImpl(repository: Repository, branchName: String): GitResult<Unit> =
+    withGit(repository, onError = ::classifyNetworkException) { git ->
+        val refSpec = RefSpec("refs/heads/$branchName:refs/heads/$branchName")
+        val pushCommand = git.push().setRefSpecs(refSpec)
+        originCredentials(git)?.let { pushCommand.setCredentialsProvider(it) }
+        finishPush(repository, evaluatePushResult(pushCommand.call()))
     }
-}
 
 internal suspend fun GitRepository.pushWithProgressImpl(
     repository: Repository,
     onProgress: (SyncProgress) -> Unit
-): GitResult<Unit> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
-        val remoteUrl = git.repository.config.let {
-            it.getString("remote", "origin", "pushurl") ?: it.getString("remote", "origin", "url")
-        }
-        val credentials = resolveCredentialsProvider(remoteUrl)
-        git.use { g ->
-            val pushCommand = g.push()
-            credentials?.let { pushCommand.setCredentialsProvider(it) }
-            pushCommand.setProgressMonitor(JGitProgressMonitor(onProgress))
-            val result = pushCommand.call()
-            when (val pushResult = evaluatePushResult(result)) {
-                is GitResult.Success -> {
-                    refreshRepository(repository)
-                    GitResult.Success(Unit)
-                }
-                is GitResult.Failure -> pushResult
-            }
-        }
-    } catch (e: Exception) {
-        classifyNetworkException(e)
-    }
+): GitResult<Unit> = withGit(repository, onError = ::classifyNetworkException) { git ->
+    val pushCommand = git.push()
+    originCredentials(git)?.let { pushCommand.setCredentialsProvider(it) }
+    pushCommand.setProgressMonitor(JGitProgressMonitor(onProgress))
+    finishPush(repository, evaluatePushResult(pushCommand.call()))
 }
 
-internal suspend fun GitRepository.resetToCommitImpl(repository: Repository, commitHash: String, mode: ResetMode): GitResult<Unit> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
+private suspend fun GitRepository.finishPush(repository: Repository, pushResult: GitResult<Unit>): GitResult<Unit> {
+    if (pushResult is GitResult.Success) refreshRepository(repository)
+    return pushResult
+}
+
+internal suspend fun GitRepository.resetToCommitImpl(repository: Repository, commitHash: String, mode: ResetMode): GitResult<Unit> =
+    withGit(repository) { git ->
         val jgitMode = when (mode) {
             ResetMode.SOFT -> ResetCommand.ResetType.SOFT
             ResetMode.MIXED -> ResetCommand.ResetType.MIXED
             ResetMode.HARD -> ResetCommand.ResetType.HARD
         }
-        git.use { g ->
-            g.reset().setRef(commitHash).setMode(jgitMode).call()
-        }
+        git.reset().setRef(commitHash).setMode(jgitMode).call()
         refreshRepository(repository)
         GitResult.Success(Unit)
-    } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
     }
-}
 
 internal suspend fun GitRepository.createTagImpl(
     repository: Repository, tagName: String, commitHash: String, force: Boolean
-): GitResult<Unit> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
-        git.use { g ->
-            val existing = g.tagList().call().any { it.name.removePrefix("refs/tags/") == tagName }
-            if (existing && !force) return@withContext GitResult.Failure.TagAlreadyExists(tagName)
+): GitResult<Unit> = withGit(repository) { git ->
+    val existing = git.tagList().call().any { it.name.removePrefix("refs/tags/") == tagName }
+    if (existing && !force) return@withGit GitResult.Failure.TagAlreadyExists(tagName)
 
-            val objectId = g.repository.resolve(commitHash)
-                ?: return@withContext GitResult.Failure.Generic("Cannot resolve commit: $commitHash")
-            val revObject = RevWalk(g.repository).use { rw -> rw.parseAny(objectId) }
-            g.tag().setName(tagName).setObjectId(revObject).setAnnotated(false).setForceUpdate(force).call()
-        }
+    val objectId = git.repository.resolve(commitHash)
+        ?: return@withGit GitResult.Failure.Generic("Cannot resolve commit: $commitHash")
+    val revObject = RevWalk(git.repository).use { revWalk -> revWalk.parseAny(objectId) }
+    git.tag().setName(tagName).setObjectId(revObject).setAnnotated(false).setForceUpdate(force).call()
+    refreshRepository(repository)
+    GitResult.Success(Unit)
+}
+
+internal suspend fun GitRepository.deleteTagImpl(repository: Repository, tagName: String): GitResult<Unit> =
+    withGit(repository) { git ->
+        git.tagDelete().setTags(tagName).call()
         refreshRepository(repository)
         GitResult.Success(Unit)
-    } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
     }
-}
 
-internal suspend fun GitRepository.deleteTagImpl(repository: Repository, tagName: String): GitResult<Unit> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
-        git.use { g -> g.tagDelete().setTags(tagName).call() }
-        refreshRepository(repository)
-        GitResult.Success(Unit)
-    } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
-    }
-}
+internal suspend fun GitRepository.getTagsForCommitImpl(repository: Repository, commitHash: String): GitResult<List<String>> =
+    withGit(repository) { git -> GitResult.Success(getTagsForCommit(git, commitHash)) }
 
-internal suspend fun GitRepository.getTagsForCommitImpl(repository: Repository, commitHash: String): List<String> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext emptyList()
-        git.use { g -> getTagsForCommit(g, commitHash) }
-    } catch (e: Exception) {
-        emptyList()
-    }
-}
-
-internal suspend fun GitRepository.cherryPickCommitImpl(repository: Repository, commitHash: String): GitResult<Unit> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
-        git.use { g ->
-            val objectId = g.repository.resolve(commitHash)
-                ?: return@withContext GitResult.Failure.Generic("Cannot resolve commit: $commitHash")
-            if (!applyCommitIdentity(g)) return@withContext GitResult.Failure.IdentityRequired()
-            val result = g.cherryPick().include(objectId).call()
-            when (result.status) {
-                CherryPickResult.CherryPickStatus.OK -> {
-                    refreshRepository(repository)
-                    GitResult.Success(Unit)
-                }
-                CherryPickResult.CherryPickStatus.CONFLICTING -> {
-                    val paths = result.failingPaths?.keys?.toList() ?: emptyList()
-                    GitResult.Failure.Conflict(
-                        message = "Cherry-pick produced conflicts: ${paths.joinToString(", ").ifEmpty { "see working tree" }}",
-                        paths = paths
-                    )
-                }
-                else -> GitResult.Failure.Generic("Cherry-pick failed: ${result.status}")
+internal suspend fun GitRepository.cherryPickCommitImpl(repository: Repository, commitHash: String): GitResult<Unit> =
+    withGit(repository) { git ->
+        val objectId = git.repository.resolve(commitHash)
+            ?: return@withGit GitResult.Failure.Generic("Cannot resolve commit: $commitHash")
+        if (!applyCommitIdentity(git)) return@withGit GitResult.Failure.IdentityRequired()
+        val result = git.cherryPick().include(objectId).call()
+        when (result.status) {
+            CherryPickResult.CherryPickStatus.OK -> {
+                refreshRepository(repository)
+                GitResult.Success(Unit)
             }
-        }
-    } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
-    }
-}
-
-internal suspend fun GitRepository.mergeCommitIntoCurrentBranchImpl(repository: Repository, commitHash: String): GitResult<Unit> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
-        git.use { g ->
-            val objectId = g.repository.resolve(commitHash)
-                ?: return@withContext GitResult.Failure.Generic("Cannot resolve commit: $commitHash")
-            if (!applyCommitIdentity(g)) return@withContext GitResult.Failure.IdentityRequired()
-            val result = g.merge().include(objectId).setCommit(true).call()
-            when (result.mergeStatus) {
-                MergeResult.MergeStatus.FAST_FORWARD,
-                MergeResult.MergeStatus.ALREADY_UP_TO_DATE,
-                MergeResult.MergeStatus.MERGED,
-                MergeResult.MergeStatus.MERGED_NOT_COMMITTED -> {
-                    refreshRepository(repository)
-                    GitResult.Success(Unit)
-                }
-                MergeResult.MergeStatus.CONFLICTING -> {
-                    val paths = result.conflicts?.keys?.toList() ?: emptyList()
-                    GitResult.Failure.Conflict(
-                        message = "Merge produced conflicts: ${paths.joinToString(", ").ifEmpty { "see working tree" }}",
-                        paths = paths
-                    )
-                }
-                else -> GitResult.Failure.Generic("Merge failed: ${result.mergeStatus}")
+            CherryPickResult.CherryPickStatus.CONFLICTING -> {
+                val paths = result.failingPaths?.keys?.toList() ?: emptyList()
+                GitResult.Failure.Conflict(
+                    message = "Cherry-pick produced conflicts: ${paths.joinToString(", ").ifEmpty { "see working tree" }}",
+                    paths = paths
+                )
             }
+            else -> GitResult.Failure.Generic("Cherry-pick failed: ${result.status}")
         }
-    } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
     }
-}
+
+internal suspend fun GitRepository.mergeCommitIntoCurrentBranchImpl(repository: Repository, commitHash: String): GitResult<Unit> =
+    withGit(repository) { git ->
+        val objectId = git.repository.resolve(commitHash)
+            ?: return@withGit GitResult.Failure.Generic("Cannot resolve commit: $commitHash")
+        if (!applyCommitIdentity(git)) return@withGit GitResult.Failure.IdentityRequired()
+        interpretMergeResult(git.merge().include(objectId).setCommit(true).call(), repository)
+    }
 
 // ---------------------------------------------------------------------------
 // Merge / rebase a branch into the current branch
 // ---------------------------------------------------------------------------
 
-internal suspend fun GitRepository.mergeBranchImpl(repository: Repository, branchName: String): GitResult<Unit> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
-        git.use { g ->
-            if (!applyCommitIdentity(g)) return@withContext GitResult.Failure.IdentityRequired()
-            val mergeCommand = g.merge().setCommit(true)
-            // Prefer a named ref so the merge commit message references the branch.
-            val ref = g.repository.findRef(branchName)
-            if (ref != null) {
-                mergeCommand.include(ref)
-            } else {
-                val objectId = g.repository.resolve(branchName)
-                    ?: return@withContext GitResult.Failure.Generic("Cannot resolve branch: $branchName")
-                mergeCommand.include(objectId)
-            }
-            val result = mergeCommand.call()
-            when (result.mergeStatus) {
-                MergeResult.MergeStatus.FAST_FORWARD,
-                MergeResult.MergeStatus.ALREADY_UP_TO_DATE,
-                MergeResult.MergeStatus.MERGED,
-                MergeResult.MergeStatus.MERGED_NOT_COMMITTED -> {
-                    refreshRepository(repository)
-                    GitResult.Success(Unit)
-                }
-                MergeResult.MergeStatus.CONFLICTING -> {
-                    val paths = result.conflicts?.keys?.toList() ?: emptyList()
-                    GitResult.Failure.Conflict(
-                        message = "Merge produced conflicts: ${paths.joinToString(", ").ifEmpty { "see working tree" }}",
-                        paths = paths
-                    )
-                }
-                else -> GitResult.Failure.Generic("Merge failed: ${result.mergeStatus}")
-            }
+internal suspend fun GitRepository.mergeBranchImpl(repository: Repository, branchName: String): GitResult<Unit> =
+    withGit(repository) { git ->
+        if (!applyCommitIdentity(git)) return@withGit GitResult.Failure.IdentityRequired()
+        val mergeCommand = git.merge().setCommit(true)
+        // Prefer a named ref so the merge commit message references the branch.
+        val ref = git.repository.findRef(branchName)
+        if (ref != null) {
+            mergeCommand.include(ref)
+        } else {
+            val objectId = git.repository.resolve(branchName)
+                ?: return@withGit GitResult.Failure.Generic("Cannot resolve branch: $branchName")
+            mergeCommand.include(objectId)
         }
-    } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+        interpretMergeResult(mergeCommand.call(), repository)
     }
-}
 
-internal suspend fun GitRepository.abortMergeImpl(repository: Repository): GitResult<Unit> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
-        git.use { g ->
-            val jRepo = g.repository
-            val headId = jRepo.resolve(Constants.HEAD)
-                ?: return@withContext GitResult.Failure.Generic("Cannot resolve HEAD")
-            val mergeHeadId = jRepo.readMergeHeads()?.firstOrNull()
-            val cherryPickHeadId = jRepo.readCherryPickHead()
-            val incomingPaths = when {
-                mergeHeadId != null -> pathsChangedSinceMergeBase(jRepo, headId, mergeHeadId)
-                cherryPickHeadId != null -> pathsChangedByCommit(jRepo, cherryPickHeadId)
-                else -> return@withContext GitResult.Failure.Generic("No merge or cherry-pick in progress")
-            }
-
-            // JGit has no "merge --abort", and a hard reset would also wipe uncommitted changes
-            // in files the merge never touched (JGit allows merging with such files dirty).
-            // Only paths the incoming side changed relative to its base (the merge base, or the
-            // picked commit's parent) can have been modified, and of those only the ones whose
-            // index now differs from HEAD.
-            val status = g.status().call()
-            val indexChanged = status.added + status.changed + status.removed + status.conflicting
-            val mergedPaths = incomingPaths.filter { it in indexChanged }
-            val headTree = RevWalk(jRepo).use { walk -> walk.parseCommit(headId).tree }
-            val (pathsInHead, pathsAddedByMerge) = mergedPaths.partition { path ->
-                TreeWalk.forPath(jRepo, path, headTree)?.use { true } ?: false
-            }
-
-            if (pathsInHead.isNotEmpty()) {
-                g.reset().apply { pathsInHead.forEach { addPath(it) } }.call()
-                g.checkout().apply { pathsInHead.forEach { addPath(it) } }.call()
-            }
-            if (pathsAddedByMerge.isNotEmpty()) {
-                g.rm().setCached(true).apply { pathsAddedByMerge.forEach { addFilepattern(it) } }.call()
-                pathsAddedByMerge.forEach { File(jRepo.workTree, it).delete() }
-            }
-            jRepo.writeMergeHeads(null)
-            jRepo.writeCherryPickHead(null)
-            jRepo.writeMergeCommitMsg(null)
+private suspend fun GitRepository.interpretMergeResult(result: MergeResult, repository: Repository): GitResult<Unit> =
+    when (result.mergeStatus) {
+        MergeResult.MergeStatus.FAST_FORWARD,
+        MergeResult.MergeStatus.ALREADY_UP_TO_DATE,
+        MergeResult.MergeStatus.MERGED,
+        MergeResult.MergeStatus.MERGED_NOT_COMMITTED -> {
+            refreshRepository(repository)
+            GitResult.Success(Unit)
         }
+        MergeResult.MergeStatus.CONFLICTING -> {
+            val paths = result.conflicts?.keys?.toList() ?: emptyList()
+            GitResult.Failure.Conflict(
+                message = "Merge produced conflicts: ${paths.joinToString(", ").ifEmpty { "see working tree" }}",
+                paths = paths
+            )
+        }
+        else -> GitResult.Failure.Generic("Merge failed: ${result.mergeStatus}")
+    }
+
+internal suspend fun GitRepository.abortMergeImpl(repository: Repository): GitResult<Unit> =
+    withGit(repository) { git ->
+        val jRepo = git.repository
+        val headId = jRepo.resolve(Constants.HEAD)
+            ?: return@withGit GitResult.Failure.Generic("Cannot resolve HEAD")
+        val mergeHeadId = jRepo.readMergeHeads()?.firstOrNull()
+        val cherryPickHeadId = jRepo.readCherryPickHead()
+        val incomingPaths = when {
+            mergeHeadId != null -> pathsChangedSinceMergeBase(jRepo, headId, mergeHeadId)
+            cherryPickHeadId != null -> pathsChangedByCommit(jRepo, cherryPickHeadId)
+            else -> return@withGit GitResult.Failure.Generic("No merge or cherry-pick in progress")
+        }
+
+        // JGit has no "merge --abort", and a hard reset would also wipe uncommitted changes
+        // in files the merge never touched (JGit allows merging with such files dirty).
+        // Only paths the incoming side changed relative to its base (the merge base, or the
+        // picked commit's parent) can have been modified, and of those only the ones whose
+        // index now differs from HEAD.
+        val status = git.status().call()
+        val indexChanged = status.added + status.changed + status.removed + status.conflicting
+        val mergedPaths = incomingPaths.filter { it in indexChanged }
+        val headTree = RevWalk(jRepo).use { walk -> walk.parseCommit(headId).tree }
+        val (pathsInHead, pathsAddedByMerge) = mergedPaths.partition { path ->
+            TreeWalk.forPath(jRepo, path, headTree)?.use { true } ?: false
+        }
+
+        if (pathsInHead.isNotEmpty()) {
+            git.reset().apply { pathsInHead.forEach { addPath(it) } }.call()
+            git.checkout().apply { pathsInHead.forEach { addPath(it) } }.call()
+        }
+        if (pathsAddedByMerge.isNotEmpty()) {
+            git.rm().setCached(true).apply { pathsAddedByMerge.forEach { addFilepattern(it) } }.call()
+            pathsAddedByMerge.forEach { File(jRepo.workTree, it).delete() }
+        }
+        jRepo.writeMergeHeads(null)
+        jRepo.writeCherryPickHead(null)
+        jRepo.writeMergeCommitMsg(null)
         refreshRepository(repository)
         GitResult.Success(Unit)
-    } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
     }
-}
 
 private fun pathsChangedSinceMergeBase(
     repository: org.eclipse.jgit.lib.Repository,
@@ -617,44 +460,24 @@ private fun pathsChangedBetween(
     return paths
 }
 
-internal suspend fun GitRepository.rebaseCurrentOntoImpl(repository: Repository, branchName: String): GitResult<Unit> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
-        git.use { g ->
-            if (!applyCommitIdentity(g)) return@withContext GitResult.Failure.IdentityRequired()
-            val result = g.rebase().setUpstream(branchName).call()
-            interpretRebaseResult(result, repository, g)
-        }
-    } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+internal suspend fun GitRepository.rebaseCurrentOntoImpl(repository: Repository, branchName: String): GitResult<Unit> =
+    withGit(repository) { git ->
+        if (!applyCommitIdentity(git)) return@withGit GitResult.Failure.IdentityRequired()
+        interpretRebaseResult(git.rebase().setUpstream(branchName).call(), repository, git)
     }
-}
 
-internal suspend fun GitRepository.rebaseContinueImpl(repository: Repository): GitResult<Unit> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
-        git.use { g ->
-            if (!applyCommitIdentity(g)) return@withContext GitResult.Failure.IdentityRequired()
-            val result = g.rebase().setOperation(RebaseCommand.Operation.CONTINUE).call()
-            interpretRebaseResult(result, repository, g)
-        }
-    } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+internal suspend fun GitRepository.rebaseContinueImpl(repository: Repository): GitResult<Unit> =
+    withGit(repository) { git ->
+        if (!applyCommitIdentity(git)) return@withGit GitResult.Failure.IdentityRequired()
+        interpretRebaseResult(git.rebase().setOperation(RebaseCommand.Operation.CONTINUE).call(), repository, git)
     }
-}
 
-internal suspend fun GitRepository.rebaseAbortImpl(repository: Repository): GitResult<Unit> = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
-        git.use { g ->
-            g.rebase().setOperation(RebaseCommand.Operation.ABORT).call()
-        }
+internal suspend fun GitRepository.rebaseAbortImpl(repository: Repository): GitResult<Unit> =
+    withGit(repository) { git ->
+        git.rebase().setOperation(RebaseCommand.Operation.ABORT).call()
         refreshRepository(repository)
         GitResult.Success(Unit)
-    } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
     }
-}
 
 /** Maps a [RebaseResult] to a [GitResult], refreshing repo metadata on a clean finish. */
 private suspend fun GitRepository.interpretRebaseResult(
@@ -693,62 +516,52 @@ private fun mapRepositoryState(state: RepositoryState): RepoOperationState = whe
     else -> RepoOperationState.OTHER
 }
 
-internal suspend fun GitRepository.getRepositoryStateImpl(repository: Repository): RepoOperationState = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext RepoOperationState.NONE
-        git.use { g -> mapRepositoryState(g.repository.repositoryState) }
-    } catch (e: Exception) {
-        RepoOperationState.NONE
-    }
-}
+internal suspend fun GitRepository.getRepositoryStateImpl(repository: Repository): RepoOperationState =
+    withGit(repository) { git -> GitResult.Success(mapRepositoryState(git.repository.repositoryState)) }
+        .getOrNull() ?: RepoOperationState.NONE
 
-internal suspend fun GitRepository.getConflictInfoImpl(repository: Repository): ConflictInfo = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext ConflictInfo()
-        git.use { g ->
-            val jrepo = g.repository
-            val state = mapRepositoryState(jrepo.repositoryState)
-            if (state != RepoOperationState.MERGING && state != RepoOperationState.REBASING) {
-                return@withContext ConflictInfo(operation = state)
-            }
-            val headHash = jrepo.resolve(Constants.HEAD)?.name
-            val conflictPaths = runCatching { g.status().call().conflicting.toList() }.getOrDefault(emptyList())
-
-            if (state == RepoOperationState.MERGING) {
-                val mergeHead = runCatching { jrepo.readMergeHeads()?.firstOrNull()?.name }.getOrNull()
-                val mergeMsg = runCatching { jrepo.readMergeCommitMsg() }.getOrNull()
-                val source = mergeMsg
-                    ?.let { Regex("Merge (?:remote-tracking )?branch '([^']+)'").find(it)?.groupValues?.get(1) }
-                    ?: mergeHead?.take(7)
-                ConflictInfo(
-                    operation = state,
-                    sourceLabel = source,
-                    targetLabel = jrepo.branch,
-                    sourceHash = mergeHead,
-                    targetHash = headHash,
-                    conflictPaths = conflictPaths
-                )
-            } else {
-                // Rebase state lives in .git/rebase-merge/ (interactive/merge) or .git/rebase-apply/.
-                val stateDir = listOf("rebase-merge", "rebase-apply")
-                    .map { File(jrepo.directory, it) }
-                    .firstOrNull { it.isDirectory }
-                val headName = stateDir
-                    ?.let { File(it, "head-name").takeIf(File::exists)?.readText()?.trim() }
-                    ?.removePrefix("refs/heads/")
-                val ontoHash = stateDir
-                    ?.let { File(it, "onto").takeIf(File::exists)?.readText()?.trim() }
-                ConflictInfo(
-                    operation = state,
-                    sourceLabel = headName ?: jrepo.branch,
-                    targetLabel = ontoHash?.take(7),
-                    sourceHash = headHash,
-                    targetHash = ontoHash,
-                    conflictPaths = conflictPaths
-                )
-            }
+internal suspend fun GitRepository.getConflictInfoImpl(repository: Repository): GitResult<ConflictInfo> =
+    withGit(repository) { git ->
+        val jRepo = git.repository
+        val state = mapRepositoryState(jRepo.repositoryState)
+        if (state != RepoOperationState.MERGING && state != RepoOperationState.REBASING) {
+            return@withGit GitResult.Success(ConflictInfo(operation = state))
         }
-    } catch (e: Exception) {
-        ConflictInfo()
+        val headHash = jRepo.resolve(Constants.HEAD)?.name
+        val conflictPaths = git.status().call().conflicting.toList()
+
+        val info = if (state == RepoOperationState.MERGING) {
+            val mergeHead = jRepo.readMergeHeads()?.firstOrNull()?.name
+            val mergeMessage = jRepo.readMergeCommitMsg()
+            val source = mergeMessage
+                ?.let { Regex("Merge (?:remote-tracking )?branch '([^']+)'").find(it)?.groupValues?.get(1) }
+                ?: mergeHead?.take(7)
+            ConflictInfo(
+                operation = state,
+                sourceLabel = source,
+                targetLabel = jRepo.branch,
+                sourceHash = mergeHead,
+                targetHash = headHash,
+                conflictPaths = conflictPaths
+            )
+        } else {
+            // Rebase state lives in .git/rebase-merge/ (interactive/merge) or .git/rebase-apply/.
+            val stateDir = listOf("rebase-merge", "rebase-apply")
+                .map { File(jRepo.directory, it) }
+                .firstOrNull { it.isDirectory }
+            val headName = stateDir
+                ?.let { File(it, "head-name").takeIf(File::exists)?.readText()?.trim() }
+                ?.removePrefix("refs/heads/")
+            val ontoHash = stateDir
+                ?.let { File(it, "onto").takeIf(File::exists)?.readText()?.trim() }
+            ConflictInfo(
+                operation = state,
+                sourceLabel = headName ?: jRepo.branch,
+                targetLabel = ontoHash?.take(7),
+                sourceHash = headHash,
+                targetHash = ontoHash,
+                conflictPaths = conflictPaths
+            )
+        }
+        GitResult.Success(info)
     }
-}

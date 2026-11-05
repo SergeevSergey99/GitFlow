@@ -2,8 +2,6 @@ package com.gitflow.android.data.repository
 
 import com.gitflow.android.data.models.*
 import com.gitflow.android.data.models.GitResult
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.eclipse.jgit.lib.Constants
 import org.eclipse.jgit.revwalk.RevCommit
 import org.eclipse.jgit.revwalk.RevWalk
@@ -13,119 +11,76 @@ import org.eclipse.jgit.treewalk.TreeWalk
 // File tree
 // ---------------------------------------------------------------------------
 
-internal suspend fun GitRepository.getCommitFileTreeImpl(commit: Commit, repository: Repository): FileTreeNode = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext emptyFileTreeNode()
-        git.use { g ->
-            val jRepo = g.repository
-            RevWalk(jRepo).use { rw ->
-                val revCommit = rw.parseCommit(jRepo.resolve(commit.hash))
-                buildFileTree(collectFileInfo(jRepo, revCommit, commit.timestamp))
-            }
+internal suspend fun GitRepository.getCommitFileTreeImpl(commit: Commit, repository: Repository): GitResult<FileTreeNode> =
+    withGit(repository) { git ->
+        val jRepo = git.repository
+        val tree = RevWalk(jRepo).use { revWalk ->
+            val revCommit = revWalk.parseCommit(jRepo.resolve(commit.hash))
+            buildFileTree(collectFileInfo(jRepo, revCommit, commit.timestamp))
         }
-    } catch (e: Exception) {
-        emptyFileTreeNode()
+        GitResult.Success(tree)
     }
-}
 
 // ---------------------------------------------------------------------------
 // File content
 // ---------------------------------------------------------------------------
 
-internal suspend fun GitRepository.getFileContentImpl(commit: Commit, filePath: String, repository: Repository): String? = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext null
-        git.use { g ->
-            val jRepo = g.repository
-            RevWalk(jRepo).use { rw ->
-                val revCommit = rw.parseCommit(jRepo.resolve(commit.hash))
-                getFileContentFromCommitBytes(jRepo, revCommit, filePath)?.let { String(it) }
-            }
-        }
-    } catch (e: Exception) {
-        null
+internal suspend fun GitRepository.getFileContentImpl(commit: Commit, filePath: String, repository: Repository): GitResult<String> =
+    when (val bytes = getFileContentBytesImpl(commit, filePath, repository)) {
+        is GitResult.Success -> GitResult.Success(String(bytes.data))
+        is GitResult.Failure -> bytes
     }
-}
 
-internal suspend fun GitRepository.getFileContentBytesImpl(commit: Commit, filePath: String, repository: Repository): ByteArray? = withContext(Dispatchers.IO) {
-    try {
-        val git = openRepository(repository.path) ?: return@withContext null
-        git.use { g ->
-            val jRepo = g.repository
-            RevWalk(jRepo).use { rw ->
-                val revCommit = rw.parseCommit(jRepo.resolve(commit.hash))
-                getFileContentFromCommitBytes(jRepo, revCommit, filePath)
-            }
-        }
-    } catch (e: Exception) {
-        null
+internal suspend fun GitRepository.getFileContentBytesImpl(commit: Commit, filePath: String, repository: Repository): GitResult<ByteArray> =
+    withGit(repository) { git ->
+        val jRepo = git.repository
+        val bytes = RevWalk(jRepo).use { revWalk ->
+            val revCommit = revWalk.parseCommit(jRepo.resolve(commit.hash))
+            getFileContentFromCommitBytes(jRepo, revCommit, filePath)
+        } ?: return@withGit GitResult.Failure.Generic("File not found in commit: $filePath")
+        GitResult.Success(bytes)
     }
-}
 
 // ---------------------------------------------------------------------------
 // Restore file
 // ---------------------------------------------------------------------------
 
-internal suspend fun GitRepository.restoreFileToCommitImpl(commit: Commit, filePath: String, repository: Repository): GitResult<Unit> = withContext(Dispatchers.IO) {
-    val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Failed to restore file")
-    try {
-        val repo = git.repository
-        val commitId = repo.resolve(commit.hash) ?: return@withContext GitResult.Failure.Generic("Failed to restore file")
-        RevWalk(repo).use { rw -> rw.parseCommit(commitId) }
+internal suspend fun GitRepository.restoreFileToCommitImpl(commit: Commit, filePath: String, repository: Repository): GitResult<Unit> =
+    withGit(repository) { git ->
+        git.repository.resolve(commit.hash)
+            ?: return@withGit GitResult.Failure.Generic("Cannot resolve commit: ${commit.hash}")
         git.checkout().setStartPoint(commit.hash).setForce(true).addPath(filePath).call()
         GitResult.Success(Unit)
-    } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Failed to restore file", e)
-    } finally {
-        git.close()
     }
-}
 
-internal suspend fun GitRepository.restoreFileToParentCommitImpl(commit: Commit, filePath: String, repository: Repository): GitResult<Unit> = withContext(Dispatchers.IO) {
-    val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Failed to restore file")
-    try {
-        val repo = git.repository
-        val commitId = repo.resolve(commit.hash) ?: return@withContext GitResult.Failure.Generic("Failed to restore file")
-        val parentHash = RevWalk(repo).use { rw ->
-            rw.parseCommit(commitId).parents.firstOrNull()?.name
-        } ?: return@withContext GitResult.Failure.Generic("Failed to restore file")
+internal suspend fun GitRepository.restoreFileToParentCommitImpl(commit: Commit, filePath: String, repository: Repository): GitResult<Unit> =
+    withGit(repository) { git ->
+        val jRepo = git.repository
+        val commitId = jRepo.resolve(commit.hash)
+            ?: return@withGit GitResult.Failure.Generic("Cannot resolve commit: ${commit.hash}")
+        val parentHash = RevWalk(jRepo).use { revWalk ->
+            revWalk.parseCommit(commitId).parents.firstOrNull()?.name
+        } ?: return@withGit GitResult.Failure.Generic("Commit has no parent: ${commit.hash}")
 
         git.checkout().setStartPoint(parentHash).setForce(true).addPath(filePath).call()
         GitResult.Success(Unit)
-    } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Failed to restore file", e)
-    } finally {
-        git.close()
     }
-}
 
 // ---------------------------------------------------------------------------
 // File history
 // ---------------------------------------------------------------------------
 
-internal suspend fun GitRepository.getFileHistoryImpl(commit: Commit, filePath: String, repository: Repository): List<Commit> = withContext(Dispatchers.IO) {
-    val git = openRepository(repository.path) ?: return@withContext emptyList()
-    try {
-        val jRepo = git.repository
-        val commitId = jRepo.resolve(commit.hash) ?: return@withContext emptyList()
-        git.log().add(commitId).addPath(filePath).call().map { mapRevCommitToCommit(it) }
-    } catch (e: Exception) {
-        emptyList()
-    } finally {
-        git.close()
+internal suspend fun GitRepository.getFileHistoryImpl(commit: Commit, filePath: String, repository: Repository): GitResult<List<Commit>> =
+    withGit(repository) { git ->
+        val commitId = git.repository.resolve(commit.hash)
+            ?: return@withGit GitResult.Failure.Generic("Cannot resolve commit: ${commit.hash}")
+        GitResult.Success(git.log().add(commitId).addPath(filePath).call().map { mapRevCommitToCommit(it) })
     }
-}
 
-internal suspend fun GitRepository.getFileHistoryForPathImpl(repository: Repository, filePath: String): List<Commit> = withContext(Dispatchers.IO) {
-    val git = openRepository(repository.path) ?: return@withContext emptyList()
-    try {
-        git.log().addPath(filePath).setMaxCount(100).call().map { mapRevCommitToCommit(it) }
-    } catch (_: Exception) {
-        emptyList()
-    } finally {
-        git.close()
+internal suspend fun GitRepository.getFileHistoryForPathImpl(repository: Repository, filePath: String): GitResult<List<Commit>> =
+    withGit(repository) { git ->
+        GitResult.Success(git.log().addPath(filePath).setMaxCount(100).call().map { mapRevCommitToCommit(it) })
     }
-}
 
 // ---------------------------------------------------------------------------
 // Private helpers
@@ -198,5 +153,3 @@ private fun mapRevCommitToCommit(revCommit: RevCommit): Commit {
         isMergeCommit = revCommit.parentCount > 1
     )
 }
-
-private fun emptyFileTreeNode() = FileTreeNode("", "", FileTreeNodeType.DIRECTORY)

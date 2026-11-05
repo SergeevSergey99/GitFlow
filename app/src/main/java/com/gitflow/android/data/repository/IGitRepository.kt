@@ -27,29 +27,29 @@ interface IGitRepository {
     suspend fun removeRepositoryWithFiles(repositoryId: String): GitResult<Unit>
     suspend fun updateRepository(repository: Repository)
     suspend fun refreshRepository(repository: Repository): Repository?
-    suspend fun getCommits(repository: Repository, page: Int = 0, pageSize: Int = 50): List<Commit>
-    suspend fun getCommitByHash(hash: String, repository: Repository): Commit?
-    suspend fun getChangedFiles(repository: Repository): List<FileChange>
-    suspend fun getWorkingFileDiff(repository: Repository, filePath: String, stage: ChangeStage): FileDiff?
+    suspend fun getCommits(repository: Repository, page: Int = 0, pageSize: Int = 50): GitResult<List<Commit>>
+    suspend fun getCommitByHash(hash: String, repository: Repository): GitResult<Commit>
+    suspend fun getChangedFiles(repository: Repository): GitResult<List<FileChange>>
+    suspend fun getWorkingFileDiff(repository: Repository, filePath: String, stage: ChangeStage): GitResult<FileDiff?>
     suspend fun stageFile(repository: Repository, file: FileChange): GitResult<Unit>
     suspend fun unstageFile(repository: Repository, filePath: String): GitResult<Unit>
     suspend fun discardFileChanges(repository: Repository, filePath: String): GitResult<Unit>
     suspend fun stageAll(repository: Repository): GitResult<Unit>
-    suspend fun getMergeConflicts(repository: Repository): List<MergeConflict>
+    suspend fun getMergeConflicts(repository: Repository): GitResult<List<MergeConflict>>
     suspend fun getMergeConflict(repository: Repository, path: String): MergeConflict?
     suspend fun resolveConflict(repository: Repository, path: String, strategy: ConflictResolutionStrategy): GitResult<Unit>
     suspend fun resolveConflictWithContent(repository: Repository, path: String, resolvedContent: String): GitResult<Unit>
     suspend fun resetToCommit(repository: Repository, commitHash: String, mode: ResetMode): GitResult<Unit>
     suspend fun createTag(repository: Repository, tagName: String, commitHash: String, force: Boolean = false): GitResult<Unit>
     suspend fun deleteTag(repository: Repository, tagName: String): GitResult<Unit>
-    suspend fun getTagsForCommit(repository: Repository, commitHash: String): List<String>
+    suspend fun getTagsForCommit(repository: Repository, commitHash: String): GitResult<List<String>>
     suspend fun cherryPickCommit(repository: Repository, commitHash: String): GitResult<Unit>
     suspend fun mergeCommitIntoCurrentBranch(repository: Repository, commitHash: String): GitResult<Unit>
     suspend fun commit(repository: Repository, message: String): GitResult<Unit>
     suspend fun amendLastCommit(repository: Repository, message: String): GitResult<Unit>
     suspend fun getLastCommitMessage(repository: Repository): String?
-    suspend fun getCommitDiffs(commit: Commit, repository: Repository): List<FileDiff>
-    suspend fun getBranches(repository: Repository): List<Branch>
+    suspend fun getCommitDiffs(commit: Commit, repository: Repository): GitResult<List<FileDiff>>
+    suspend fun getBranches(repository: Repository): GitResult<List<Branch>>
     suspend fun checkoutBranch(repository: Repository, branchName: String, isLocal: Boolean): GitResult<Unit>
     suspend fun createBranch(repository: Repository, branchName: String, checkout: Boolean): GitResult<Unit>
     suspend fun deleteBranch(repository: Repository, branchName: String, force: Boolean): GitResult<Unit>
@@ -61,7 +61,7 @@ interface IGitRepository {
     suspend fun rebaseAbort(repository: Repository): GitResult<Unit>
     suspend fun getRepositoryState(repository: Repository): RepoOperationState
     /** Rich context (source/target branches, involved commits, conflicts) for an in-progress merge/rebase. */
-    suspend fun getConflictInfo(repository: Repository): ConflictInfo
+    suspend fun getConflictInfo(repository: Repository): GitResult<ConflictInfo>
     /** Suggested commit message for an in-progress merge (.git/MERGE_MSG), if any. */
     suspend fun getMergeMessage(repository: Repository): String?
     suspend fun fetch(repository: Repository): GitResult<Unit>
@@ -69,15 +69,15 @@ interface IGitRepository {
     suspend fun push(repository: Repository): GitResult<Unit>
     suspend fun pushBranch(repository: Repository, branchName: String): GitResult<Unit>
     suspend fun pushWithProgress(repository: Repository, onProgress: (SyncProgress) -> Unit): GitResult<Unit>
-    suspend fun getCommitFileTree(commit: Commit, repository: Repository): FileTreeNode
-    suspend fun getFileContent(commit: Commit, filePath: String, repository: Repository): String?
-    suspend fun getFileContentBytes(commit: Commit, filePath: String, repository: Repository): ByteArray?
+    suspend fun getCommitFileTree(commit: Commit, repository: Repository): GitResult<FileTreeNode>
+    suspend fun getFileContent(commit: Commit, filePath: String, repository: Repository): GitResult<String>
+    suspend fun getFileContentBytes(commit: Commit, filePath: String, repository: Repository): GitResult<ByteArray>
     suspend fun restoreFileToCommit(commit: Commit, filePath: String, repository: Repository): GitResult<Unit>
     suspend fun restoreFileToParentCommit(commit: Commit, filePath: String, repository: Repository): GitResult<Unit>
-    suspend fun getFileHistory(commit: Commit, filePath: String, repository: Repository): List<Commit>
-    suspend fun getFileHistoryForPath(repository: Repository, filePath: String): List<Commit>
+    suspend fun getFileHistory(commit: Commit, filePath: String, repository: Repository): GitResult<List<Commit>>
+    suspend fun getFileHistoryForPath(repository: Repository, filePath: String): GitResult<List<Commit>>
     suspend fun stashSave(repository: Repository, message: String = ""): GitResult<Unit>
-    suspend fun stashList(repository: Repository): List<StashEntry>
+    suspend fun stashList(repository: Repository): GitResult<List<StashEntry>>
     suspend fun stashApply(repository: Repository, stashIndex: Int): GitResult<Unit>
     suspend fun stashPop(repository: Repository, stashIndex: Int): GitResult<Unit>
     suspend fun stashDrop(repository: Repository, stashIndex: Int): GitResult<Unit>
