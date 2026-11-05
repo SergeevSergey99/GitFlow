@@ -256,8 +256,6 @@
     <string name="main_screen_tab_changes">Изменения</string>
     <string name="main_screen_tab_settings">Настройки</string>
     <string name="main_screen_operations">Операции</string>
-    <string name="main_screen_git_operations">Git-операции для %1$s</string>
-    <string name="main_screen_operations_placeholder">Pull, Push, Fetch и т.д.</string>
 
     <!-- RepositoryListScreen -->
     <string name="repo_list_add_repository">Добавить репозиторий</string>

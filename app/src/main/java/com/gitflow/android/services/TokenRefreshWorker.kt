@@ -37,7 +37,7 @@ class TokenRefreshWorker(
     override suspend fun doWork(): ListenableWorker.Result {
         var allSucceeded = true
 
-        if (authManager.isLoggedIn(GitProvider.GITLAB)) {
+        if (authManager.isLoggedIn(GitProvider.GITLAB) && !authManager.isSessionExpiryNotified(GitProvider.GITLAB)) {
             val result = runCatching { authManager.refreshGitLabTokenIfNeeded() }
                 .getOrElse { RefreshResult.NETWORK_ERROR }
             when (result) {
@@ -45,6 +45,7 @@ class TokenRefreshWorker(
                 RefreshResult.AUTH_EXPIRED -> {
                     Timber.w("TokenRefreshWorker: GitLab refresh token expired")
                     showSessionExpiredNotification(GitProvider.GITLAB)
+                    authManager.markSessionExpiryNotified(GitProvider.GITLAB)
                 }
                 RefreshResult.NETWORK_ERROR -> {
                     Timber.w("TokenRefreshWorker: GitLab token refresh failed (network)")
@@ -53,7 +54,7 @@ class TokenRefreshWorker(
             }
         }
 
-        if (authManager.isLoggedIn(GitProvider.BITBUCKET)) {
+        if (authManager.isLoggedIn(GitProvider.BITBUCKET) && !authManager.isSessionExpiryNotified(GitProvider.BITBUCKET)) {
             val result = runCatching { authManager.refreshBitbucketTokenIfNeeded() }
                 .getOrElse { RefreshResult.NETWORK_ERROR }
             when (result) {
@@ -61,6 +62,7 @@ class TokenRefreshWorker(
                 RefreshResult.AUTH_EXPIRED -> {
                     Timber.w("TokenRefreshWorker: Bitbucket refresh token expired")
                     showSessionExpiredNotification(GitProvider.BITBUCKET)
+                    authManager.markSessionExpiryNotified(GitProvider.BITBUCKET)
                 }
                 RefreshResult.NETWORK_ERROR -> {
                     Timber.w("TokenRefreshWorker: Bitbucket token refresh failed (network)")

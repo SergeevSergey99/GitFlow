@@ -21,8 +21,6 @@ import androidx.navigation.NavController
 import com.gitflow.android.R
 import com.gitflow.android.data.models.ConflictInfo
 import com.gitflow.android.data.models.RepoOperationState
-import com.gitflow.android.data.models.Repository
-import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.ui.config.GraphConfig
 import com.gitflow.android.ui.components.CloneProgressOverlay
 import com.gitflow.android.ui.components.dialogs.BranchManagementDialog
@@ -46,7 +44,6 @@ fun MainScreen(navController: NavController) {
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val gitRepository = viewModel.getGitRepository()
 
-    var showOperationsSheet by remember { mutableStateOf(false) }
     var showBranchDialog by remember { mutableStateOf(false) }
 
     val pendingPullCount = snapshot?.pendingPullCommits ?: 0
@@ -240,17 +237,6 @@ fun MainScreen(navController: NavController) {
         }
     }
 
-    // Git Operations Bottom Sheet
-    if (showOperationsSheet) {
-        selectedRepository?.let { repository ->
-            GitOperationsSheet(
-                repository = repository,
-                gitRepository = gitRepository,
-                onDismiss = { showOperationsSheet = false }
-            )
-        }
-    }
-
     // Branch Management Dialog
     if (showBranchDialog) {
         selectedRepository?.let { repo ->
@@ -360,30 +346,5 @@ fun getGraphConfig(preset: String): GraphConfig {
         "Large" -> GraphConfig.Large
         "Wide" -> GraphConfig.Wide
         else -> GraphConfig.Default
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun GitOperationsSheet(
-    repository: Repository,
-    gitRepository: IGitRepository,
-    onDismiss: () -> Unit
-) {
-    // TODO: Implement GitOperationsSheet - это большой компонент, оставим пока заглушку
-    ModalBottomSheet(
-        onDismissRequest = onDismiss
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Text(
-                stringResource(R.string.main_screen_git_operations, repository.name),
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(stringResource(R.string.main_screen_operations_placeholder))
-            Spacer(modifier = Modifier.height(32.dp))
-        }
     }
 }

@@ -256,8 +256,6 @@
     <string name="main_screen_tab_changes">Changes</string>
     <string name="main_screen_tab_settings">Settings</string>
     <string name="main_screen_operations">Operations</string>
-    <string name="main_screen_git_operations">Git Operations for %1$s</string>
-    <string name="main_screen_operations_placeholder">Pull, Push, Fetch, etc.</string>
 
     <!-- RepositoryListScreen -->
     <string name="repo_list_add_repository">Add Repository</string>

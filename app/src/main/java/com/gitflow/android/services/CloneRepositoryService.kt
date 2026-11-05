@@ -165,14 +165,8 @@ class CloneRepositoryService : Service() {
 
             when (result) {
                 is GitResult.Success -> CloneProgressTracker.markCompleted(cloneKey)
-                is GitResult.Failure -> {
-                    val message = result.message
-                    if (message.contains("cancel", ignoreCase = true)) {
-                        CloneProgressTracker.markCancelled(cloneKey, message)
-                    } else {
-                        CloneProgressTracker.markFailed(cloneKey, message)
-                    }
-                }
+                is GitResult.Failure.Cancelled -> CloneProgressTracker.markCancelled(cloneKey, result.message)
+                is GitResult.Failure -> CloneProgressTracker.markFailed(cloneKey, result.message)
             }
 
             val completionNotification = buildCompletionNotification(repoFullName, repoName, result, approximateSize)
@@ -216,17 +210,16 @@ class CloneRepositoryService : Service() {
                     .setContentTitle(getString(R.string.notification_clone_failed))
                     .setContentText(getString(R.string.notification_clone_failed_detail, repoFullName, msg))
             }
+            is GitResult.Failure.Cancelled -> {
+                builder
+                    .setContentTitle(getString(R.string.notification_clone_cancelled))
+                    .setContentText(getString(R.string.notification_clone_cancelled_detail, repoFullName))
+            }
             is GitResult.Failure -> {
                 val message = result.message.ifBlank { getString(R.string.notification_clone_failed_generic) }
-                if (message.contains("cancel", ignoreCase = true)) {
-                    builder
-                        .setContentTitle(getString(R.string.notification_clone_cancelled))
-                        .setContentText(getString(R.string.notification_clone_cancelled_detail, repoFullName))
-                } else {
-                    builder
-                        .setContentTitle(getString(R.string.notification_clone_failed))
-                        .setContentText(getString(R.string.notification_clone_failed_detail, repoFullName, message))
-                }
+                builder
+                    .setContentTitle(getString(R.string.notification_clone_failed))
+                    .setContentText(getString(R.string.notification_clone_failed_detail, repoFullName, message))
             }
         }
 

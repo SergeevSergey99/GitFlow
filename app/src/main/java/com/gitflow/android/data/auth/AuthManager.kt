@@ -991,6 +991,7 @@ class AuthManager(private val context: Context) {
         val editor = preferences.edit()
         editor.remove(tokenKey(provider))
         editor.remove(userKey(provider))
+        editor.remove(expiryNotifiedKey(provider))
         when (provider) {
             GitProvider.GITEA -> editor.remove(KEY_GITEA_INSTANCE_URL)
             GitProvider.AZURE_DEVOPS -> editor.remove(KEY_AZURE_DEVOPS_ORG_URL)
@@ -1060,8 +1061,21 @@ class AuthManager(private val context: Context) {
     }
 
     private fun saveToken(provider: GitProvider, token: OAuthToken) {
-        preferences.edit().putString(tokenKey(provider), gson.toJson(token)).apply()
+        preferences.edit()
+            .putString(tokenKey(provider), gson.toJson(token))
+            .remove(expiryNotifiedKey(provider))
+            .apply()
     }
+
+    /** The user was already told this provider's session expired; a new token or logout clears it. */
+    fun isSessionExpiryNotified(provider: GitProvider): Boolean =
+        preferences.getBoolean(expiryNotifiedKey(provider), false)
+
+    fun markSessionExpiryNotified(provider: GitProvider) {
+        preferences.edit().putBoolean(expiryNotifiedKey(provider), true).apply()
+    }
+
+    private fun expiryNotifiedKey(provider: GitProvider): String = "${tokenKey(provider)}_expiry_notified"
 
     private fun saveUser(provider: GitProvider, user: GitUser) {
         preferences.edit().putString(userKey(provider), gson.toJson(user)).apply()

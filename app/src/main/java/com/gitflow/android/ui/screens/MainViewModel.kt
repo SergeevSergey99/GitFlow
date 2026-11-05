@@ -40,11 +40,8 @@ class MainViewModel(
     private val _selectedGraphPreset = MutableStateFlow(settingsManager.getGraphPreset())
     val selectedGraphPreset: StateFlow<String> = _selectedGraphPreset.asStateFlow()
 
-    private val _selectedColorTheme = MutableStateFlow(settingsManager.getColorTheme())
-    val selectedColorTheme: StateFlow<String> = _selectedColorTheme.asStateFlow()
-
-    private val _selectedDarkMode = MutableStateFlow(settingsManager.getDarkMode())
-    val selectedDarkMode: StateFlow<String> = _selectedDarkMode.asStateFlow()
+    val selectedColorTheme: StateFlow<String> = settingsManager.colorThemeFlow
+    val selectedDarkMode: StateFlow<String> = settingsManager.darkModeFlow
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
@@ -72,28 +69,16 @@ class MainViewModel(
         settingsManager.setGraphPreset(preset)
     }
 
-    fun changeColorTheme(theme: String) {
-        _selectedColorTheme.value = theme
-        settingsManager.setColorTheme(theme)
-    }
+    fun changeColorTheme(theme: String) = settingsManager.setColorTheme(theme)
 
-    fun changeDarkMode(mode: String) {
-        _selectedDarkMode.value = mode
-        settingsManager.setDarkMode(mode)
-    }
+    fun changeDarkMode(mode: String) = settingsManager.setDarkMode(mode)
 
     fun refreshRepositories() {
         if (_isRefreshing.value) return
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
-                val repos = gitRepository.getRepositories()
-                repos.forEach { repo ->
-                    val updated = gitRepository.refreshRepository(repo)
-                    if (updated != null) {
-                        gitRepository.updateRepository(updated)
-                    }
-                }
+                gitRepository.getRepositories().forEach { repository -> gitRepository.refreshRepository(repository) }
             } finally {
                 _isRefreshing.value = false
             }
