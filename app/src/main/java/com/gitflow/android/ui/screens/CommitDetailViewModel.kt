@@ -46,7 +46,7 @@ data class CommitDetailUiState(
 class CommitDetailViewModel(
     private val gitRepository: IGitRepository,
     private val commit: Commit,
-    private val repository: Repository?
+    private val repository: Repository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CommitDetailUiState())
@@ -62,11 +62,7 @@ class CommitDetailViewModel(
         viewModelScope.launch {
             val loaded = commit.parents.mapNotNull { hash ->
                 try {
-                    if (repository != null) {
-                        gitRepository.getCommitByHash(hash, repository)
-                    } else {
-                        gitRepository.getCommitByHash(hash)
-                    }
+                    gitRepository.getCommitByHash(hash, repository)
                 } catch (_: Exception) { null }
             }
             _uiState.update { it.copy(parentCommits = loaded, isLoadingParents = false) }
@@ -77,11 +73,7 @@ class CommitDetailViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoadingDiffs = true, diffsLoadError = null) }
             try {
-                val diffs = if (repository != null) {
-                    gitRepository.getCommitDiffs(commit, repository)
-                } else {
-                    gitRepository.getCommitDiffs(commit)
-                }
+                val diffs = gitRepository.getCommitDiffs(commit, repository)
                 _uiState.update { it.copy(fileDiffs = diffs, isLoadingDiffs = false) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoadingDiffs = false, diffsLoadError = e.message) }
@@ -94,11 +86,7 @@ class CommitDetailViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoadingTree = true, treeLoadError = null) }
             try {
-                val tree = if (repository != null) {
-                    gitRepository.getCommitFileTree(commit, repository)
-                } else {
-                    gitRepository.getCommitFileTree(commit)
-                }
+                val tree = gitRepository.getCommitFileTree(commit, repository)
                 _uiState.update { it.copy(fileTree = tree, isLoadingTree = false) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoadingTree = false, treeLoadError = e.message) }
@@ -136,11 +124,7 @@ class CommitDetailViewModel(
         _uiState.update { it.copy(isRestoringFile = true, contextMenuTargetPath = null) }
         viewModelScope.launch {
             val result = try {
-                if (repository != null) {
-                    gitRepository.restoreFileToCommit(commit, filePath, repository)
-                } else {
-                    gitRepository.restoreFileToCommit(commit, filePath)
-                }
+                gitRepository.restoreFileToCommit(commit, filePath, repository)
             } catch (e: Exception) {
                 GitResult.Failure.Generic(e.message ?: "")
             }
@@ -154,11 +138,7 @@ class CommitDetailViewModel(
         _uiState.update { it.copy(isRestoringFile = true, contextMenuTargetPath = null) }
         viewModelScope.launch {
             val result = try {
-                if (repository != null) {
-                    gitRepository.restoreFileToParentCommit(commit, filePath, repository)
-                } else {
-                    gitRepository.restoreFileToParentCommit(commit, filePath)
-                }
+                gitRepository.restoreFileToParentCommit(commit, filePath, repository)
             } catch (e: Exception) {
                 GitResult.Failure.Generic(e.message ?: "")
             }
@@ -171,11 +151,7 @@ class CommitDetailViewModel(
         _uiState.update { it.copy(historyDialogFile = file, isHistoryLoading = true, historyError = null, fileHistory = emptyList()) }
         viewModelScope.launch {
             try {
-                val history = if (repository != null) {
-                    gitRepository.getFileHistory(commit, file.path, repository)
-                } else {
-                    gitRepository.getFileHistory(commit, file.path)
-                }
+                val history = gitRepository.getFileHistory(commit, file.path, repository)
                 _uiState.update { it.copy(fileHistory = history, isHistoryLoading = false) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isHistoryLoading = false, historyError = e.message) }
@@ -203,11 +179,7 @@ class CommitDetailViewModel(
         val filePath = _uiState.value.historyDialogFile?.path ?: return
         viewModelScope.launch {
             try {
-                val diffs = if (repository != null) {
-                    gitRepository.getCommitDiffs(historyCommit, repository)
-                } else {
-                    gitRepository.getCommitDiffs(historyCommit)
-                }
+                val diffs = gitRepository.getCommitDiffs(historyCommit, repository)
                 val matchingDiff = diffs.firstOrNull { it.path == filePath || it.oldPath == filePath }
                 _uiState.update {
                     it.copy(

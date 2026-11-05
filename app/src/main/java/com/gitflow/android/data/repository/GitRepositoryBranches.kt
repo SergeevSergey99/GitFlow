@@ -19,6 +19,7 @@ import org.eclipse.jgit.transport.RefSpec
 import org.eclipse.jgit.transport.RemoteRefUpdate
 import org.eclipse.jgit.lib.ProgressMonitor
 import org.eclipse.jgit.lib.ObjectId
+import org.eclipse.jgit.revwalk.RevTree
 import org.eclipse.jgit.revwalk.RevWalk
 import org.eclipse.jgit.revwalk.filter.RevFilter
 import org.eclipse.jgit.treewalk.EmptyTreeIterator
@@ -258,11 +259,26 @@ internal suspend fun GitRepository.pullImpl(repository: Repository): GitResult<U
         }
         val credentials = resolveCredentialsProvider(remoteUrl)
         git.use { g ->
+            // Not refused without an identity: most pulls fast-forward and create no commit.
+            applyCommitIdentity(g)
             val pullCommand = g.pull()
             credentials?.let { pullCommand.setCredentialsProvider(it) }
             val result = pullCommand.call()
-            if (result.isSuccessful) GitResult.Success(Unit)
-            else GitResult.Failure.Generic("Pull failed")
+            val mergeConflicts = result.mergeResult
+                ?.takeIf { it.mergeStatus == MergeResult.MergeStatus.CONFLICTING }
+                ?.conflicts?.keys?.toList()
+            val rebaseStopped = result.rebaseResult?.status in listOf(RebaseResult.Status.STOPPED, RebaseResult.Status.CONFLICTS)
+            when {
+                result.isSuccessful -> GitResult.Success(Unit)
+                mergeConflicts != null || rebaseStopped -> {
+                    val paths = mergeConflicts ?: g.status().call().conflicting.toList()
+                    GitResult.Failure.Conflict(
+                        message = "Pull produced conflicts: ${paths.joinToString(", ").ifEmpty { "see working tree" }}",
+                        paths = paths
+                    )
+                }
+                else -> GitResult.Failure.Generic("Pull failed")
+            }
         }
     } catch (e: Exception) {
         classifyNetworkException(e)
@@ -418,6 +434,7 @@ internal suspend fun GitRepository.cherryPickCommitImpl(repository: Repository, 
         git.use { g ->
             val objectId = g.repository.resolve(commitHash)
                 ?: return@withContext GitResult.Failure.Generic("Cannot resolve commit: $commitHash")
+            if (!applyCommitIdentity(g)) return@withContext GitResult.Failure.IdentityRequired()
             val result = g.cherryPick().include(objectId).call()
             when (result.status) {
                 CherryPickResult.CherryPickStatus.OK -> {
@@ -445,6 +462,7 @@ internal suspend fun GitRepository.mergeCommitIntoCurrentBranchImpl(repository: 
         git.use { g ->
             val objectId = g.repository.resolve(commitHash)
                 ?: return@withContext GitResult.Failure.Generic("Cannot resolve commit: $commitHash")
+            if (!applyCommitIdentity(g)) return@withContext GitResult.Failure.IdentityRequired()
             val result = g.merge().include(objectId).setCommit(true).call()
             when (result.mergeStatus) {
                 MergeResult.MergeStatus.FAST_FORWARD,
@@ -477,6 +495,7 @@ internal suspend fun GitRepository.mergeBranchImpl(repository: Repository, branc
     try {
         val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
         git.use { g ->
+            if (!applyCommitIdentity(g)) return@withContext GitResult.Failure.IdentityRequired()
             val mergeCommand = g.merge().setCommit(true)
             // Prefer a named ref so the merge commit message references the branch.
             val ref = g.repository.findRef(branchName)
@@ -519,15 +538,21 @@ internal suspend fun GitRepository.abortMergeImpl(repository: Repository): GitRe
             val headId = jRepo.resolve(Constants.HEAD)
                 ?: return@withContext GitResult.Failure.Generic("Cannot resolve HEAD")
             val mergeHeadId = jRepo.readMergeHeads()?.firstOrNull()
-                ?: return@withContext GitResult.Failure.Generic("No merge in progress")
+            val cherryPickHeadId = jRepo.readCherryPickHead()
+            val incomingPaths = when {
+                mergeHeadId != null -> pathsChangedSinceMergeBase(jRepo, headId, mergeHeadId)
+                cherryPickHeadId != null -> pathsChangedByCommit(jRepo, cherryPickHeadId)
+                else -> return@withContext GitResult.Failure.Generic("No merge or cherry-pick in progress")
+            }
 
             // JGit has no "merge --abort", and a hard reset would also wipe uncommitted changes
             // in files the merge never touched (JGit allows merging with such files dirty).
-            // Only paths the incoming side changed since the merge base can have been modified
-            // by the merge, and of those only the ones whose index now differs from HEAD.
+            // Only paths the incoming side changed relative to its base (the merge base, or the
+            // picked commit's parent) can have been modified, and of those only the ones whose
+            // index now differs from HEAD.
             val status = g.status().call()
             val indexChanged = status.added + status.changed + status.removed + status.conflicting
-            val mergedPaths = pathsChangedSinceMergeBase(jRepo, headId, mergeHeadId).filter { it in indexChanged }
+            val mergedPaths = incomingPaths.filter { it in indexChanged }
             val headTree = RevWalk(jRepo).use { walk -> walk.parseCommit(headId).tree }
             val (pathsInHead, pathsAddedByMerge) = mergedPaths.partition { path ->
                 TreeWalk.forPath(jRepo, path, headTree)?.use { true } ?: false
@@ -542,6 +567,7 @@ internal suspend fun GitRepository.abortMergeImpl(repository: Repository): GitRe
                 pathsAddedByMerge.forEach { File(jRepo.workTree, it).delete() }
             }
             jRepo.writeMergeHeads(null)
+            jRepo.writeCherryPickHead(null)
             jRepo.writeMergeCommitMsg(null)
         }
         refreshRepository(repository)
@@ -563,15 +589,30 @@ private fun pathsChangedSinceMergeBase(
         walk.markStart(walk.parseCommit(headId))
         walk.markStart(theirs)
         val baseTrees = walk.map { it.tree }.ifEmpty { listOf(null) }
-        for (baseTree in baseTrees) {
-            TreeWalk(repository).use { treeWalk ->
-                if (baseTree != null) treeWalk.addTree(baseTree) else treeWalk.addTree(EmptyTreeIterator())
-                treeWalk.addTree(theirs.tree)
-                treeWalk.isRecursive = true
-                treeWalk.filter = TreeFilter.ANY_DIFF
-                while (treeWalk.next()) paths += treeWalk.pathString
-            }
-        }
+        for (baseTree in baseTrees) paths += pathsChangedBetween(repository, baseTree, theirs.tree)
+    }
+    return paths
+}
+
+private fun pathsChangedByCommit(repository: org.eclipse.jgit.lib.Repository, commitId: ObjectId): Set<String> =
+    RevWalk(repository).use { walk ->
+        val commit = walk.parseCommit(commitId)
+        val parentTree = commit.parents.firstOrNull()?.let { walk.parseCommit(it).tree }
+        pathsChangedBetween(repository, parentTree, commit.tree)
+    }
+
+private fun pathsChangedBetween(
+    repository: org.eclipse.jgit.lib.Repository,
+    fromTree: RevTree?,
+    toTree: RevTree
+): Set<String> {
+    val paths = mutableSetOf<String>()
+    TreeWalk(repository).use { treeWalk ->
+        if (fromTree != null) treeWalk.addTree(fromTree) else treeWalk.addTree(EmptyTreeIterator())
+        treeWalk.addTree(toTree)
+        treeWalk.isRecursive = true
+        treeWalk.filter = TreeFilter.ANY_DIFF
+        while (treeWalk.next()) paths += treeWalk.pathString
     }
     return paths
 }
@@ -580,6 +621,7 @@ internal suspend fun GitRepository.rebaseCurrentOntoImpl(repository: Repository,
     try {
         val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
         git.use { g ->
+            if (!applyCommitIdentity(g)) return@withContext GitResult.Failure.IdentityRequired()
             val result = g.rebase().setUpstream(branchName).call()
             interpretRebaseResult(result, repository, g)
         }
@@ -592,6 +634,7 @@ internal suspend fun GitRepository.rebaseContinueImpl(repository: Repository): G
     try {
         val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
         git.use { g ->
+            if (!applyCommitIdentity(g)) return@withContext GitResult.Failure.IdentityRequired()
             val result = g.rebase().setOperation(RebaseCommand.Operation.CONTINUE).call()
             interpretRebaseResult(result, repository, g)
         }

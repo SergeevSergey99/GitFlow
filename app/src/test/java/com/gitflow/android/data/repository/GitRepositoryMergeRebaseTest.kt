@@ -9,12 +9,18 @@ import com.gitflow.android.data.models.GitResult
 import com.gitflow.android.data.models.RepoOperationState
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.settings.AppSettingsManager
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
 import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.lib.Config as GitConfig
+import org.eclipse.jgit.storage.file.FileBasedConfig
+import org.eclipse.jgit.util.FS
+import org.eclipse.jgit.util.SystemReader
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -41,11 +47,15 @@ class GitRepositoryMergeRebaseTest {
     private lateinit var repo: GitRepository
     private lateinit var model: Repository
     private lateinit var mainBranch: String
+    private val authManager = mockk<AuthManager>(relaxed = true)
+    private val settingsManager = mockk<AppSettingsManager>(relaxed = true)
 
     @Before
     fun setUp() {
+        SystemReader.setInstance(IsolatedConfigReader(SystemReader.getInstance(), tempFolder.newFolder("config")))
         val context = ApplicationProvider.getApplicationContext<Context>()
-        repo = GitRepository(context, mockk<AuthManager>(relaxed = true), mockk<AppSettingsManager>(relaxed = true))
+        every { authManager.getCurrentUser(any()) } returns null
+        repo = GitRepository(context, authManager, settingsManager)
 
         repoDir = tempFolder.newFolder("repo")
         git = Git.init().setDirectory(repoDir).call()
@@ -65,10 +75,20 @@ class GitRepositoryMergeRebaseTest {
     }
 
     @After
-    fun tearDown() = git.close()
+    fun tearDown() {
+        git.close()
+        SystemReader.setInstance(null)
+    }
 
     private fun writeFile(name: String, content: String) {
         File(repoDir, name).apply { parentFile?.mkdirs() }.writeText(content)
+    }
+
+    private fun removeRepoIdentity() {
+        git.repository.config.apply {
+            unsetSection("user", null)
+            save()
+        }
     }
 
     private fun commit(path: String, message: String) {
@@ -158,6 +178,87 @@ class GitRepositoryMergeRebaseTest {
     }
 
     @Test
+    fun abortMerge_afterConflictingCherryPick_restoresCleanState() = runBlocking {
+        git.checkout().setCreateBranch(true).setName("feature").call()
+        writeFile("initial.txt", "theirs")
+        commit("initial.txt", "feature change")
+        val picked = git.repository.resolve("HEAD").name
+        git.checkout().setName(mainBranch).call()
+        writeFile("initial.txt", "ours")
+        commit("initial.txt", "main change")
+        assertTrue(repo.cherryPickCommit(model, picked) is GitResult.Failure.Conflict)
+
+        val result = repo.abortMerge(model)
+
+        assertTrue(result is GitResult.Success)
+        assertEquals(RepoOperationState.NONE, repo.getRepositoryState(model))
+        assertEquals("ours", File(repoDir, "initial.txt").readText())
+        assertTrue(git.status().call().isClean)
+    }
+
+    @Test
+    fun pull_withConflictingUpstreamChange_reportsConflict() = runBlocking {
+        val cloneDir = tempFolder.newFolder("clone")
+        Git.cloneRepository().setURI(repoDir.toURI().toString()).setDirectory(cloneDir).call().use { clone ->
+            File(cloneDir, "initial.txt").writeText("local")
+            clone.add().addFilepattern("initial.txt").call()
+            clone.commit().setMessage("local change")
+                .setAuthor("Test User", "test@example.com")
+                .setCommitter("Test User", "test@example.com")
+                .call()
+        }
+        writeFile("initial.txt", "upstream")
+        commit("initial.txt", "upstream change")
+        val cloneModel = model.copy(id = "clone", path = cloneDir.absolutePath)
+
+        val result = repo.pull(cloneModel)
+
+        assertTrue(result is GitResult.Failure.Conflict)
+        assertEquals(listOf("initial.txt"), (result as GitResult.Failure.Conflict).paths)
+        assertEquals(RepoOperationState.MERGING, repo.getRepositoryState(cloneModel))
+    }
+
+    @Test
+    fun mergeBranch_withoutAnyIdentity_isRefused() = runBlocking {
+        removeRepoIdentity()
+        git.checkout().setCreateBranch(true).setName("feature").call()
+        writeFile("feature.txt", "f")
+        commit("feature.txt", "add feature file")
+        git.checkout().setName(mainBranch).call()
+        writeFile("other.txt", "o")
+        commit("other.txt", "add other file")
+
+        val result = repo.mergeBranch(model, "feature")
+
+        assertTrue(result is GitResult.Failure.IdentityRequired)
+        assertEquals(RepoOperationState.NONE, repo.getRepositoryState(model))
+    }
+
+    @Test
+    fun mergeBranch_signsWithLocalAuthorWithoutWritingRepoConfig() = runBlocking {
+        removeRepoIdentity()
+        every { settingsManager.getLocalAuthorName() } returns "Local Dev"
+        every { settingsManager.getLocalAuthorEmail() } returns "dev@example.com"
+        git.checkout().setCreateBranch(true).setName("feature").call()
+        writeFile("feature.txt", "f")
+        commit("feature.txt", "add feature file")
+        git.checkout().setName(mainBranch).call()
+        writeFile("other.txt", "o")
+        commit("other.txt", "add other file")
+
+        val result = repo.mergeBranch(model, "feature")
+
+        assertTrue(result is GitResult.Success)
+        val mergeCommit = git.log().setMaxCount(1).call().first()
+        assertEquals(2, mergeCommit.parentCount)
+        assertEquals("Local Dev", mergeCommit.committerIdent.name)
+        assertEquals("dev@example.com", mergeCommit.committerIdent.emailAddress)
+        Git.open(repoDir).use { reopened ->
+            assertNull(reopened.repository.config.getString("user", null, "name"))
+        }
+    }
+
+    @Test
     fun commit_afterMergeResolvedToOurs_succeeds() = runBlocking {
         git.checkout().setCreateBranch(true).setName("feature").call()
         writeFile("initial.txt", "theirs")
@@ -232,4 +333,20 @@ class GitRepositoryMergeRebaseTest {
         // After abort, feature's own version is back.
         assertEquals("theirs", File(repoDir, "initial.txt").readText().trim())
     }
+}
+
+// JGit layers ~/.gitconfig and the system config under the repo config; without isolating them
+// the developer's own git identity would leak into the "no identity" tests.
+private class IsolatedConfigReader(
+    private val delegate: SystemReader,
+    private val configDir: File
+) : SystemReader() {
+    override fun getHostname(): String = delegate.hostname
+    override fun getenv(variable: String): String? = delegate.getenv(variable)
+    override fun getProperty(key: String): String? = delegate.getProperty(key)
+    override fun openUserConfig(parent: GitConfig?, fs: FS): FileBasedConfig = FileBasedConfig(parent, File(configDir, "user"), fs)
+    override fun openSystemConfig(parent: GitConfig?, fs: FS): FileBasedConfig = FileBasedConfig(parent, File(configDir, "system"), fs)
+    override fun openJGitConfig(parent: GitConfig?, fs: FS): FileBasedConfig = FileBasedConfig(parent, File(configDir, "jgit"), fs)
+    override fun getCurrentTime(): Long = delegate.currentTime
+    override fun getTimezone(time: Long): Int = delegate.getTimezone(time)
 }

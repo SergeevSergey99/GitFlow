@@ -22,7 +22,6 @@ interface IGitRepository {
     suspend fun refreshRepository(repository: Repository): Repository?
     suspend fun getCommits(repository: Repository, page: Int = 0, pageSize: Int = 50): List<Commit>
     suspend fun getCommitByHash(hash: String, repository: Repository): Commit?
-    suspend fun getCommitByHash(hash: String): Commit?
     suspend fun getChangedFiles(repository: Repository): List<FileChange>
     suspend fun getWorkingFileDiff(repository: Repository, filePath: String, stage: ChangeStage): FileDiff?
     suspend fun stageFile(repository: Repository, file: FileChange): GitResult<Unit>
@@ -43,7 +42,6 @@ interface IGitRepository {
     suspend fun amendLastCommit(repository: Repository, message: String): GitResult<Unit>
     suspend fun getLastCommitMessage(repository: Repository): String?
     suspend fun getCommitDiffs(commit: Commit, repository: Repository): List<FileDiff>
-    suspend fun getCommitDiffs(commit: Commit): List<FileDiff>
     suspend fun getBranches(repository: Repository): List<Branch>
     suspend fun checkoutBranch(repository: Repository, branchName: String, isLocal: Boolean): GitResult<Unit>
     suspend fun createBranch(repository: Repository, branchName: String, checkout: Boolean): GitResult<Unit>
@@ -65,17 +63,11 @@ interface IGitRepository {
     suspend fun pushBranch(repository: Repository, branchName: String): GitResult<Unit>
     suspend fun pushWithProgress(repository: Repository, onProgress: (SyncProgress) -> Unit): GitResult<Unit>
     suspend fun getCommitFileTree(commit: Commit, repository: Repository): FileTreeNode
-    suspend fun getCommitFileTree(commit: Commit): FileTreeNode
     suspend fun getFileContent(commit: Commit, filePath: String, repository: Repository): String?
-    suspend fun getFileContent(commit: Commit, filePath: String): String?
     suspend fun getFileContentBytes(commit: Commit, filePath: String, repository: Repository): ByteArray?
-    suspend fun getFileContentBytes(commit: Commit, filePath: String): ByteArray?
     suspend fun restoreFileToCommit(commit: Commit, filePath: String, repository: Repository): GitResult<Unit>
-    suspend fun restoreFileToCommit(commit: Commit, filePath: String): GitResult<Unit>
     suspend fun restoreFileToParentCommit(commit: Commit, filePath: String, repository: Repository): GitResult<Unit>
-    suspend fun restoreFileToParentCommit(commit: Commit, filePath: String): GitResult<Unit>
     suspend fun getFileHistory(commit: Commit, filePath: String, repository: Repository): List<Commit>
-    suspend fun getFileHistory(commit: Commit, filePath: String): List<Commit>
     suspend fun getFileHistoryForPath(repository: Repository, filePath: String): List<Commit>
     suspend fun stashSave(repository: Repository, message: String = ""): GitResult<Unit>
     suspend fun stashList(repository: Repository): List<StashEntry>

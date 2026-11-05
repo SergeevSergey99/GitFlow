@@ -36,6 +36,11 @@ sealed class GitResult<out T> {
             override val message: String = "No staged changes to commit"
         ) : Failure()
 
+        /** Neither the repo config, a signed-in account nor the app settings give a name and email. */
+        data class IdentityRequired(
+            override val message: String = "Commit author is not configured"
+        ) : Failure()
+
         /** Tag creation failed because the tag already exists. */
         data class TagAlreadyExists(val tagName: String) : Failure() {
             override val message: String get() = "Tag '$tagName' already exists"

@@ -28,15 +28,6 @@ internal suspend fun GitRepository.getCommitFileTreeImpl(commit: Commit, reposit
     }
 }
 
-internal suspend fun GitRepository.getCommitFileTreeAutoImpl(commit: Commit): FileTreeNode = withContext(Dispatchers.IO) {
-    try {
-        val repo = findRepositoryForCommit(commit) ?: return@withContext emptyFileTreeNode()
-        getCommitFileTreeImpl(commit, repo)
-    } catch (e: Exception) {
-        emptyFileTreeNode()
-    }
-}
-
 // ---------------------------------------------------------------------------
 // File content
 // ---------------------------------------------------------------------------
@@ -56,15 +47,6 @@ internal suspend fun GitRepository.getFileContentImpl(commit: Commit, filePath: 
     }
 }
 
-internal suspend fun GitRepository.getFileContentAutoImpl(commit: Commit, filePath: String): String? = withContext(Dispatchers.IO) {
-    try {
-        val repo = findRepositoryForCommit(commit) ?: return@withContext null
-        getFileContentImpl(commit, filePath, repo)
-    } catch (e: Exception) {
-        null
-    }
-}
-
 internal suspend fun GitRepository.getFileContentBytesImpl(commit: Commit, filePath: String, repository: Repository): ByteArray? = withContext(Dispatchers.IO) {
     try {
         val git = openRepository(repository.path) ?: return@withContext null
@@ -75,15 +57,6 @@ internal suspend fun GitRepository.getFileContentBytesImpl(commit: Commit, fileP
                 getFileContentFromCommitBytes(jRepo, revCommit, filePath)
             }
         }
-    } catch (e: Exception) {
-        null
-    }
-}
-
-internal suspend fun GitRepository.getFileContentBytesAutoImpl(commit: Commit, filePath: String): ByteArray? = withContext(Dispatchers.IO) {
-    try {
-        val repo = findRepositoryForCommit(commit) ?: return@withContext null
-        getFileContentBytesImpl(commit, filePath, repo)
     } catch (e: Exception) {
         null
     }
@@ -108,11 +81,6 @@ internal suspend fun GitRepository.restoreFileToCommitImpl(commit: Commit, fileP
     }
 }
 
-internal suspend fun GitRepository.restoreFileToCommitAutoImpl(commit: Commit, filePath: String): GitResult<Unit> {
-    val repo = findRepositoryForCommit(commit) ?: return GitResult.Failure.Generic("Failed to restore file")
-    return restoreFileToCommitImpl(commit, filePath, repo)
-}
-
 internal suspend fun GitRepository.restoreFileToParentCommitImpl(commit: Commit, filePath: String, repository: Repository): GitResult<Unit> = withContext(Dispatchers.IO) {
     val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Failed to restore file")
     try {
@@ -129,11 +97,6 @@ internal suspend fun GitRepository.restoreFileToParentCommitImpl(commit: Commit,
     } finally {
         git.close()
     }
-}
-
-internal suspend fun GitRepository.restoreFileToParentCommitAutoImpl(commit: Commit, filePath: String): GitResult<Unit> {
-    val repo = findRepositoryForCommit(commit) ?: return GitResult.Failure.Generic("Failed to restore file")
-    return restoreFileToParentCommitImpl(commit, filePath, repo)
 }
 
 // ---------------------------------------------------------------------------
@@ -153,11 +116,6 @@ internal suspend fun GitRepository.getFileHistoryImpl(commit: Commit, filePath: 
     }
 }
 
-internal suspend fun GitRepository.getFileHistoryAutoImpl(commit: Commit, filePath: String): List<Commit> {
-    val repo = findRepositoryForCommit(commit) ?: return emptyList()
-    return getFileHistoryImpl(commit, filePath, repo)
-}
-
 internal suspend fun GitRepository.getFileHistoryForPathImpl(repository: Repository, filePath: String): List<Commit> = withContext(Dispatchers.IO) {
     val git = openRepository(repository.path) ?: return@withContext emptyList()
     try {
@@ -172,16 +130,6 @@ internal suspend fun GitRepository.getFileHistoryForPathImpl(repository: Reposit
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
-
-private suspend fun GitRepository.findRepositoryForCommit(commit: Commit): Repository? {
-    return getRepositories().find { repo ->
-        try {
-            openRepository(repo.path)?.use { git ->
-                git.repository.resolve(commit.hash) != null
-            } ?: false
-        } catch (_: Exception) { false }
-    }
-}
 
 private fun collectFileInfo(
     jRepo: org.eclipse.jgit.lib.Repository,

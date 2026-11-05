@@ -63,11 +63,16 @@ internal suspend fun GitRepository.createRepositoryImpl(name: String, localPath:
 
         repoDir.mkdirs()
         Git.init().setDirectory(repoDir).call().use { git ->
+            val (authorName, authorEmail) = resolveCommitIdentity(git) ?: run {
+                repoDir.deleteRecursively()
+                return@withContext GitResult.Failure.IdentityRequired()
+            }
             File(repoDir, "README.md").writeText("# $name\n\nThis repository was created with GitFlow Android.")
             git.add().addFilepattern("README.md").call()
             git.commit()
                 .setMessage("Initial commit")
-                .setAuthor("GitFlow Android", "gitflow@android.local")
+                .setAuthor(authorName, authorEmail)
+                .setCommitter(authorName, authorEmail)
                 .call()
 
             val currentBranch = git.repository.branch

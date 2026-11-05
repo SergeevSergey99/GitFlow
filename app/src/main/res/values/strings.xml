@@ -309,10 +309,12 @@
     <string name="changes_commit_message_empty">Commit message cannot be empty</string>
     <string name="changes_commit_created">Commit created</string>
     <string name="changes_commit_failed">Commit failed</string>
+    <string name="changes_identity_required">Set the commit author in Settings → Local author</string>
     <string name="changes_fetch_successful">Fetch successful</string>
     <string name="changes_fetch_failed">Fetch failed</string>
     <string name="changes_pull_successful">Pull successful</string>
     <string name="changes_pull_failed">Pull failed</string>
+    <string name="changes_pull_conflicts">Pull stopped on conflicts — resolve them below</string>
     <string name="changes_push_successful">Push successful</string>
     <string name="changes_push_failed">Push failed</string>
     <string name="push_progress_pushing">Pushing…</string>
@@ -395,6 +397,7 @@
     <string name="graph_commit_confirm">Confirm</string>
     <string name="graph_commit_cancel">Cancel</string>
     <string name="graph_commit_operation_failed">Operation failed: %1$s</string>
+    <string name="graph_commit_operation_conflicts">Stopped on conflicts — resolve them in the Changes tab</string>
     <string name="graph_commit_operation_failed_generic">Unknown error</string>
     <string name="graph_commit_add_tag_title">Add tag to commit</string>
     <string name="graph_commit_add_tag_hint">Tag name</string>

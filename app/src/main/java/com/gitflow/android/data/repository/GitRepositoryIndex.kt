@@ -226,12 +226,12 @@ internal suspend fun GitRepository.commitImpl(repository: Repository, message: S
                 // inline use{} allows non-local return to withContext
                 return@withContext GitResult.Failure.NoStagedChanges()
             }
-            val commitCommand = g.commit().setMessage(message)
-            resolveCommitIdentity(g)?.let { (name, email) ->
-                commitCommand.setAuthor(name, email)
-                commitCommand.setCommitter(name, email)
-            }
-            commitCommand.call()
+            val (name, email) = resolveCommitIdentity(g)
+                ?: return@withContext GitResult.Failure.IdentityRequired()
+            g.commit().setMessage(message)
+                .setAuthor(name, email)
+                .setCommitter(name, email)
+                .call()
         }
         refreshRepository(repository)
         GitResult.Success(Unit)
@@ -248,12 +248,12 @@ internal suspend fun GitRepository.amendLastCommitImpl(repository: Repository, m
     try {
         val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
         git.use { g ->
-            val commitCommand = g.commit().setAmend(true).setMessage(message)
-            resolveCommitIdentity(g)?.let { (name, email) ->
-                commitCommand.setAuthor(name, email)
-                commitCommand.setCommitter(name, email)
-            }
-            commitCommand.call()
+            val (name, email) = resolveCommitIdentity(g)
+                ?: return@withContext GitResult.Failure.IdentityRequired()
+            g.commit().setAmend(true).setMessage(message)
+                .setAuthor(name, email)
+                .setCommitter(name, email)
+                .call()
         }
         refreshRepository(repository)
         GitResult.Success(Unit)

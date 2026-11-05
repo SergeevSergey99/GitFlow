@@ -179,9 +179,7 @@ class GitRepository(
 
     override suspend fun getCommits(repository: Repository, page: Int, pageSize: Int): List<Commit> = getCommitsImpl(repository, page, pageSize)
     override suspend fun getCommitByHash(hash: String, repository: Repository): Commit? = getCommitByHashImpl(hash, repository)
-    override suspend fun getCommitByHash(hash: String): Commit? = getCommitByHashAutoImpl(hash)
     override suspend fun getCommitDiffs(commit: Commit, repository: Repository): List<FileDiff> = getCommitDiffsImpl(commit, repository)
-    override suspend fun getCommitDiffs(commit: Commit): List<FileDiff> = getCommitDiffsAutoImpl(commit)
 
     override suspend fun getChangedFiles(repository: Repository): List<FileChange> = getChangedFilesImpl(repository)
     override suspend fun getWorkingFileDiff(repository: Repository, filePath: String, stage: ChangeStage): FileDiff? = getWorkingFileDiffImpl(repository, filePath, stage)
@@ -222,17 +220,11 @@ class GitRepository(
     override suspend fun mergeCommitIntoCurrentBranch(repository: Repository, commitHash: String): GitResult<Unit> = mergeCommitIntoCurrentBranchImpl(repository, commitHash)
 
     override suspend fun getCommitFileTree(commit: Commit, repository: Repository): FileTreeNode = getCommitFileTreeImpl(commit, repository)
-    override suspend fun getCommitFileTree(commit: Commit): FileTreeNode = getCommitFileTreeAutoImpl(commit)
     override suspend fun getFileContent(commit: Commit, filePath: String, repository: Repository): String? = getFileContentImpl(commit, filePath, repository)
-    override suspend fun getFileContent(commit: Commit, filePath: String): String? = getFileContentAutoImpl(commit, filePath)
     override suspend fun getFileContentBytes(commit: Commit, filePath: String, repository: Repository): ByteArray? = getFileContentBytesImpl(commit, filePath, repository)
-    override suspend fun getFileContentBytes(commit: Commit, filePath: String): ByteArray? = getFileContentBytesAutoImpl(commit, filePath)
     override suspend fun restoreFileToCommit(commit: Commit, filePath: String, repository: Repository): GitResult<Unit> = restoreFileToCommitImpl(commit, filePath, repository)
-    override suspend fun restoreFileToCommit(commit: Commit, filePath: String): GitResult<Unit> = restoreFileToCommitAutoImpl(commit, filePath)
     override suspend fun restoreFileToParentCommit(commit: Commit, filePath: String, repository: Repository): GitResult<Unit> = restoreFileToParentCommitImpl(commit, filePath, repository)
-    override suspend fun restoreFileToParentCommit(commit: Commit, filePath: String): GitResult<Unit> = restoreFileToParentCommitAutoImpl(commit, filePath)
     override suspend fun getFileHistory(commit: Commit, filePath: String, repository: Repository): List<Commit> = getFileHistoryImpl(commit, filePath, repository)
-    override suspend fun getFileHistory(commit: Commit, filePath: String): List<Commit> = getFileHistoryAutoImpl(commit, filePath)
     override suspend fun getFileHistoryForPath(repository: Repository, filePath: String): List<Commit> = getFileHistoryForPathImpl(repository, filePath)
 
     override suspend fun stashSave(repository: Repository, message: String): GitResult<Unit> = stashSaveImpl(repository, message)
@@ -365,14 +357,11 @@ class GitRepository(
 
         if (user != null) {
             val name = user.name?.takeIf { it.isNotBlank() } ?: user.login
-            val email = user.email?.takeIf { it.isNotBlank() } ?: when (user.provider) {
-                GitProvider.GITHUB -> "${user.login}@users.noreply.github.com"
-                GitProvider.GITLAB -> "${user.login}@gitlab.com"
-                GitProvider.BITBUCKET -> "${user.login}@users.noreply.bitbucket.org"
-                GitProvider.GITEA -> user.login  // no reliable noreply format for self-hosted
-                GitProvider.AZURE_DEVOPS -> user.login
-            }
-            if (name.isNotBlank() && email.isNotBlank()) return name to email
+            // Only GitHub has a noreply address derivable from the account; for the other
+            // providers a made-up address could belong to someone else.
+            val email = user.email?.takeIf { it.isNotBlank() }
+                ?: if (user.provider == GitProvider.GITHUB) "${user.id}+${user.login}@users.noreply.github.com" else null
+            if (name.isNotBlank() && email != null) return name to email
         }
 
         // Final fallback: local author settings from app preferences
@@ -381,6 +370,16 @@ class GitRepository(
         if (localName.isNotBlank() && localEmail.isNotBlank()) return localName to localEmail
 
         return null
+    }
+
+    // Merge, cherry-pick, rebase and stash in JGit 5.13 take the committer only from the repo
+    // config. Setting it in memory signs them without writing the user's config — so the same
+    // Git instance must not call config.save() afterwards.
+    internal fun applyCommitIdentity(git: Git): Boolean {
+        val (name, email) = resolveCommitIdentity(git) ?: return false
+        git.repository.config.setString("user", null, "name", name)
+        git.repository.config.setString("user", null, "email", email)
+        return true
     }
 
     internal fun getBranchesInternal(git: Git): List<Branch> {

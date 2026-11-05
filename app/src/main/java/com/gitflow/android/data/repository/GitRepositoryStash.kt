@@ -12,6 +12,7 @@ internal suspend fun GitRepository.stashSaveImpl(
     try {
         val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
         git.use { g ->
+            if (!applyCommitIdentity(g)) return@withContext GitResult.Failure.IdentityRequired()
             val cmd = g.stashCreate()
             if (message.isNotBlank()) cmd.setWorkingDirectoryMessage(message)
             cmd.call() ?: return@withContext GitResult.Failure.Generic("Nothing to stash")

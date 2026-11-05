@@ -39,7 +39,7 @@ val appModule = module {
         ChangesViewModel(androidApplication(), get(), params.get<Repository>())
     }
     viewModel { params ->
-        CommitDetailViewModel(get(), params.get<Commit>(), params.getOrNull<Repository>())
+        CommitDetailViewModel(get(), params.get<Commit>(), params.get<Repository>())
     }
     viewModel { params ->
         BranchesViewModel(androidApplication(), params.get<Repository>(), get())

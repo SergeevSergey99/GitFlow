@@ -240,7 +240,8 @@ fun MainScreen(navController: NavController) {
                         repository = selectedRepository,
                         gitRepository = gitRepository,
                         config = getGraphConfig(selectedGraphPreset),
-                        conflictHashes = setOfNotNull(conflictInfo.sourceHash, conflictInfo.targetHash)
+                        conflictHashes = setOfNotNull(conflictInfo.sourceHash, conflictInfo.targetHash),
+                        onRepoStateChanged = { viewModel.refreshOperationState() }
                     )
                 }
                 MainTab.CHANGES -> ChangesScreen(

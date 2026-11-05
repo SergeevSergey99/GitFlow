@@ -117,21 +117,8 @@ internal suspend fun GitRepository.getCommitByHashImpl(hash: String, repository:
     }
 }
 
-internal suspend fun GitRepository.getCommitByHashAutoImpl(hash: String): Commit? = withContext(Dispatchers.IO) {
-    try {
-        val repo = getRepositories().find { r ->
-            try {
-                openRepository(r.path)?.use { git -> git.repository.resolve(hash) != null } ?: false
-            } catch (_: Exception) { false }
-        } ?: return@withContext null
-        getCommitByHashImpl(hash, repo)
-    } catch (e: Exception) {
-        null
-    }
-}
-
 // ---------------------------------------------------------------------------
-// getCommitDiffs — explicit repository overload
+// getCommitDiffs
 // ---------------------------------------------------------------------------
 
 internal suspend fun GitRepository.getCommitDiffsImpl(commit: Commit, repository: Repository): List<FileDiff> = withContext(Dispatchers.IO) {
@@ -171,24 +158,6 @@ internal suspend fun GitRepository.getCommitDiffsImpl(commit: Commit, repository
                 diffs
             }
         }
-    } catch (e: Exception) {
-        emptyList()
-    }
-}
-
-// ---------------------------------------------------------------------------
-// getCommitDiffs — auto-find repository overload
-// ---------------------------------------------------------------------------
-
-internal suspend fun GitRepository.getCommitDiffsAutoImpl(commit: Commit): List<FileDiff> = withContext(Dispatchers.IO) {
-    try {
-        val repo = getRepositories().find { r ->
-            try {
-                openRepository(r.path)?.use { git -> git.repository.resolve(commit.hash) != null } ?: false
-            } catch (_: Exception) { false }
-        } ?: return@withContext emptyList()
-
-        getCommitDiffsImpl(commit, repo)
     } catch (e: Exception) {
         emptyList()
     }

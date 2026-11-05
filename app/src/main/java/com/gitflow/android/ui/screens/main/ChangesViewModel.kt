@@ -239,7 +239,7 @@ class ChangesViewModel(
                 reloadChanges()
                 emit(str(R.string.changes_commit_created))
             } else {
-                emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_commit_failed))
+                emit(failureMessage(result, R.string.changes_commit_failed))
             }
         }
     }
@@ -284,6 +284,10 @@ class ChangesViewModel(
                 is GitResult.Success -> {
                     reloadChanges()
                     emit(str(R.string.changes_pull_successful))
+                }
+                is GitResult.Failure.Conflict -> {
+                    reloadChanges()
+                    emit(str(R.string.changes_pull_conflicts))
                 }
                 is GitResult.Failure.AuthRequired -> setReAuthRequired()
                 is GitResult.Failure.NetworkError -> setNetworkError(result) { pull() }
@@ -457,7 +461,7 @@ class ChangesViewModel(
                 val entries = gitRepository.stashList(repository)
                 _uiState.update { it.copy(stashList = entries) }
             } else {
-                emit((result as? GitResult.Failure)?.message ?: str(R.string.changes_stash_save_failed))
+                emit(failureMessage(result, R.string.changes_stash_save_failed))
             }
         }
     }
@@ -503,6 +507,12 @@ class ChangesViewModel(
 
     fun clearMessage() {
         _uiState.update { it.copy(message = null) }
+    }
+
+    private fun failureMessage(result: GitResult<*>, fallbackId: Int): String = when (result) {
+        is GitResult.Failure.IdentityRequired -> str(R.string.changes_identity_required)
+        is GitResult.Failure -> result.message
+        else -> str(fallbackId)
     }
 
     private fun emit(message: String) {

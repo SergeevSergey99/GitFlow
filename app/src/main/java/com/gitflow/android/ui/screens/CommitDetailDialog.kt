@@ -79,7 +79,7 @@ private const val MAX_PARENT_NAV_DEPTH = 10
 @Composable
 fun CommitDetailDialog(
     commit: Commit,
-    repository: Repository?,
+    repository: Repository,
     gitRepository: IGitRepository,
     onDismiss: () -> Unit
 ) {
@@ -109,7 +109,7 @@ fun CommitDetailDialog(
 @Composable
 private fun CommitDetailContent(
     commit: Commit,
-    repository: Repository?,
+    repository: Repository,
     gitRepository: IGitRepository,
     onDismiss: () -> Unit,
     onClose: () -> Unit = onDismiss,
@@ -1626,7 +1626,7 @@ fun getFileIconColor(fileName: String): Color {
 @Composable
 fun FileTreeView(
     commit: Commit,
-    repository: Repository?,
+    repository: Repository,
     gitRepository: IGitRepository,
     viewModel: CommitDetailViewModel,
     onRequestRestoreToCommit: (fileName: String, filePath: String) -> Unit,
@@ -2170,7 +2170,7 @@ fun FileOpenOptionsDialog(
 fun FileViewerDialog(
     file: FileTreeNode,
     commit: Commit,
-    repository: Repository?,
+    repository: Repository,
     gitRepository: IGitRepository,
     onDismiss: () -> Unit
 ) {
@@ -2183,11 +2183,7 @@ fun FileViewerDialog(
         isLoading = true
         loadError = null
         try {
-            fileContent = if (repository != null) {
-                gitRepository.getFileContent(commit, file.path, repository)
-            } else {
-                gitRepository.getFileContent(commit, file.path)
-            }
+            fileContent = gitRepository.getFileContent(commit, file.path, repository)
         } catch (e: Exception) {
             Timber.e(e, "Failed to load file content")
             loadError = context.getString(R.string.commit_detail_viewer_load_error, e.message ?: "Unknown error")
@@ -3004,13 +3000,9 @@ suspend fun openFileInExternalApp(
     gitRepository: IGitRepository,
     commit: Commit,
     file: FileTreeNode,
-    repository: Repository?
+    repository: Repository
 ): Boolean {
-    val bytes = if (repository != null) {
-        gitRepository.getFileContentBytes(commit, file.path, repository)
-    } else {
-        gitRepository.getFileContentBytes(commit, file.path)
-    }
+    val bytes = gitRepository.getFileContentBytes(commit, file.path, repository)
 
     if (bytes == null) {
         Toast.makeText(context, context.getString(R.string.commit_detail_toast_load_failed), Toast.LENGTH_SHORT).show()

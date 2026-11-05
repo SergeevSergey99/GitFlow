@@ -309,10 +309,12 @@
     <string name="changes_commit_message_empty">Сообщение коммита не может быть пустым</string>
     <string name="changes_commit_created">Коммит создан</string>
     <string name="changes_commit_failed">Не удалось создать коммит</string>
+    <string name="changes_identity_required">Укажите автора коммитов: Настройки → Локальный автор</string>
     <string name="changes_fetch_successful">Fetch выполнен успешно</string>
     <string name="changes_fetch_failed">Ошибка fetch</string>
     <string name="changes_pull_successful">Pull выполнен успешно</string>
     <string name="changes_pull_failed">Ошибка pull</string>
+    <string name="changes_pull_conflicts">Pull остановлен на конфликтах — разрешите их ниже</string>
     <string name="changes_push_successful">Push выполнен успешно</string>
     <string name="changes_push_failed">Ошибка push</string>
     <string name="push_progress_pushing">Отправка…</string>
@@ -395,6 +397,7 @@
     <string name="graph_commit_confirm">Подтвердить</string>
     <string name="graph_commit_cancel">Отмена</string>
     <string name="graph_commit_operation_failed">Не удалось выполнить операцию: %1$s</string>
+    <string name="graph_commit_operation_conflicts">Остановлено на конфликтах — разрешите их во вкладке «Изменения»</string>
     <string name="graph_commit_operation_failed_generic">Неизвестная ошибка</string>
     <string name="graph_commit_add_tag_title">Добавить тег к коммиту</string>
     <string name="graph_commit_add_tag_hint">Название тега</string>
