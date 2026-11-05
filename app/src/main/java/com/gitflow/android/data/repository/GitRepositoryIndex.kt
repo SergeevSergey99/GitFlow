@@ -3,13 +3,16 @@ package com.gitflow.android.data.repository
 import com.gitflow.android.data.models.*
 import com.gitflow.android.data.models.GitResult
 import org.eclipse.jgit.api.CheckoutCommand
-import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.diff.DiffEntry
 import org.eclipse.jgit.diff.DiffFormatter
 import org.eclipse.jgit.dircache.DirCacheIterator
+import org.eclipse.jgit.treewalk.AbstractTreeIterator
 import org.eclipse.jgit.treewalk.CanonicalTreeParser
 import org.eclipse.jgit.treewalk.EmptyTreeIterator
 import org.eclipse.jgit.treewalk.FileTreeIterator
 import org.eclipse.jgit.treewalk.filter.PathFilter
+import org.eclipse.jgit.treewalk.filter.PathFilterGroup
+import org.eclipse.jgit.util.io.DisabledOutputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 
@@ -23,7 +26,14 @@ internal suspend fun GitRepository.getChangedFilesImpl(repository: Repository): 
         val conflictPaths = status.conflicting.toSet()
         val changes = mutableListOf<FileChange>()
 
-        fun diffFor(path: String, stage: ChangeStage): Pair<Int, Int> = getFileDiffInfo(git, path, stage)
+        val stagedStats = diffStats(git.repository, ChangeStage.STAGED, status.added + status.changed + status.removed)
+        val unstagedStats = diffStats(
+            git.repository, ChangeStage.UNSTAGED,
+            status.modified + status.missing + status.untracked + status.conflicting
+        )
+
+        fun diffFor(path: String, stage: ChangeStage): Pair<Int, Int> =
+            (if (stage == ChangeStage.STAGED) stagedStats else unstagedStats)[path] ?: (0 to 0)
 
         fun conflictMeta(path: String): Pair<Boolean, Int> {
             if (!conflictPaths.contains(path)) return false to 0
@@ -208,23 +218,47 @@ internal suspend fun GitRepository.getLastCommitMessageImpl(repository: Reposito
 // Private helpers (file-local)
 // ---------------------------------------------------------------------------
 
-private fun getFileDiffInfo(git: Git, filePath: String, stage: ChangeStage): Pair<Int, Int> {
-    val fileDiff = runCatching { workingFileDiff(git.repository, filePath, stage) }.getOrNull()
-    return (fileDiff?.additions ?: 0) to (fileDiff?.deletions ?: 0)
+/**
+ * Added/deleted line counts for [paths] at [stage] in one scan. The counts are decoration, so a
+ * failed scan yields none rather than hiding the whole change list.
+ */
+private fun diffStats(
+    repository: org.eclipse.jgit.lib.Repository,
+    stage: ChangeStage,
+    paths: Set<String>
+): Map<String, Pair<Int, Int>> {
+    if (paths.isEmpty()) return emptyMap()
+    return runCatching {
+        val (oldTree, newTree) = diffTrees(repository, stage)
+        DiffFormatter(DisabledOutputStream.INSTANCE).use { formatter ->
+            formatter.setRepository(repository)
+            formatter.pathFilter = PathFilterGroup.createFromStrings(paths)
+            formatter.scan(oldTree, newTree).associate { entry ->
+                val edits = formatter.toFileHeader(entry).toEditList()
+                val path = if (entry.changeType == DiffEntry.ChangeType.DELETE) entry.oldPath else entry.newPath
+                path to (edits.sumOf { it.lengthB } to edits.sumOf { it.lengthA })
+            }
+        }
+    }.getOrDefault(emptyMap())
+}
+
+private fun diffTrees(
+    repository: org.eclipse.jgit.lib.Repository,
+    stage: ChangeStage
+): Pair<AbstractTreeIterator, AbstractTreeIterator> = when (stage) {
+    ChangeStage.STAGED -> {
+        val headTree = repository.newObjectReader().use { reader ->
+            val headTreeId = repository.resolve("HEAD^{tree}")
+            if (headTreeId != null) CanonicalTreeParser().apply { reset(reader, headTreeId) }
+            else EmptyTreeIterator()
+        }
+        headTree to DirCacheIterator(repository.readDirCache())
+    }
+    ChangeStage.UNSTAGED -> DirCacheIterator(repository.readDirCache()) to FileTreeIterator(repository)
 }
 
 private fun workingFileDiff(repository: org.eclipse.jgit.lib.Repository, filePath: String, stage: ChangeStage): FileDiff? {
-    val (oldTree, newTree) = when (stage) {
-        ChangeStage.STAGED -> {
-            val headTree = repository.newObjectReader().use { reader ->
-                val headTreeId = repository.resolve("HEAD^{tree}")
-                if (headTreeId != null) CanonicalTreeParser().apply { reset(reader, headTreeId) }
-                else EmptyTreeIterator()
-            }
-            headTree to DirCacheIterator(repository.readDirCache())
-        }
-        ChangeStage.UNSTAGED -> DirCacheIterator(repository.readDirCache()) to FileTreeIterator(repository)
-    }
+    val (oldTree, newTree) = diffTrees(repository, stage)
 
     val output = ByteArrayOutputStream()
     DiffFormatter(output).use { formatter ->

@@ -16,6 +16,7 @@ import kotlinx.coroutines.withContext
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.api.ListBranchCommand
 import org.eclipse.jgit.lib.BranchTrackingStatus
+import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.lib.ProgressMonitor
 import org.eclipse.jgit.lib.Ref
 import org.eclipse.jgit.revwalk.RevCommit
@@ -158,6 +159,11 @@ class GitRepository(
     private fun notifyChanged(repository: Repository) {
         changes.tryEmit(repository.id)
     }
+
+    // A TOPO walk has to read the whole history before yielding the first commit, so the order
+    // is kept until the branch tips change. Only one graph is on screen, hence a single entry.
+    @Volatile
+    internal var historyOrder: HistoryOrder? = null
 
     // ---------- Simple inline overrides ----------
 
@@ -458,6 +464,12 @@ class GitRepository(
         }
     }
 }
+
+internal class HistoryOrder(
+    val repositoryPath: String,
+    val tips: Map<String, ObjectId>,
+    val commitIds: List<ObjectId>
+)
 
 internal fun genericFailure(exception: Exception): GitResult.Failure =
     GitResult.Failure.Generic(exception.message ?: "Unknown error", exception)

@@ -3,6 +3,7 @@ package com.gitflow.android.data.repository
 import com.gitflow.android.data.models.*
 import org.eclipse.jgit.api.ListBranchCommand
 import org.eclipse.jgit.diff.DiffFormatter
+import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.revwalk.RevSort
 import org.eclipse.jgit.revwalk.RevWalk
 import org.eclipse.jgit.treewalk.CanonicalTreeParser
@@ -12,57 +13,32 @@ import java.io.ByteArrayOutputStream
 internal suspend fun GitRepository.getCommitsImpl(
     repository: Repository, page: Int, pageSize: Int
 ): GitResult<List<Commit>> = withGit(repository) { git ->
-    val pageCommits = RevWalk(git.repository).use { revWalk ->
-        revWalk.sort(RevSort.TOPO)
+    val jRepo = git.repository
+    val branchRefs = git.branchList().call() +
+        git.branchList().setListMode(ListBranchCommand.ListMode.REMOTE).call()
+    val tips = branchRefs.associate { it.name to it.objectId }
+    val order = historyOrder?.takeIf { it.repositoryPath == repository.path && it.tips == tips }
+        ?: HistoryOrder(repository.path, tips, topologicalOrder(jRepo, tips.values)).also { historyOrder = it }
 
-        val localRefs = git.branchList().call()
-        val remoteRefs = git.branchList().setListMode(ListBranchCommand.ListMode.REMOTE).call()
-        val allRefs = localRefs + remoteRefs
-        val processedCommits = mutableSetOf<String>()
+    val branchHeadsByCommit = branchRefs.groupBy({ it.objectId.name }, { getBranchName(it) })
 
-        val commitToBranchHeads = mutableMapOf<String, MutableList<String>>()
-        for (ref in allRefs) {
-            try {
-                val head = git.repository.resolve(ref.objectId.name)
-                if (head != null) {
-                    commitToBranchHeads.getOrPut(head.name) { mutableListOf() }.add(getBranchName(ref))
-                }
-            } catch (_: Exception) {}
+    // Build tag map once — O(1) per commit instead of O(N)
+    val tagsByCommit = mutableMapOf<String, MutableList<String>>()
+    try {
+        git.tagList().call().forEach { tagRef ->
+            val peeled = jRepo.refDatabase.peel(tagRef)
+            val targetId = (peeled.peeledObjectId ?: tagRef.objectId).name
+            tagsByCommit.getOrPut(targetId) { mutableListOf() }
+                .add(tagRef.name.removePrefix("refs/tags/"))
         }
+    } catch (_: Exception) {}
 
-        for (ref in allRefs) {
-            try {
-                val head = git.repository.resolve(ref.objectId.name)
-                if (head != null) revWalk.markStart(revWalk.parseCommit(head))
-            } catch (_: Exception) {}
-        }
-
-        // Build tag map once — O(1) per commit instead of O(N)
-        val tagsByCommit = mutableMapOf<String, MutableList<String>>()
-        try {
-            git.tagList().call().forEach { tagRef ->
-                val peeled = git.repository.refDatabase.peel(tagRef)
-                val targetId = (peeled.peeledObjectId ?: tagRef.objectId).name
-                tagsByCommit.getOrPut(targetId) { mutableListOf() }
-                    .add(tagRef.name.removePrefix("refs/tags/"))
-            }
-        } catch (_: Exception) {}
-
-        val commits = mutableListOf<Commit>()
-        val offset = page * pageSize
-        var skipped = 0
-        var loaded = 0
-
-        for (commit in revWalk) {
-            if (processedCommits.contains(commit.id.name)) continue
-            processedCommits.add(commit.id.name)
-
-            if (skipped < offset) { skipped++; continue }
-            if (loaded >= pageSize) break
-            loaded++
-
-            val branchHeads = commitToBranchHeads[commit.id.name] ?: emptyList()
-            commits.add(Commit(
+    val pageIds = order.commitIds.drop(page * pageSize).take(pageSize)
+    val pageCommits = RevWalk(jRepo).use { revWalk ->
+        pageIds.map { commitId ->
+            val commit = revWalk.parseCommit(commitId)
+            val branchHeads = branchHeadsByCommit[commit.id.name] ?: emptyList()
+            Commit(
                 hash = commit.id.name,
                 message = commit.shortMessage,
                 description = commit.fullMessage.removePrefix(commit.shortMessage).trim(),
@@ -74,11 +50,25 @@ internal suspend fun GitRepository.getCommitsImpl(
                 tags = tagsByCommit[commit.id.name] ?: emptyList(),
                 branchHeads = branchHeads,
                 isMergeCommit = commit.parentCount > 1
-            ))
+            )
         }
-        commits
     }
     GitResult.Success(pageCommits)
+}
+
+/** Topological order of every commit reachable from the branch [tips]: ids only, no message bodies. */
+private fun topologicalOrder(
+    repository: org.eclipse.jgit.lib.Repository,
+    tips: Collection<ObjectId>
+): List<ObjectId> = RevWalk(repository).use { revWalk ->
+    revWalk.isRetainBody = false
+    revWalk.sort(RevSort.TOPO)
+    for (tip in tips) {
+        try {
+            revWalk.markStart(revWalk.parseCommit(tip))
+        } catch (_: Exception) {}
+    }
+    revWalk.map { it.toObjectId() }
 }
 
 // ---------------------------------------------------------------------------

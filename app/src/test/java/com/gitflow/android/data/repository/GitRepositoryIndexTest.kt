@@ -166,6 +166,46 @@ class GitRepositoryIndexTest {
     }
 
     @Test
+    fun getCommits_reusesOrderUntilBranchesMoveAndPagesThroughIt() = runBlocking {
+        writeFile("second.txt", "2")
+        commitAll("second")
+        val first = repo.getCommits(model).value().map { it.message }
+        assertEquals(listOf("second", "init"), first)
+        assertEquals(first, repo.getCommits(model).value().map { it.message })
+
+        writeFile("third.txt", "3")
+        commitAll("third")
+        git.checkout().setCreateBranch(true).setName("feature").call()
+        writeFile("feature.txt", "f")
+        commitAll("feature work")
+
+        assertEquals(
+            listOf("feature work", "third", "second", "init"),
+            repo.getCommits(model).value().map { it.message }
+        )
+        assertEquals(listOf("third"), repo.getCommits(model, page = 1, pageSize = 1).value().map { it.message })
+    }
+
+    @Test
+    fun getChangedFiles_countsLinesForEveryKindOfChange() = runBlocking {
+        writeFile("tracked.txt", "a\nb\nc\n")
+        writeFile("doomed.txt", "x\ny\n")
+        commitAll("base")
+        writeFile("staged-new.txt", "1\n2\n")
+        git.add().addFilepattern("staged-new.txt").call()
+        writeFile("tracked.txt", "a\nB\nc\nd\n")
+        File(repoDir, "doomed.txt").delete()
+        writeFile("untracked.txt", "u\n")
+
+        val stats = repo.getChangedFiles(model).value().associate { it.path to (it.additions to it.deletions) }
+
+        assertEquals(2 to 0, stats["staged-new.txt"])
+        assertEquals(2 to 1, stats["tracked.txt"])
+        assertEquals(0 to 2, stats["doomed.txt"])
+        assertEquals(1 to 0, stats["untracked.txt"])
+    }
+
+    @Test
     fun readsFromMissingRepository_reportFailureInsteadOfEmptyResults() = runBlocking {
         val missing = model.copy(path = tempFolder.newFolder("not-a-repo").absolutePath)
 
