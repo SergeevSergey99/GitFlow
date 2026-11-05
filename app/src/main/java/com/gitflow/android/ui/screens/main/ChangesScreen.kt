@@ -1564,7 +1564,7 @@ private fun SectionDiffPreview(
     }
 }
 
-private fun buildResolvedContent(conflict: MergeConflict, selections: List<String>): String {
+internal fun buildResolvedContent(conflict: MergeConflict, selections: List<String>): String {
     val lines = conflict.originalLines
     val result = mutableListOf<String>()
     var cursor = 0
@@ -1588,7 +1588,8 @@ private fun buildResolvedContent(conflict: MergeConflict, selections: List<Strin
         cursor++
     }
 
-    return result.joinToString("\n")
+    val trailingNewline = if (conflict.endsWithNewline) conflict.lineSeparator else ""
+    return result.joinToString(conflict.lineSeparator) + trailingNewline
 }
 
 @Composable

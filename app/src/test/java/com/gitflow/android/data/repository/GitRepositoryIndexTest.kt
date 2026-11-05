@@ -9,8 +9,10 @@ import com.gitflow.android.data.models.ChangeStatus
 import com.gitflow.android.data.models.ConflictResolutionStrategy
 import com.gitflow.android.data.models.FileChange
 import com.gitflow.android.data.models.GitResult
+import com.gitflow.android.data.models.LineType
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.settings.AppSettingsManager
+import com.gitflow.android.ui.screens.main.buildResolvedContent
 import io.mockk.mockk
 import kotlinx.coroutines.runBlocking
 import org.eclipse.jgit.api.Git
@@ -92,6 +94,14 @@ class GitRepositoryIndexTest {
         File(repoDir, name).apply { parentFile?.mkdirs() }.writeText(content)
     }
 
+    private fun commitAll(message: String) {
+        git.add().addFilepattern(".").call()
+        git.commit().setMessage(message)
+            .setAuthor("Test User", "test@example.com")
+            .setCommitter("Test User", "test@example.com")
+            .call()
+    }
+
     // ---------- staging ----------
 
     @Test
@@ -151,6 +161,49 @@ class GitRepositoryIndexTest {
 
         assertTrue(result is GitResult.Success)
         assertFalse(File(repoDir, "new.txt").exists())
+    }
+
+    @Test
+    fun discardFileChanges_removesStagedNewFile() = runBlocking {
+        writeFile("new.txt", "staged")
+        git.add().addFilepattern("new.txt").call()
+
+        val result = repo.discardFileChanges(model, "new.txt")
+
+        assertTrue(result is GitResult.Success)
+        assertFalse(File(repoDir, "new.txt").exists())
+        assertTrue(git.status().call().isClean)
+    }
+
+    @Test
+    fun workingDiff_keepsLinesThatStartWithDoubledMarkers() = runBlocking {
+        writeFile("query.sql", "select 1;\n-- old comment\n")
+        commitAll("add query")
+        writeFile("query.sql", "select 1;\n++counter\n")
+
+        val diff = repo.getWorkingFileDiff(model, "query.sql", ChangeStage.UNSTAGED)!!
+        val changedLines = diff.hunks.flatMap { it.lines }.filter { it.type != LineType.CONTEXT }
+        val listed = repo.getChangedFiles(model).single { it.path == "query.sql" }
+
+        assertEquals(
+            listOf(LineType.DELETED to "-- old comment", LineType.ADDED to "++counter"),
+            changedLines.map { it.type to it.content }
+        )
+        assertEquals(1 to 1, diff.additions to diff.deletions)
+        assertEquals(1 to 1, listed.additions to listed.deletions)
+    }
+
+    @Test
+    fun commitDiff_parsesHunkHeaderWithoutLineCounts() = runBlocking {
+        writeFile("initial.txt", "changed")
+        commitAll("change initial")
+        val head = repo.getCommitByHash(git.repository.resolve("HEAD").name, model)!!
+
+        val hunk = repo.getCommitDiffs(head, model).single { it.path == "initial.txt" }.hunks.single()
+
+        assertEquals(listOf(1, 1, 1, 1), listOf(hunk.oldStart, hunk.oldLines, hunk.newStart, hunk.newLines))
+        assertEquals(1, hunk.lines.single { it.type == LineType.DELETED }.oldLineNumber)
+        assertEquals(1, hunk.lines.single { it.type == LineType.ADDED }.newLineNumber)
     }
 
     // ---------- commit / amend ----------
@@ -248,5 +301,15 @@ class GitRepositoryIndexTest {
         // The merge can now be committed and no conflicts remain.
         assertTrue(repo.commit(model, "merge feature") is GitResult.Success)
         assertTrue(repo.getMergeConflicts(model).isEmpty())
+    }
+
+    @Test
+    fun resolvedConflictContent_keepsCrlfAndTrailingNewline() {
+        writeFile("crlf.txt", "head\r\n<<<<<<< HEAD\r\nours\r\n=======\r\ntheirs\r\n>>>>>>> feature\r\ntail\r\n")
+        val conflict = parseConflictFile(repoDir.absolutePath, "crlf.txt")!!
+
+        val resolved = buildResolvedContent(conflict, listOf("theirs"))
+
+        assertEquals("head\r\ntheirs\r\ntail\r\n", resolved)
     }
 }

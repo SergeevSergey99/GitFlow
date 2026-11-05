@@ -74,7 +74,9 @@ data class MergeConflict(
     val oursLabel: String,
     val theirsLabel: String,
     val sections: List<MergeConflictSection>,
-    val originalLines: List<String>
+    val originalLines: List<String>,
+    val lineSeparator: String,
+    val endsWithNewline: Boolean
 )
 
 data class MergeConflictSection(

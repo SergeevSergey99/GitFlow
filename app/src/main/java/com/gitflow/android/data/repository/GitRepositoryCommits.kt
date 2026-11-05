@@ -220,7 +220,9 @@ private fun buildAddedFileDiff(
     )
 }
 
-private fun parseDiffText(diffEntry: org.eclipse.jgit.diff.DiffEntry, diffText: String): FileDiff {
+// [diffText] must hold a single file's DiffFormatter output: file headers are skipped only
+// before its first hunk.
+internal fun parseDiffText(diffEntry: org.eclipse.jgit.diff.DiffEntry, diffText: String): FileDiff {
     val lines = diffText.split('\n')
     val hunks = mutableListOf<DiffHunk>()
     var currentHunk: DiffHunk? = null
@@ -231,22 +233,27 @@ private fun parseDiffText(diffEntry: org.eclipse.jgit.diff.DiffEntry, diffText: 
     var newLineNum = 0
 
     for (line in lines) {
-        when {
-            line.startsWith("@@") -> {
-                currentHunk?.let { hunks.add(it.copy(lines = hunkLines.toList())); hunkLines.clear() }
-                val h = parseHunkHeader(line)
-                oldLineNum = h.first; newLineNum = h.third
-                currentHunk = DiffHunk(header = line, oldStart = h.first, oldLines = h.second, newStart = h.third, newLines = h.fourth, lines = emptyList())
-            }
-            line.startsWith("+") && !line.startsWith("+++") -> {
+        if (line.startsWith("@@")) {
+            currentHunk?.let { hunks.add(it.copy(lines = hunkLines.toList())); hunkLines.clear() }
+            val range = parseHunkHeader(line)
+            oldLineNum = range.first; newLineNum = range.third
+            currentHunk = DiffHunk(header = line, oldStart = range.first, oldLines = range.second, newStart = range.third, newLines = range.fourth, lines = emptyList())
+            continue
+        }
+        // Before the first hunk come the file headers ("--- a/x", "+++ b/x"); inside a hunk the
+        // first character alone is the line type, so content like "-- comment" must not be
+        // mistaken for a header.
+        if (currentHunk == null) continue
+        when (line.firstOrNull()) {
+            '+' -> {
                 additions++
                 hunkLines.add(DiffLine(type = LineType.ADDED, content = line.drop(1), lineNumber = null, oldLineNumber = null, newLineNumber = newLineNum++))
             }
-            line.startsWith("-") && !line.startsWith("---") -> {
+            '-' -> {
                 deletions++
                 hunkLines.add(DiffLine(type = LineType.DELETED, content = line.drop(1), lineNumber = null, oldLineNumber = oldLineNum++, newLineNumber = null))
             }
-            line.startsWith(" ") -> {
+            ' ' -> {
                 hunkLines.add(DiffLine(type = LineType.CONTEXT, content = line.drop(1), lineNumber = oldLineNum, oldLineNumber = oldLineNum++, newLineNumber = newLineNum++))
             }
         }
@@ -273,10 +280,11 @@ private fun parseDiffText(diffEntry: org.eclipse.jgit.diff.DiffEntry, diffText: 
 private data class Tuple4<T1, T2, T3, T4>(val first: T1, val second: T2, val third: T3, val fourth: T4)
 
 private fun parseHunkHeader(header: String): Tuple4<Int, Int, Int, Int> {
-    val match = """@@ -(\d+),(\d+) \+(\d+),(\d+) @@""".toRegex().find(header)
+    // A range's line count is omitted when it equals 1 ("@@ -5 +5 @@").
+    val match = """@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@""".toRegex().find(header)
     return if (match != null) {
-        val (os, ol, ns, nl) = match.destructured
-        Tuple4(os.toInt(), ol.toInt(), ns.toInt(), nl.toInt())
+        val (oldStart, oldLines, newStart, newLines) = match.destructured
+        Tuple4(oldStart.toInt(), oldLines.toIntOrNull() ?: 1, newStart.toInt(), newLines.toIntOrNull() ?: 1)
     } else {
         Tuple4(0, 0, 0, 0)
     }

@@ -14,6 +14,7 @@ import kotlinx.coroutines.runBlocking
 import org.eclipse.jgit.api.Git
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -126,6 +127,34 @@ class GitRepositoryMergeRebaseTest {
         assertTrue(result is GitResult.Success)
         assertEquals(RepoOperationState.NONE, repo.getRepositoryState(model))
         assertEquals("ours", File(repoDir, "initial.txt").readText().trim())
+    }
+
+    @Test
+    fun abortMerge_keepsUnrelatedUncommittedChangesAndRemovesMergedFiles() = runBlocking {
+        writeFile("notes.txt", "notes")
+        commit("notes.txt", "add notes")
+        git.checkout().setCreateBranch(true).setName("feature").call()
+        writeFile("initial.txt", "theirs")
+        writeFile("feature.txt", "f")
+        commit(".", "feature change")
+        git.checkout().setName(mainBranch).call()
+        writeFile("initial.txt", "ours")
+        commit("initial.txt", "main change")
+        writeFile("notes.txt", "uncommitted edit")
+
+        assertTrue(repo.mergeBranch(model, "feature") is GitResult.Failure.Conflict)
+        assertTrue(File(repoDir, "feature.txt").exists())
+
+        val result = repo.abortMerge(model)
+
+        assertTrue(result is GitResult.Success)
+        assertEquals(RepoOperationState.NONE, repo.getRepositoryState(model))
+        assertEquals("ours", File(repoDir, "initial.txt").readText())
+        assertFalse(File(repoDir, "feature.txt").exists())
+        assertEquals("uncommitted edit", File(repoDir, "notes.txt").readText())
+        val status = git.status().call()
+        assertEquals(setOf("notes.txt"), status.modified)
+        assertTrue(status.added.isEmpty() && status.changed.isEmpty() && status.conflicting.isEmpty())
     }
 
     @Test

@@ -6,7 +6,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.eclipse.jgit.api.CheckoutCommand
 import org.eclipse.jgit.api.Git
-import org.eclipse.jgit.diff.DiffEntry
 import org.eclipse.jgit.diff.DiffFormatter
 import org.eclipse.jgit.dircache.DirCacheIterator
 import org.eclipse.jgit.treewalk.CanonicalTreeParser
@@ -117,6 +116,10 @@ internal suspend fun GitRepository.discardFileChangesImpl(repository: Repository
             val status = g.status().call()
             if (status.untracked.contains(filePath)) {
                 File(repository.path, filePath).deleteRecursively()
+            } else if (status.added.contains(filePath)) {
+                // The file is absent from HEAD, so there is no version to check out.
+                g.rm().setCached(true).addFilepattern(filePath).call()
+                File(repository.path, filePath).delete()
             } else {
                 g.reset().addPath(filePath).call()
                 g.checkout().addPath(filePath).call()
@@ -148,34 +151,7 @@ internal suspend fun GitRepository.getWorkingFileDiffImpl(
 ): FileDiff? = withContext(Dispatchers.IO) {
     try {
         val git = openRepository(repository.path) ?: return@withContext null
-        git.use { g ->
-            val jRepo = g.repository
-            val diffCommand = g.diff().setPathFilter(PathFilter.create(filePath))
-
-            when (stage) {
-                ChangeStage.STAGED -> {
-                    val oldTreeIterator = jRepo.newObjectReader().use { reader ->
-                        val headTreeId = jRepo.resolve("HEAD^{tree}")
-                        if (headTreeId != null) CanonicalTreeParser().apply { reset(reader, headTreeId) }
-                        else EmptyTreeIterator()
-                    }
-                    diffCommand.setOldTree(oldTreeIterator)
-                    diffCommand.setNewTree(DirCacheIterator(jRepo.readDirCache()))
-                }
-                ChangeStage.UNSTAGED -> {
-                    diffCommand.setOldTree(DirCacheIterator(jRepo.readDirCache()))
-                    diffCommand.setNewTree(FileTreeIterator(jRepo))
-                }
-            }
-
-            val entry = diffCommand.call().firstOrNull() ?: return@withContext null
-            val output = ByteArrayOutputStream()
-            DiffFormatter(output).use { formatter ->
-                formatter.setRepository(jRepo)
-                formatter.format(entry)
-            }
-            parseWorkingDiff(entry, output.toString())
-        }
+        git.use { workingFileDiff(it.repository, filePath, stage) }
     } catch (_: Exception) {
         null
     }
@@ -313,147 +289,33 @@ internal suspend fun GitRepository.getLastCommitMessageImpl(repository: Reposito
 // ---------------------------------------------------------------------------
 
 private fun getFileDiffInfo(git: Git, filePath: String, stage: ChangeStage): Pair<Int, Int> {
-    return try {
-        val repository = git.repository
-        val diffCommand = git.diff().setPathFilter(PathFilter.create(filePath))
-
-        when (stage) {
-            ChangeStage.STAGED -> {
-                val oldTreeIterator = repository.newObjectReader().use { reader ->
-                    val headTreeId = repository.resolve("HEAD^{tree}")
-                    if (headTreeId != null) CanonicalTreeParser().apply { reset(reader, headTreeId) }
-                    else EmptyTreeIterator()
-                }
-                diffCommand.setOldTree(oldTreeIterator)
-                diffCommand.setNewTree(DirCacheIterator(repository.readDirCache()))
-            }
-            ChangeStage.UNSTAGED -> {
-                diffCommand.setOldTree(DirCacheIterator(repository.readDirCache()))
-                diffCommand.setNewTree(FileTreeIterator(repository))
-            }
-        }
-
-        val diffs = diffCommand.call()
-        if (diffs.isEmpty()) return 0 to 0
-
-        ByteArrayOutputStream().use { out ->
-            DiffFormatter(out).use { fmt ->
-                fmt.setRepository(repository)
-                diffs.forEach { fmt.format(it) }
-            }
-            parseDiffStats(out.toString())
-        }
-    } catch (e: Exception) {
-        0 to 0
-    }
+    val fileDiff = runCatching { workingFileDiff(git.repository, filePath, stage) }.getOrNull()
+    return (fileDiff?.additions ?: 0) to (fileDiff?.deletions ?: 0)
 }
 
-private fun parseDiffStats(diffText: String): Pair<Int, Int> {
-    var additions = 0
-    var deletions = 0
-    for (line in diffText.split('\n')) {
-        when {
-            line.startsWith("+") && !line.startsWith("+++") -> additions++
-            line.startsWith("-") && !line.startsWith("---") -> deletions++
+private fun workingFileDiff(repository: org.eclipse.jgit.lib.Repository, filePath: String, stage: ChangeStage): FileDiff? {
+    val (oldTree, newTree) = when (stage) {
+        ChangeStage.STAGED -> {
+            val headTree = repository.newObjectReader().use { reader ->
+                val headTreeId = repository.resolve("HEAD^{tree}")
+                if (headTreeId != null) CanonicalTreeParser().apply { reset(reader, headTreeId) }
+                else EmptyTreeIterator()
+            }
+            headTree to DirCacheIterator(repository.readDirCache())
         }
-    }
-    return additions to deletions
-}
-
-private fun parseWorkingDiff(diffEntry: DiffEntry, diffText: String): FileDiff {
-    val lines = diffText.split('\n')
-    val hunks = mutableListOf<DiffHunk>()
-    var currentHunk: DiffHunk? = null
-    val hunkLines = mutableListOf<DiffLine>()
-    var additions = 0
-    var deletions = 0
-    var oldLineNum = 0
-    var newLineNum = 0
-
-    for (line in lines) {
-        when {
-            line.startsWith("@@") -> {
-                currentHunk?.let {
-                    hunks.add(it.copy(lines = hunkLines.toList()))
-                    hunkLines.clear()
-                }
-                val hunkInfo = parseIndexHunkHeader(line)
-                oldLineNum = hunkInfo.first
-                newLineNum = hunkInfo.third
-                currentHunk = DiffHunk(
-                    header = line,
-                    oldStart = hunkInfo.first,
-                    oldLines = hunkInfo.second,
-                    newStart = hunkInfo.third,
-                    newLines = hunkInfo.fourth,
-                    lines = emptyList()
-                )
-            }
-            line.startsWith("+") && !line.startsWith("+++") -> {
-                additions++
-                hunkLines.add(
-                    DiffLine(
-                        type = LineType.ADDED,
-                        content = line.drop(1),
-                        lineNumber = null,
-                        oldLineNumber = null,
-                        newLineNumber = newLineNum++
-                    )
-                )
-            }
-            line.startsWith("-") && !line.startsWith("---") -> {
-                deletions++
-                hunkLines.add(
-                    DiffLine(
-                        type = LineType.DELETED,
-                        content = line.drop(1),
-                        lineNumber = null,
-                        oldLineNumber = oldLineNum++,
-                        newLineNumber = null
-                    )
-                )
-            }
-            line.startsWith(" ") -> {
-                hunkLines.add(
-                    DiffLine(
-                        type = LineType.CONTEXT,
-                        content = line.drop(1),
-                        lineNumber = oldLineNum,
-                        oldLineNumber = oldLineNum++,
-                        newLineNumber = newLineNum++
-                    )
-                )
-            }
-        }
-    }
-    currentHunk?.let { hunks.add(it.copy(lines = hunkLines.toList())) }
-
-    val status = when (diffEntry.changeType) {
-        DiffEntry.ChangeType.ADD -> FileStatus.ADDED
-        DiffEntry.ChangeType.DELETE -> FileStatus.DELETED
-        DiffEntry.ChangeType.RENAME -> FileStatus.RENAMED
-        else -> FileStatus.MODIFIED
+        ChangeStage.UNSTAGED -> DirCacheIterator(repository.readDirCache()) to FileTreeIterator(repository)
     }
 
-    return FileDiff(
-        path = diffEntry.newPath ?: diffEntry.oldPath,
-        oldPath = if (diffEntry.oldPath != diffEntry.newPath) diffEntry.oldPath else null,
-        status = status,
-        additions = additions,
-        deletions = deletions,
-        hunks = hunks
-    )
-}
-
-private data class HunkTuple4<T1, T2, T3, T4>(val first: T1, val second: T2, val third: T3, val fourth: T4)
-
-private fun parseIndexHunkHeader(header: String): HunkTuple4<Int, Int, Int, Int> {
-    val match = """@@ -(\d+),(\d+) \+(\d+),(\d+) @@""".toRegex().find(header)
-    return if (match != null) {
-        val (oldStart, oldLines, newStart, newLines) = match.destructured
-        HunkTuple4(oldStart.toInt(), oldLines.toInt(), newStart.toInt(), newLines.toInt())
-    } else {
-        HunkTuple4(0, 0, 0, 0)
+    val output = ByteArrayOutputStream()
+    DiffFormatter(output).use { formatter ->
+        formatter.setRepository(repository)
+        formatter.pathFilter = PathFilter.create(filePath)
+        // format() has to run on the formatter that did scan(): scan() is what lets it read
+        // working-tree content, which is not in the object database.
+        val entry = formatter.scan(oldTree, newTree).firstOrNull() ?: return null
+        formatter.format(entry)
+        formatter.flush()
+        return parseDiffText(entry, output.toString())
     }
 }
 
@@ -461,7 +323,9 @@ internal fun parseConflictFile(repositoryPath: String, path: String): MergeConfl
     val file = File(repositoryPath, path)
     if (!file.exists() || !file.isFile) return null
 
-    val lines = runCatching { file.readLines() }.getOrElse { return null }
+    val text = runCatching { file.readText() }.getOrElse { return null }
+    val lineSeparator = if (text.contains("\r\n")) "\r\n" else "\n"
+    val lines = text.removeSuffix("\n").removeSuffix("\r").split("\r\n", "\n")
     if (lines.none { it.startsWith("<<<<<<<") }) return null
 
     val sections = mutableListOf<MergeConflictSection>()
@@ -524,6 +388,8 @@ internal fun parseConflictFile(repositoryPath: String, path: String): MergeConfl
         oursLabel = sections.first().oursLabel,
         theirsLabel = sections.first().theirsLabel,
         sections = sections,
-        originalLines = lines
+        originalLines = lines,
+        lineSeparator = lineSeparator,
+        endsWithNewline = text.endsWith("\n")
     )
 }

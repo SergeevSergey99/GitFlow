@@ -18,7 +18,12 @@ import org.eclipse.jgit.transport.PushResult
 import org.eclipse.jgit.transport.RefSpec
 import org.eclipse.jgit.transport.RemoteRefUpdate
 import org.eclipse.jgit.lib.ProgressMonitor
+import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.revwalk.RevWalk
+import org.eclipse.jgit.revwalk.filter.RevFilter
+import org.eclipse.jgit.treewalk.EmptyTreeIterator
+import org.eclipse.jgit.treewalk.TreeWalk
+import org.eclipse.jgit.treewalk.filter.TreeFilter
 import java.io.File
 import java.net.ConnectException
 import java.net.NoRouteToHostException
@@ -510,15 +515,65 @@ internal suspend fun GitRepository.abortMergeImpl(repository: Repository): GitRe
     try {
         val git = openRepository(repository.path) ?: return@withContext GitResult.Failure.Generic("Repository not found")
         git.use { g ->
-            // JGit has no "merge --abort"; a hard reset to HEAD clears MERGE_HEAD and the
-            // conflicted working tree, returning the repo to a clean state.
-            g.reset().setMode(ResetCommand.ResetType.HARD).setRef(Constants.HEAD).call()
+            val jRepo = g.repository
+            val headId = jRepo.resolve(Constants.HEAD)
+                ?: return@withContext GitResult.Failure.Generic("Cannot resolve HEAD")
+            val mergeHeadId = jRepo.readMergeHeads()?.firstOrNull()
+                ?: return@withContext GitResult.Failure.Generic("No merge in progress")
+
+            // JGit has no "merge --abort", and a hard reset would also wipe uncommitted changes
+            // in files the merge never touched (JGit allows merging with such files dirty).
+            // Only paths the incoming side changed since the merge base can have been modified
+            // by the merge, and of those only the ones whose index now differs from HEAD.
+            val status = g.status().call()
+            val indexChanged = status.added + status.changed + status.removed + status.conflicting
+            val mergedPaths = pathsChangedSinceMergeBase(jRepo, headId, mergeHeadId).filter { it in indexChanged }
+            val headTree = RevWalk(jRepo).use { walk -> walk.parseCommit(headId).tree }
+            val (pathsInHead, pathsAddedByMerge) = mergedPaths.partition { path ->
+                TreeWalk.forPath(jRepo, path, headTree)?.use { true } ?: false
+            }
+
+            if (pathsInHead.isNotEmpty()) {
+                g.reset().apply { pathsInHead.forEach { addPath(it) } }.call()
+                g.checkout().apply { pathsInHead.forEach { addPath(it) } }.call()
+            }
+            if (pathsAddedByMerge.isNotEmpty()) {
+                g.rm().setCached(true).apply { pathsAddedByMerge.forEach { addFilepattern(it) } }.call()
+                pathsAddedByMerge.forEach { File(jRepo.workTree, it).delete() }
+            }
+            jRepo.writeMergeHeads(null)
+            jRepo.writeMergeCommitMsg(null)
         }
         refreshRepository(repository)
         GitResult.Success(Unit)
     } catch (e: Exception) {
         GitResult.Failure.Generic(e.message ?: "Unknown error", e)
     }
+}
+
+private fun pathsChangedSinceMergeBase(
+    repository: org.eclipse.jgit.lib.Repository,
+    headId: ObjectId,
+    mergeHeadId: ObjectId
+): Set<String> {
+    val paths = mutableSetOf<String>()
+    RevWalk(repository).use { walk ->
+        val theirs = walk.parseCommit(mergeHeadId)
+        walk.revFilter = RevFilter.MERGE_BASE
+        walk.markStart(walk.parseCommit(headId))
+        walk.markStart(theirs)
+        val baseTrees = walk.map { it.tree }.ifEmpty { listOf(null) }
+        for (baseTree in baseTrees) {
+            TreeWalk(repository).use { treeWalk ->
+                if (baseTree != null) treeWalk.addTree(baseTree) else treeWalk.addTree(EmptyTreeIterator())
+                treeWalk.addTree(theirs.tree)
+                treeWalk.isRecursive = true
+                treeWalk.filter = TreeFilter.ANY_DIFF
+                while (treeWalk.next()) paths += treeWalk.pathString
+            }
+        }
+    }
+    return paths
 }
 
 internal suspend fun GitRepository.rebaseCurrentOntoImpl(repository: Repository, branchName: String): GitResult<Unit> = withContext(Dispatchers.IO) {
