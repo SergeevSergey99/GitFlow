@@ -71,13 +71,13 @@ import androidx.compose.ui.unit.times
 import com.gitflow.android.R
 import com.gitflow.android.data.models.Commit
 import com.gitflow.android.data.models.Repository
-import com.gitflow.android.data.models.GitResult
 import com.gitflow.android.data.models.ResetMode
 import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.ui.config.GraphConfig
 import com.gitflow.android.ui.screens.main.EmptyStateMessage
 import com.gitflow.android.ui.util.timeAgo
-import kotlinx.coroutines.launch
+import org.koin.androidx.compose.koinViewModel
+import org.koin.core.parameter.parametersOf
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -102,106 +102,33 @@ fun EnhancedGraphView(
         return
     }
 
+    val viewModel: GraphViewModel = koinViewModel(
+        key = "graph_${repository.id}",
+        parameters = { parametersOf(repository) }
+    )
+    val uiState by viewModel.uiState.collectAsState()
+    val commits = uiState.commits
+    val isLoading = uiState.isLoading
+    val actionCommit = uiState.actionCommit
+    val commitTags = uiState.actionCommitTags
+    val isOperationRunning = uiState.isOperationRunning
+
     val context = LocalContext.current
-    var commits by remember { mutableStateOf<List<Commit>>(emptyList()) }
     var selectedCommit by remember { mutableStateOf<Commit?>(null) }
     var showCommitDetail by remember { mutableStateOf(false) }
-    var isLoading by remember { mutableStateOf(true) }
-    val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    var actionCommit by remember { mutableStateOf<Commit?>(null) }
     var showActionsSheet by remember { mutableStateOf(false) }
-    var commitTags by remember { mutableStateOf<List<String>>(emptyList()) }
-    var tagsLoading by remember { mutableStateOf(false) }
-    var isOperationRunning by remember { mutableStateOf(false) }
     var pendingDialog by remember { mutableStateOf<CommitActionDialog?>(null) }
     val currentBranchName = repository.currentBranch.ifEmpty { "HEAD" }
 
-    // Pagination state
-    var currentPageSize by remember(repository.id) { mutableStateOf(50) }
-    var hasMoreCommits by remember { mutableStateOf(true) }
-
-    // Reload commits when the page size changes or when the repository's branch/commit state
-    // changes (branch created/deleted → totalBranches; checkout → currentBranch; new commit or
-    // pull → lastUpdated). Keying only on repository.id missed these, so a freshly created
-    // branch showed no badge / no HEAD highlight until the tab was re-entered.
-    LaunchedEffect(
-        repository.id,
-        repository.currentBranch,
-        repository.totalBranches,
-        repository.lastUpdated,
-        currentPageSize
-    ) {
-        isLoading = true
-        commits = gitRepository.getCommits(repository, page = 0, pageSize = currentPageSize)
-        hasMoreCommits = commits.size >= currentPageSize
-        isLoading = false
-    }
-
-    LaunchedEffect(actionCommit) {
-        val currentActionCommit = actionCommit
-        if (currentActionCommit != null) {
-            tagsLoading = true
-            commitTags = gitRepository.getTagsForCommit(repository, currentActionCommit.hash)
-            tagsLoading = false
-        } else {
-            commitTags = emptyList()
-            tagsLoading = false
+    LaunchedEffect(uiState.operationResult) {
+        val result = uiState.operationResult ?: return@LaunchedEffect
+        if (result.closeDialogs) {
+            pendingDialog = null
+            showActionsSheet = false
         }
-    }
-
-    fun showSnackbarMessage(message: String) {
-        scope.launch {
-            snackbarHostState.showSnackbar(message)
-        }
-    }
-
-    fun runRepositoryAction(
-        commit: Commit,
-        successMessage: String,
-        clearSelection: Boolean = true,
-        operation: suspend () -> GitResult<Unit>
-    ) {
-        if (isOperationRunning) return
-        scope.launch {
-            isOperationRunning = true
-            val outcome = try {
-                operation()
-            } catch (e: Exception) {
-                GitResult.Failure.Generic(e.localizedMessage ?: "Unknown error", e)
-            }
-            if (outcome is GitResult.Success) {
-                try {
-                    commits = gitRepository.getCommits(repository, page = 0, pageSize = currentPageSize)
-                    hasMoreCommits = commits.size >= currentPageSize
-                } catch (refreshError: Exception) {
-                    val fallback = context.getString(R.string.graph_commit_operation_failed_generic)
-                    val message = refreshError.localizedMessage?.takeIf { it.isNotBlank() } ?: fallback
-                    showSnackbarMessage(context.getString(R.string.graph_commit_operation_failed, message))
-                }
-
-                if (clearSelection) {
-                    actionCommit = null
-                    commitTags = emptyList()
-                } else {
-                    actionCommit = commit
-                    commitTags = gitRepository.getTagsForCommit(repository, commit.hash)
-                }
-                pendingDialog = null
-                showActionsSheet = false
-                showSnackbarMessage(successMessage)
-            } else if (outcome is GitResult.Failure.Conflict) {
-                actionCommit = null
-                pendingDialog = null
-                showActionsSheet = false
-                showSnackbarMessage(context.getString(R.string.graph_commit_operation_conflicts))
-            } else {
-                val fallback = context.getString(R.string.graph_commit_operation_failed_generic)
-                val message = (outcome as? GitResult.Failure)?.message?.takeIf { it.isNotBlank() } ?: fallback
-                showSnackbarMessage(context.getString(R.string.graph_commit_operation_failed, message))
-            }
-            isOperationRunning = false
-        }
+        viewModel.consumeOperationResult()
+        snackbarHostState.showSnackbar(result.message)
     }
 
     val graphData = remember(commits) { buildGraphData(commits) }
@@ -246,7 +173,7 @@ fun EnhancedGraphView(
                         showCommitDetail = true
                     },
                     onCommitLongPress = { commit ->
-                        actionCommit = commit
+                        viewModel.selectActionCommit(commit)
                         showActionsSheet = true
                     }
                 )
@@ -256,14 +183,14 @@ fun EnhancedGraphView(
                     config = config,
                     currentBranch = repository.currentBranch,
                     conflictHashes = conflictHashes,
-                    hasMoreCommits = hasMoreCommits && !isLoading,
-                    onLoadMore = { currentPageSize += 50 },
+                    hasMoreCommits = uiState.hasMoreCommits && !isLoading,
+                    onLoadMore = viewModel::loadMore,
                     onCommitClick = { commit ->
                         selectedCommit = commit
                         showCommitDetail = true
                     },
                     onCommitLongPress = { commit ->
-                        actionCommit = commit
+                        viewModel.selectActionCommit(commit)
                         showActionsSheet = true
                     }
                 )
@@ -298,8 +225,7 @@ fun EnhancedGraphView(
             ModalBottomSheet(
             onDismissRequest = {
                 showActionsSheet = false
-                actionCommit = null
-                commitTags = emptyList()
+                viewModel.clearActionCommit()
             },
             sheetState = sheetState
         ) {
@@ -328,7 +254,7 @@ fun EnhancedGraphView(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                if (tagsLoading) {
+                if (uiState.isTagsLoading) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 } else if (commitTags.isNotEmpty()) {
                     Text(
@@ -461,16 +387,15 @@ fun EnhancedGraphView(
                     TextButton(
                         enabled = !isOperationRunning,
                         onClick = {
-                            runRepositoryAction(
+                            viewModel.resetTo(
                                 commit = dialogState.commit,
+                                mode = selectedMode,
                                 successMessage = context.getString(
                                     R.string.graph_commit_reset_success,
                                     currentBranchName,
                                     dialogState.commit.hash.take(7)
                                 )
-                            ) {
-                                gitRepository.resetToCommit(repository, dialogState.commit.hash, selectedMode)
-                            }
+                            )
                         }
                     ) {
                         Text(stringResource(R.string.graph_commit_confirm))
@@ -512,13 +437,11 @@ fun EnhancedGraphView(
                         enabled = tagName.isNotBlank() && !isOperationRunning,
                         onClick = {
                             val trimmed = tagName.trim()
-                            runRepositoryAction(
+                            viewModel.createTag(
                                 commit = dialogState.commit,
-                                successMessage = context.getString(R.string.graph_commit_add_tag_success, trimmed),
-                                clearSelection = false
-                            ) {
-                                gitRepository.createTag(repository, trimmed, dialogState.commit.hash)
-                            }
+                                tagName = trimmed,
+                                successMessage = context.getString(R.string.graph_commit_add_tag_success, trimmed)
+                            )
                         }
                     ) {
                         Text(stringResource(R.string.graph_commit_add_tag_button))
@@ -576,13 +499,10 @@ fun EnhancedGraphView(
                         enabled = selectedTag.isNotBlank() && !isOperationRunning,
                         onClick = {
                             val tagToDelete = selectedTag
-                            runRepositoryAction(
-                                commit = dialogState.commit,
-                                successMessage = context.getString(R.string.graph_commit_delete_tag_success, tagToDelete),
-                                clearSelection = false
-                            ) {
-                                gitRepository.deleteTag(repository, tagToDelete)
-                            }
+                            viewModel.deleteTag(
+                                tagName = tagToDelete,
+                                successMessage = context.getString(R.string.graph_commit_delete_tag_success, tagToDelete)
+                            )
                         }
                     ) {
                         Text(stringResource(R.string.graph_commit_delete_tag_button))
@@ -615,12 +535,10 @@ fun EnhancedGraphView(
                     TextButton(
                         enabled = !isOperationRunning,
                         onClick = {
-                            runRepositoryAction(
+                            viewModel.cherryPick(
                                 commit = dialogState.commit,
                                 successMessage = context.getString(R.string.graph_commit_cherry_pick_success)
-                            ) {
-                                gitRepository.cherryPickCommit(repository, dialogState.commit.hash)
-                            }
+                            )
                         }
                     ) {
                         Text(stringResource(R.string.graph_commit_confirm))
@@ -654,12 +572,10 @@ fun EnhancedGraphView(
                     TextButton(
                         enabled = !isOperationRunning,
                         onClick = {
-                            runRepositoryAction(
+                            viewModel.merge(
                                 commit = dialogState.commit,
                                 successMessage = context.getString(R.string.graph_commit_merge_success)
-                            ) {
-                                gitRepository.mergeCommitIntoCurrentBranch(repository, dialogState.commit.hash)
-                            }
+                            )
                         }
                     ) {
                         Text(stringResource(R.string.graph_commit_confirm))

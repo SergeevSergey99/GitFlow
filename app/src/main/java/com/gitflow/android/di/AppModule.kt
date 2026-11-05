@@ -8,6 +8,7 @@ import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.data.repository.RepositorySession
 import com.gitflow.android.data.settings.AppSettingsManager
 import com.gitflow.android.ui.screens.CommitDetailViewModel
+import com.gitflow.android.ui.screens.GraphViewModel
 import com.gitflow.android.ui.screens.MainViewModel
 import com.gitflow.android.ui.screens.main.BranchesViewModel
 import com.gitflow.android.ui.screens.main.ChangesViewModel
@@ -45,6 +46,9 @@ val appModule = module {
     }
     viewModel { params ->
         CommitDetailViewModel(get(), params.get<Commit>(), params.get<Repository>())
+    }
+    viewModel { params ->
+        GraphViewModel(androidApplication(), get(), params.get<Repository>())
     }
     viewModel { params ->
         BranchesViewModel(androidApplication(), params.get<Repository>(), get(), get())
