@@ -2,6 +2,44 @@
 
 Все заметные изменения проекта фиксируются здесь.
 
+## 2026-11-06 — ревью архитектуры и исправления
+
+### Fixed — потеря и искажение данных
+- Abort merge больше не делает `reset --hard`: откатываются только пути, которые изменила вливаемая сторона относительно merge-base и которые отличаются от HEAD в индексе. Чужие незакоммиченные правки сохраняются. Тот же точечный откат работает после конфликтного cherry-pick (по `CHERRY_PICK_HEAD`).
+- Единый парсер diff (`parseDiffText`): строки вида `-- comment` и `++i` больше не теряются, заголовок hunk'а без числа строк (`@@ -5 +5 @@`) разбирается.
+- Diff неиндексированных изменений снова работает (`scan` и `format` на одном `DiffFormatter`); счётчики +/- в списке изменений больше не 0/0.
+- Ручное разрешение конфликта сохраняет CRLF/LF и перевод строки в конце файла (`MergeConflict.lineSeparator`/`endsWithNewline`).
+- Discard нового staged-файла убирает его из индекса и удаляет.
+- Pull с конфликтом возвращает `GitResult.Failure.Conflict`; граф и «Изменения» показывают конфликт вместо «операция не удалась».
+- Автор коммитов: нет выдуманных адресов (кроме GitHub `id+login@users.noreply.github.com`); commit/amend/создание репозитория без автора возвращают `IdentityRequired`; merge, cherry-pick, rebase и stash подписываются найденным автором через конфиг в памяти (`applyCommitIdentity`) без записи на диск.
+- Amend сохраняет автора и дату исправляемого коммита, committer — текущий пользователь.
+- Вход через браузер переживает смерть процесса: PKCE-verifier хранится в зашифрованных prefs, `OAuthActivity` возвращает провайдера в результате и сохраняет свои флаги в `onSaveInstanceState`.
+- `TokenRefreshWorker` уведомляет об истёкшей сессии один раз (отметка в `AuthManager`, снимается новым токеном или logout).
+- Отмена клона определяется по `GitResult.Failure.Cancelled`, а не по слову «cancel» в тексте.
+
+### Changed — архитектура
+- `RepositorySession` — единый владелец выбранного репозитория и его снимка (`Repository`, `ConflictInfo`, число коммитов для pull). Снимок пересчитывается по событию `IGitRepository.repositoryChanges`, которое `GitRepository` бросает после каждой изменяющей операции. Удалены счётчики-сигналы (`_operationSignal`, `mutationSignal`, `externalRefreshSignal`), колбэки `onRepoStateChanged`/`onBranchChanged` и заплатка с пустым списком репозиториев.
+- Git больше не вызывается из composable: `GraphViewModel` (история, теги, reset/tag/cherry-pick/merge), diff и история файла в `ChangesViewModel`, файлы коммита в `CommitDetailViewModel`. `MainViewModel.getGitRepository()` удалён.
+- `withGit` — общий хелпер data-слоя: открытие репозитория на IO и превращение исключения в `Failure`. 15 методов чтения возвращают `GitResult` вместо пустого списка или `null`; экраны показывают ошибки (граф — с «Повторить»).
+- Удалены перегрузки `IGitRepository` без репозитория, искавшие репозиторий по хэшу.
+- У `CommitDetailDialog` собственный `ViewModelStoreOwner`: ViewModel'и открытых коммитов не копятся в хранилище главного экрана.
+- `AppSettingsManager` уведомляет об изменениях одним слушателем через потоки; `register/unregisterPreviewSettingsListener` удалён; ручные экземпляры заменены на Koin.
+- Сообщения `BranchesViewModel` и data-слоя — в ресурсах (en/ru).
+
+### Performance
+- `getCommits` запоминает топологический порядок истории до смены вершин веток: «загрузить ещё» и перечитывание после событий больше не обходят историю заново.
+- Статистика +/- в списке изменений считается двумя сканированиями по `EditList` вместо отдельного diff на файл.
+
+### Added
+- «Доступ ко всем файлам» (`MANAGE_EXTERNAL_STORAGE`) на Android 11+ и общий `data/storage/SharedStorage.kt` (`treeUriToFile` с поддержкой SD-карты, `hasSharedStorageAccess`): своя папка хранения и добавление существующего репозитория из внешней памяти работают; без доступа — понятное сообщение.
+- Переключатель «Включая неотслеживаемые файлы» в диалоге stash (по умолчанию включён).
+- Кнопка «Копировать» в просмотрщике файла коммита.
+
+### Removed
+- `GitOperationsSheet` (неиспользуемая заглушка), `getRealPathFromUri`, `resolveTreeUriToFile`, `openRepository`.
+- Корневой `build/` убран из репозитория и добавлен в `.gitignore`.
+- Устаревшие обзоры `PROJECT_ANALYSIS.md` и `IMPLEMENTATION_POLISH_GUIDE.md`: актуальный backlog — в `RECOMMENDATIONS.md`.
+
 ## 2026-07-04 (13)
 
 ### Changed — миграция OAuth WebView → Custom Tabs (P0.5)

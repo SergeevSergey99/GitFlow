@@ -146,6 +146,26 @@ BITBUCKET_CLIENT_SECRET
 
 ## Сборка
 
-Проект собирается через **Android Studio**. Gradle wrapper в репозитории отсутствует — используйте встроенный Gradle из Android Studio.
+Проект собирается через **Android Studio**. Скриптов `gradlew` в репозитории нет — есть только
+`gradle/wrapper/gradle-wrapper.properties` (Gradle 9.6.0, AGP 9.5.1). Android Studio скачивает
+этот Gradle при синхронизации.
 
-Минимальные требования: Android 8.0 (API 26), compileSdk 35.
+Минимальные требования: Android 8.0 (API 26), compileSdk 36, targetSdk 35.
+
+### Тесты из консоли
+
+Юнит-тесты (Robolectric + реальный JGit во временных папках) запускаются Gradle'ом, который
+скачала Studio, и JDK из её комплекта:
+
+```bash
+JAVA_HOME="<Android Studio>/jbr" "<GRADLE_USER_HOME>/wrapper/dists/gradle-9.6.0-bin/<hash>/gradle-9.6.0/bin/gradle" :app:testDebugUnitTest
+```
+
+Первый запуск Robolectric скачивает `android-all` для SDK 34.
+
+### Разрешение «Доступ ко всем файлам»
+
+JGit работает с обычными путями к файлам, поэтому на Android 11+ для репозиториев вне папки
+приложения (своя папка хранения, добавление существующего репозитория) нужно разрешение
+`MANAGE_EXTERNAL_STORAGE`. Оно выдаётся в «Настройки → Разрешения → Доступ к файлам».
+Публикация в Google Play с этим разрешением требует декларации.

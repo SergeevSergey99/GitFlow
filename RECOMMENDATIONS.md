@@ -1,10 +1,25 @@
 # Рекомендации и ближайший backlog
 
-> Обновлено: 2026-07-04
+> Обновлено: 2026-11-06
 > История изменений: `CHANGELOG.md`
 > Детали по auth-слою: `AUTH_ISSUES.md`
 
+## Backlog после ревью 2026-11
+
+- [ ] **God-файлы.** `CommitDetailDialog.kt` (~3300 строк), `ChangesScreen.kt` (~1800), `EnhancedGraphScreen.kt` (~1400), `SettingsScreen.kt` (~1350), `AuthManager.kt` (~1350, OAuth + PAT + списки + PR + размеры). Разбирать по одному, без изменения поведения.
+- [ ] **Отмена fetch/pull/push.** `JGitProgressMonitor.isCancelled()` всегда `false`, отмена корутины не останавливает JGit.
+- [ ] **`AuthRequired` по подстрокам** текста `TransportException` в `classifyNetworkException`. Отдельного исключения в JGit 5.13 нет — можно только сузить проверку.
+- [ ] **Английские остатки:** запасные фразы `classifyNetworkException` (диалог веток показывает их при push), этапы прогресса клонирования, «Unknown error» в `CommitDetailDialog` и `RepositoryListViewModel`.
+- [ ] **Учётные данные только для `origin`**; checkout удалённой ветки обрезает только префикс `origin/`.
+- [ ] **Теги в меню коммита** при ошибке чтения выглядят как «тегов нет».
+- [ ] **Неиспользуемое:** `gitResultOf` в `GitResult.kt`, зависимость `androidx.documentfile`.
+- [ ] **Google Play:** для `MANAGE_EXTERNAL_STORAGE` нужна декларация «доступ ко всем файлам».
+- [ ] **`GraphViewModel`/`ChangesViewModel`** живут по одному на каждый открытый репозиторий в хранилище главного экрана.
+- [ ] **`AuthViewModel` и `RemoteRepositoriesViewModel`** — россыпь `StateFlow` вместо одного `UiState` (см. P1.5).
+
 ## Выполнено
+
+- [x] **Ревью 2026-11** _(подробно — `CHANGELOG.md`, 2026-11-06)_: точечный abort merge/cherry-pick, единый парсер diff, diff неиндексированных изменений, CRLF при разрешении конфликта, discard нового staged-файла, конфликты при pull, автор коммитов (без выдуманных адресов, amend сохраняет автора), `RepositorySession` + событие `repositoryChanges` вместо счётчиков-сигналов, git убран из composable (`GraphViewModel` и др.), `withGit` + `GitResult` для чтений, запомненный порядок истории, статистика изменений за два прохода, хранилище ViewModel диалога коммита, единые потоки настроек, строки data-слоя в ресурсах, PKCE переживает смерть процесса, однократное уведомление об истёкшей сессии, «Доступ ко всем файлам», stash с неотслеживаемыми файлами, копирование содержимого файла.
 
 - [x] Разделён `GitRepository` по тематическим файлам + общий интерфейс `IGitRepository`.
 - [x] Исправлен crash при выборе активного репозитория.
@@ -143,10 +158,9 @@
   локализована в `OAuthActivity.kt` + манифесте.
   `isHostAllowed`/allowlist хостов, JS/SSL-настройки WebView удалены как мёртвый код — весь
   вопрос доверия к странице провайдера теперь на стороне браузера пользователя, а не нашего кода.
-  **Известное ограничение:** если процесс приложения убьётся, пока открыт браузер (редко, но
-  возможно на слабой памяти), возврат по deep link создаст новую Activity без сохранённого
-  `expectedState`/`redirectUri` — попытка входа тихо отменяется, нужно повторить логин.
-  Тот же класс ограничений есть у большинства мобильных OAuth+external-browser реализаций.
+  ~~Известное ограничение: смерть процесса, пока открыт браузер, отменяла вход.~~
+  Исправлено 2026-11-06: PKCE-verifier в зашифрованных prefs, провайдер в результате
+  `OAuthActivity`, её флаги в `onSaveInstanceState`.
 - [ ] **`client_secret` в APK.** Секрет из `assets/oauth.properties` извлекается из любой сборки.
   PKCE есть, но GitHub/GitLab при наличии секрета опираются на него. Долгосрочные варианты:
   GitHub Device Flow (без секрета) либо микро-бэкенд для обмена `code` → `token`. Оба требуют
@@ -191,9 +205,13 @@
   (принимать `DataStore<Preferences>` или его директорию через конструктор), после чего тест
   на `decodeRepositoriesOrNull` + backup-ключ пишется тривиально.
 
-> **Прогнать у себя:** `./gradlew testDebugUnitTest` (первый запуск Robolectric скачает
-> `android-all` для SDK 34). Проверить также, что версии `robolectric:4.14.1` / `mockk:1.13.13`
-> резолвятся в вашем окружении — при необходимости обновить.
+> **Прогнать у себя:** см. раздел «Сборка» в `README.md` (`gradlew` в репозитории нет).
+> Первый запуск Robolectric скачает `android-all` для SDK 34.
+>
+> С 2026-11 добавлены: `RepositorySessionTest`, `GraphViewModelTest`, `FileViewStateTest`,
+> `AppSettingsManagerTest`, `LocalizedMessagesTest`, `SharedStorageTest` и сценарии в
+> `GitRepositoryIndexTest`/`GitRepositoryMergeRebaseTest` (abort, diff, CRLF, pull-конфликт,
+> автор, история, статистика, stash). Тесты merge/rebase изолированы от `~/.gitconfig`.
 
 ### Прочее
 
@@ -205,8 +223,7 @@
 - [ ] Bitbucket/Azure ID: в `AuthManager` конвертеры используют `uuid.hashCode()`, а auth-код —
   CRC32 (`toDeterministicId`). Привести к одному способу (CRC32) — иначе один и тот же
   репозиторий получает разные ID в разных местах (см. `AUTH_ISSUES.md` #10).
-- [ ] Разгрузить `ChangesScreen.kt` (1707 строк) на компоненты: tree panel, file actions menu, dialogs.
-- [ ] Разгрузить `CommitDetailDialog.kt` (3349 строк) на независимые секции.
+- [ ] Разгрузить `ChangesScreen.kt` и `CommitDetailDialog.kt` — см. «God-файлы» в backlog наверху.
 - [ ] CI pipeline: compile + lint + unit-тесты (+ сборка `assembleRelease`, чтобы ловить R8-регрессии из P0.1).
 
 ---
@@ -241,7 +258,7 @@
   **Фикс бага таймзоны:** `RemoteRepositoriesScreen.formatDate` парсил ISO `'Z'` как литерал в
   локальной TZ → дата съезжала; теперь `Instant.parse` (UTC) + fallback на `OffsetDateTime`.
   Остались 2 inline-формата (`CommitDetailDialog:1474`, `ChangesScreen:~1593`) — одноразовые, не дубли.
-- [ ] **Clipboard — два подхода + копипаст.** Системный `ClipboardManager` c дублированными
+- [ ] **Clipboard — два подхода + копипаст** (с 2026-11 ещё и копирование содержимого в просмотрщике файла). Системный `ClipboardManager` c дублированными
   блоками «copy file name / copy file path» в `CommitDetailDialog.kt:1208` и
   `ChangesScreen.kt:1018`; Compose `LocalClipboardManager` в `AddRepositoryDialog.kt`.
   Один helper (`copyToClipboard(context, label, text)` + общий пункт меню), подход — единый.
@@ -249,9 +266,9 @@
   продолжают собираться в фоне. Добавить `androidx.lifecycle:lifecycle-runtime-compose` и
   перейти на `collectAsStateWithLifecycle()` одним проходом.
 - [x] **`LaunchedEffect(uiState.message)` — авто-закрытие диалога** _(2026-07-04)_ В
-  `BranchManagementDialog` заменено на сигнал `mutationSignal`: успех обновляет состояние
-  репозитория без закрытия диалога, диалог закрывается только явно. Разблокировало сценарий
-  «merge/rebase с конфликтом». (В `ChangesScreen.kt:93` snackbar-логика не трогалась.)
+  `BranchManagementDialog` диалог закрывается только явно. С 2026-11 состояние репозитория
+  обновляется через `RepositorySession` и событие `repositoryChanges`; промежуточный счётчик
+  `mutationSignal` удалён.
 
 ---
 
@@ -314,8 +331,8 @@
 
 ### 5. Поиск по коммитам + blame
 
-- Поиск: `getCommits` уже пагинирован; фильтрация по message/author на стороне клиента
-  (JGit `LogCommand` не умеет grep) — поле поиска над списком в `EnhancedGraphScreen`.
+- Поиск: поле поиска над графом есть (`CommitSearchBar`), но фильтрует только уже загруженные
+  коммиты по message/author/hash. Поиск по всей истории — открыт.
 - Blame: `git.blame().setFilePath(path).call()` → аннотированный просмотр из
   `CommitDetailDialog` (по кнопке в просмотре файла).
 
@@ -332,12 +349,12 @@
 
 ## P3 — производительность и UX
 
-- [ ] Профилировать работу на больших репозиториях (graph/diff/history).
-- [ ] Кэшировать дорогие вычисления (diff/history при повторных открытиях).
+- [ ] Профилировать работу на больших репозиториях (graph/diff/history). С 2026-11 история не
+  обходится заново, пока не сменились вершины веток, а статистика изменений считается за два прохода.
+- [ ] Кэшировать diff/history файлов при повторных открытиях.
 - [ ] Унифицировать tree/list UX между `ChangesScreen` и `CommitDetailDialog`.
 - [ ] Проверить edge-to-edge на Android 15 (targetSdk 35 включает его принудительно):
-  экраны без `Scaffold` — в первую очередь `OAuthActivity` (нижняя кромка WebView под
-  системной навигацией).
+  экраны без `Scaffold` — в первую очередь экран ожидания в `OAuthActivity`.
 
 ## Технические заметки
 
@@ -349,5 +366,6 @@
   или свой Keystore-обёртку. До миграции обязателен fallback из P0.2.
 - **`navigation-compose 2.8.5`** отстаёт от Compose BOM 2026.01 — обновить до 2.9.x при
   ближайшем обновлении зависимостей.
-- Для воспроизводимых локальных сборок нужен стабильный `gradlew` (wrapper-скрипты) в репозитории.
+- Для воспроизводимых локальных сборок нужен стабильный `gradlew` (wrapper-скрипты) в репозитории;
+  сейчас есть только `gradle/wrapper/gradle-wrapper.properties` (Gradle 9.6.0, AGP 9.5.1).
 - Чеклист релиза: `assembleRelease` + smoke-тест OAuth/PAT всех провайдеров на minified-сборке (см. P0.1).
