@@ -1,10 +1,6 @@
 package com.gitflow.android.ui.repositories
 
-import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gitflow.android.R
@@ -104,12 +100,6 @@ class RemoteRepositoriesViewModel(private val authManager: AuthManager) : ViewMo
             _isCloning.value = true
             _errorMessage.value = null
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-                ) {
-                    _errorMessage.value = context.getString(R.string.notification_permission_required)
-                    return@launch
-                }
                 val cloneUrl = authManager.getCloneUrl(repository)
                     ?: throw Exception(str(R.string.remote_error_clone_url))
                 val started = CloneRepositoryService.start(
@@ -134,9 +124,5 @@ class RemoteRepositoriesViewModel(private val authManager: AuthManager) : ViewMo
 
     fun clearError() {
         _errorMessage.value = null
-    }
-
-    fun showError(message: String) {
-        _errorMessage.value = message
     }
 }

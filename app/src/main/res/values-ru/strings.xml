@@ -15,7 +15,9 @@
     <string name="notification_clone_failed_detail">Не удалось клонировать %1$s: %2$s</string>
     <string name="notification_clone_cancelled">Клонирование отменено</string>
     <string name="notification_clone_cancelled_detail">Клонирование %1$s отменено пользователем</string>
-    <string name="notification_permission_required">Для фонового клонирования разрешите уведомления в настройках приложения</string>
+    <string name="clone_notifications_title">Показывать клонирование в уведомлениях?</string>
+    <string name="clone_notifications_message">Клонирование работает и без уведомлений — прогресс виден в приложении. С уведомлениями его видно, когда приложение свёрнуто, и приходит сообщение о завершении. Изменить решение можно в Настройках → Разрешения.</string>
+    <string name="clone_notifications_not_now">Не сейчас</string>
     <string name="clone_wifi_only_error">Загрузка репозитория разрешена только по Wi‑Fi. Подключитесь к Wi‑Fi или отключите ограничение в настройках.</string>
     <string name="clone_error_offline">Нет подключения к интернету. Невозможно начать клонирование.</string>
     <string name="network_error_offline">Нет подключения к интернету</string>
@@ -87,7 +89,8 @@
     <string name="clone_destination_choose">Выбрать…</string>
     <string name="clone_destination_folder_name">Имя папки</string>
     <string name="clone_destination_exists">Такая папка уже есть — выберите другое имя</string>
-    <string name="add_repo_storage_access_required">Разрешите доступ к файлам в Настройках → Разрешения, чтобы использовать папки вне приложения.</string>
+    <string name="add_repo_storage_access_title">Нужен доступ ко всем файлам</string>
+    <string name="add_repo_storage_access_required">Git работает с папками вне приложения только с разрешением «Доступ ко всем файлам». Включите его для GitFlow на открывшемся экране и вернитесь назад — выбор папки откроется сам.</string>
     <string name="add_repo_folder_unresolved">Эту папку нельзя открыть как обычный каталог.</string>
     <string name="settings_permission_grant">Разрешить</string>
     <string name="settings_permission_open_settings">Открыть настройки</string>

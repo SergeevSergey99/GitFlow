@@ -201,6 +201,12 @@ class AppSettingsManager(context: Context) {
         preferences.edit().putString(KEY_RECENT_CLONE_PARENTS, updated.joinToString("\n")).apply()
     }
 
+    fun isCloneNotificationPromptShown(): Boolean = preferences.getBoolean(KEY_CLONE_NOTIFICATION_PROMPT_SHOWN, false)
+
+    fun setCloneNotificationPromptShown() {
+        preferences.edit().putBoolean(KEY_CLONE_NOTIFICATION_PROMPT_SHOWN, true).apply()
+    }
+
     fun getRepositoriesBaseDir(context: Context): File {
         val uriString = getCustomStorageUri()
         if (uriString != null) {
@@ -246,6 +252,7 @@ class AppSettingsManager(context: Context) {
         private const val KEY_CUSTOM_STORAGE_URI = "custom_storage_uri"
         private const val KEY_RECENT_CLONE_PARENTS = "recent_clone_parents"
         private const val MAX_RECENT_CLONE_PARENTS = 5
+        private const val KEY_CLONE_NOTIFICATION_PROMPT_SHOWN = "clone_notification_prompt_shown"
         private const val KEY_GRAPH_PRESET = "graph_preset"
         private const val KEY_COLOR_THEME = "color_theme"
         private const val KEY_DARK_MODE = "dark_mode"

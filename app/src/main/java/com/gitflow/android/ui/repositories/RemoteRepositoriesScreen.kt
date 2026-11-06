@@ -1,9 +1,5 @@
 package com.gitflow.android.ui.repositories
 
-import android.Manifest
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,7 +17,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
-import androidx.core.content.ContextCompat
 import org.koin.androidx.compose.koinViewModel
 import com.gitflow.android.R
 import com.gitflow.android.data.models.GitProvider
@@ -33,6 +28,7 @@ import com.gitflow.android.ui.auth.providerIconColor
 import com.gitflow.android.ui.components.CloneDestinationPicker
 import com.gitflow.android.ui.components.CloneProgressOverlay
 import com.gitflow.android.ui.components.isCloneTargetUsable
+import com.gitflow.android.ui.components.rememberCloneNotificationPrompt
 import com.gitflow.android.ui.components.rememberDefaultCloneParent
 import com.gitflow.android.ui.util.formatBytes
 import com.gitflow.android.ui.util.isoToShortDate
@@ -62,26 +58,7 @@ fun RemoteRepositoriesScreen(
         viewModel.refreshAuthState()
     }
 
-    data class PendingClone(val repository: GitRemoteRepository, val localPath: String, val defaultBranchOnly: Boolean)
-    var pendingClone by remember { mutableStateOf<PendingClone?>(null) }
-
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        val request = pendingClone
-        if (granted && request != null) {
-            viewModel.startCloneInBackground(
-                context = context,
-                repository = request.repository,
-                localPath = request.localPath,
-                singleBranch = if (request.defaultBranchOnly) request.repository.defaultBranch else null,
-                onStarted = onRepositoryCloned
-            )
-        } else if (!granted) {
-            viewModel.showError(context.getString(R.string.notification_permission_required))
-        }
-        pendingClone = null
-    }
+    val requestCloneNotifications = rememberCloneNotificationPrompt()
 
     Scaffold(
         topBar = {
@@ -137,12 +114,7 @@ fun RemoteRepositoriesScreen(
                         repositories = repositories,
                         isCloning = isCloning,
                         onCloneRepository = { repository, localPath, defaultBranchOnly ->
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
-                            ) {
-                                pendingClone = PendingClone(repository, localPath, defaultBranchOnly)
-                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                            } else {
+                            requestCloneNotifications {
                                 viewModel.startCloneInBackground(
                                     context = context,
                                     repository = repository,

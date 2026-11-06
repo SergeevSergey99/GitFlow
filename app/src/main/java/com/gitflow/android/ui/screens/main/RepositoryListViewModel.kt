@@ -50,10 +50,6 @@ class RepositoryListViewModel(
         _uiState.update { it.copy(deleteMessage = null) }
     }
 
-    fun setDialogError(message: String) {
-        _uiState.update { it.copy(errorMessage = message, isLoading = false) }
-    }
-
     fun createRepository(name: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }

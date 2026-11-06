@@ -15,7 +15,9 @@
     <string name="notification_clone_failed_detail">Failed to clone %1$s: %2$s</string>
     <string name="notification_clone_cancelled">Cloning cancelled</string>
     <string name="notification_clone_cancelled_detail">Cloning %1$s cancelled by user</string>
-    <string name="notification_permission_required">Allow notifications in app settings for background cloning</string>
+    <string name="clone_notifications_title">Show cloning in notifications?</string>
+    <string name="clone_notifications_message">Cloning works without notifications — its progress is shown in the app. With notifications you can follow it while the app is in the background and get a message when it finishes. You can change this later in Settings → Permissions.</string>
+    <string name="clone_notifications_not_now">Not now</string>
     <string name="clone_wifi_only_error">Repository download is only allowed over Wi-Fi. Connect to Wi-Fi or disable this restriction in settings.</string>
     <string name="clone_error_offline">No internet connection. Cannot start cloning.</string>
     <string name="network_error_offline">No internet connection</string>
@@ -87,7 +89,8 @@
     <string name="clone_destination_choose">Choose…</string>
     <string name="clone_destination_folder_name">Folder name</string>
     <string name="clone_destination_exists">This folder already exists — choose another name</string>
-    <string name="add_repo_storage_access_required">Grant file access in Settings → Permissions to use folders outside the app.</string>
+    <string name="add_repo_storage_access_title">All files access needed</string>
+    <string name="add_repo_storage_access_required">Git can use folders outside the app only with the \"All files access\" permission. Turn it on for GitFlow on the next screen and come back — the folder picker will open by itself.</string>
     <string name="add_repo_folder_unresolved">This folder can\'t be opened as a regular directory.</string>
     <string name="settings_permission_grant">Grant</string>
     <string name="settings_permission_open_settings">Open settings</string>

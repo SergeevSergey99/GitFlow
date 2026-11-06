@@ -1,6 +1,14 @@
 package com.gitflow.android.ui.components
 
+import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -10,12 +18,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,20 +43,64 @@ import com.gitflow.android.data.storage.treeUriToFile
 import org.koin.compose.koinInject
 import java.io.File
 
-/** Returns a launcher of the system folder picker that hands back a path JGit can use. */
+/**
+ * Returns a launcher of the system folder picker that hands back a path JGit can use.
+ * The folder grant of the picker itself is useless to JGit, so file access is obtained before the picker opens.
+ */
 @Composable
 fun rememberSharedFolderPicker(onPicked: (String) -> Unit, onError: (String) -> Unit): () -> Unit {
     val context = LocalContext.current
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+    var showAccessDialog by remember { mutableStateOf(false) }
+    val folderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         val folder = treeUriToFile(uri)
-        when {
-            !hasSharedStorageAccess(context) -> onError(context.getString(R.string.add_repo_storage_access_required))
-            folder == null -> onError(context.getString(R.string.add_repo_folder_unresolved))
-            else -> onPicked(folder.absolutePath)
-        }
+        if (folder == null) onError(context.getString(R.string.add_repo_folder_unresolved)) else onPicked(folder.absolutePath)
     }
-    return { launcher.launch(null) }
+    val accessSettingsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (hasSharedStorageAccess(context)) folderLauncher.launch(null)
+    }
+    val accessPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        if (hasSharedStorageAccess(context)) folderLauncher.launch(null)
+    }
+
+    if (showAccessDialog) {
+        AlertDialog(
+            onDismissRequest = { showAccessDialog = false },
+            title = { Text(stringResource(R.string.add_repo_storage_access_title)) },
+            text = { Text(stringResource(R.string.add_repo_storage_access_required)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showAccessDialog = false
+                    requestSharedStorageAccess(context, accessSettingsLauncher, accessPermissionLauncher)
+                }) { Text(stringResource(R.string.settings_permission_open_settings)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAccessDialog = false }) { Text(stringResource(R.string.add_repo_cancel)) }
+            }
+        )
+    }
+
+    return {
+        if (hasSharedStorageAccess(context)) folderLauncher.launch(null) else showAccessDialog = true
+    }
+}
+
+private fun requestSharedStorageAccess(
+    context: Context,
+    settingsLauncher: ActivityResultLauncher<Intent>,
+    permissionLauncher: ActivityResultLauncher<Array<String>>
+) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+        permissionLauncher.launch(arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE))
+        return
+    }
+    val appScreen = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.fromParts("package", context.packageName, null))
+    try {
+        settingsLauncher.launch(appScreen)
+    } catch (error: ActivityNotFoundException) {
+        // Some firmwares lack the per-app screen and only offer the list of all apps.
+        settingsLauncher.launch(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+    }
 }
 
 /** Cloning into an existing folder fails, so such a target is rejected before the clone starts. */

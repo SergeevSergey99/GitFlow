@@ -1,10 +1,5 @@
 package com.gitflow.android.ui.screens.main
 
-import android.Manifest
-import android.content.pm.PackageManager
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -20,7 +15,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import org.koin.compose.koinInject
 import org.koin.androidx.compose.koinViewModel
 import androidx.navigation.NavController
@@ -28,6 +22,7 @@ import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.ui.components.RepositoryCard
+import com.gitflow.android.ui.components.rememberCloneNotificationPrompt
 import com.gitflow.android.ui.components.dialogs.AddRepositoryDialog
 import com.gitflow.android.ui.components.dialogs.DeleteRepositoryDialog
 
@@ -46,22 +41,7 @@ fun RepositoryListScreen(
     val uiState by repoViewModel.uiState.collectAsState()
 
     val authManager: AuthManager = koinInject()
-
-    // Pending clone — временное состояние UI для flow с разрешением уведомлений
-    data class PendingClone(val name: String, val url: String, val approximateSize: Long?, val targetPath: String)
-    var pendingClone by remember { mutableStateOf<PendingClone?>(null) }
-
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        val pending = pendingClone
-        if (granted && pending != null) {
-            repoViewModel.startManualClone(context, authManager, pending.name, pending.url, pending.approximateSize, pending.targetPath)
-        } else if (!granted) {
-            repoViewModel.setDialogError(context.getString(R.string.notification_permission_required))
-        }
-        pendingClone = null
-    }
+    val requestCloneNotifications = rememberCloneNotificationPrompt()
 
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -111,14 +91,10 @@ fun RepositoryListScreen(
             errorMessage = uiState.errorMessage,
             authManager = authManager,
             onAdd = { name, url, isClone, approximateSize, clonePath ->
-                if (isClone && url.isNotEmpty() && clonePath != null &&
-                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-                ) {
-                    pendingClone = PendingClone(name, url, approximateSize, clonePath)
-                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                } else if (isClone && url.isNotEmpty() && clonePath != null) {
-                    repoViewModel.startManualClone(context, authManager, name, url, approximateSize, clonePath)
+                if (isClone && url.isNotEmpty() && clonePath != null) {
+                    requestCloneNotifications {
+                        repoViewModel.startManualClone(context, authManager, name, url, approximateSize, clonePath)
+                    }
                 } else {
                     repoViewModel.createRepository(name)
                 }
