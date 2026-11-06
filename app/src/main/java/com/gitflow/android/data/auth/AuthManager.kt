@@ -28,10 +28,9 @@ class AuthManager(private val context: Context) {
     private val preferences: SharedPreferences = createEncryptedPreferences()
     private val gson = Gson()
 
-    // In-memory map: state -> (code_verifier, createdAt) for PKCE.
-    // ConcurrentHashMap: getAuthUrl and handleAuthCallback can run on different coroutines.
+    // Stored in the encrypted prefs, not in memory: the system may kill the process while the
+    // browser is in front, and the redirect then arrives in a fresh process.
     private data class PendingAuth(val codeVerifier: String, val createdAt: Long = System.currentTimeMillis())
-    private val pendingAuthStates = java.util.concurrent.ConcurrentHashMap<String, PendingAuth>()
 
     // Mutexes prevent concurrent refresh races: if two coroutines simultaneously detect
     // an expired token and both try to refresh, the second one would use an invalidated
@@ -89,6 +88,7 @@ class AuthManager(private val context: Context) {
     companion object {
         private const val ENCRYPTED_PREFS_FILE = "auth_prefs_encrypted"
         private const val PKCE_STATE_TTL_MS = 10 * 60 * 1000L
+        private const val KEY_PENDING_AUTH_PREFIX = "pending_auth_"
         private const val TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000L
 
         private const val GITHUB_AUTH_URL = "https://github.com/login/oauth/authorize"
@@ -201,9 +201,7 @@ class AuthManager(private val context: Context) {
         val codeChallenge = PKCEHelper.generateCodeChallenge(codeVerifier)
         val state = java.util.UUID.randomUUID().toString()
 
-        val now = System.currentTimeMillis()
-        pendingAuthStates.entries.removeIf { now - it.value.createdAt > PKCE_STATE_TTL_MS }
-        pendingAuthStates[state] = PendingAuth(codeVerifier)
+        savePendingAuth(state, PendingAuth(codeVerifier))
 
         val redirectEncoded = URLEncoder.encode(OAuthConfig.REDIRECT_URI, "UTF-8")
         val challengeEncoded = URLEncoder.encode(codeChallenge, "UTF-8")
@@ -237,13 +235,35 @@ class AuthManager(private val context: Context) {
         return Pair(url, state)
     }
 
+    private fun savePendingAuth(state: String, pending: PendingAuth) {
+        val now = System.currentTimeMillis()
+        val editor = preferences.edit()
+        preferences.all.keys.filter { it.startsWith(KEY_PENDING_AUTH_PREFIX) }.forEach { key ->
+            val stored = readPendingAuth(key)
+            if (stored == null || now - stored.createdAt > PKCE_STATE_TTL_MS) editor.remove(key)
+        }
+        editor.putString(KEY_PENDING_AUTH_PREFIX + state, gson.toJson(pending))
+        // commit(), not apply(): the browser opens right after and may outlive this process.
+        editor.commit()
+    }
+
+    private fun takePendingAuth(state: String): PendingAuth? {
+        val key = KEY_PENDING_AUTH_PREFIX + state
+        val pending = readPendingAuth(key)
+        preferences.edit().remove(key).apply()
+        return pending
+    }
+
+    private fun readPendingAuth(key: String): PendingAuth? =
+        preferences.getString(key, null)?.let { runCatching { gson.fromJson(it, PendingAuth::class.java) }.getOrNull() }
+
     // ---------------------------------------------------------------------------
     // OAuth callback handling
     // ---------------------------------------------------------------------------
 
     suspend fun handleAuthCallback(provider: GitProvider, code: String, state: String): AuthResult = withContext(Dispatchers.IO) {
         try {
-            val pending = pendingAuthStates.remove(state)
+            val pending = takePendingAuth(state)
                 ?: return@withContext AuthResult(success = false, error = context.getString(R.string.auth_error_invalid_state))
 
             if (System.currentTimeMillis() - pending.createdAt > PKCE_STATE_TTL_MS) {

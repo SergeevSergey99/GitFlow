@@ -47,7 +47,11 @@ class OAuthActivity : ComponentActivity() {
 
         const val RESULT_CODE = "code"
         const val RESULT_STATE = "state"
+        const val RESULT_PROVIDER = "provider"
         const val RESULT_ERROR = "error"
+
+        private const val STATE_TAB_LAUNCHED = "custom_tab_launched"
+        private const val STATE_REDIRECT_HANDLED = "redirect_handled"
     }
 
     private var authUrl: String = ""
@@ -67,6 +71,10 @@ class OAuthActivity : ComponentActivity() {
         authUrl = intent.getStringExtra(EXTRA_AUTH_URL) ?: return finishCancelled()
         redirectUri = intent.getStringExtra(EXTRA_REDIRECT_URI) ?: return finishCancelled()
         expectedState = intent.getStringExtra(EXTRA_STATE) ?: return finishCancelled()
+        // After process death the Activity is recreated while the browser is still open (or has
+        // just redirected): it must neither reopen the tab nor treat the visit as a cancel.
+        customTabLaunched = savedInstanceState?.getBoolean(STATE_TAB_LAUNCHED) ?: false
+        redirectHandled = savedInstanceState?.getBoolean(STATE_REDIRECT_HANDLED) ?: false
 
         setContent {
             GitFlowTheme {
@@ -76,6 +84,12 @@ class OAuthActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_TAB_LAUNCHED, customTabLaunched)
+        outState.putBoolean(STATE_REDIRECT_HANDLED, redirectHandled)
     }
 
     override fun onResume() {
@@ -125,6 +139,7 @@ class OAuthActivity : ComponentActivity() {
         setResult(RESULT_OK, Intent().apply {
             putExtra(RESULT_CODE, code)
             putExtra(RESULT_STATE, state)
+            putExtra(RESULT_PROVIDER, provider.name)
         })
         finish()
     }

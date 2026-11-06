@@ -59,7 +59,8 @@ fun AuthScreen(
         if (result.resultCode == Activity.RESULT_OK) {
             val code = result.data?.getStringExtra(OAuthActivity.RESULT_CODE)
             val state = result.data?.getStringExtra(OAuthActivity.RESULT_STATE)
-            val provider = viewModel.currentProvider
+            val provider = result.data?.getStringExtra(OAuthActivity.RESULT_PROVIDER)
+                ?.let { name -> GitProvider.entries.firstOrNull { it.name == name } }
             if (code != null && state != null && provider != null) {
                 viewModel.handleAuthCallback(provider, code, state)
             }

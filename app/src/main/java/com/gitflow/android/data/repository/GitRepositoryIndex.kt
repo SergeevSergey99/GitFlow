@@ -195,8 +195,8 @@ internal suspend fun GitRepository.amendLastCommitImpl(repository: Repository, m
     withGit(repository) { git ->
         val (name, email) = resolveCommitIdentity(git)
             ?: return@withGit identityRequired()
+        // No setAuthor: JGit then keeps the amended commit's author and date, like git commit --amend.
         git.commit().setAmend(true).setMessage(message)
-            .setAuthor(name, email)
             .setCommitter(name, email)
             .call()
         refreshRepository(repository)

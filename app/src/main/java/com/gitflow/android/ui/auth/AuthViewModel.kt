@@ -49,8 +49,6 @@ class AuthViewModel(
     private val _localAuthorEmail = MutableStateFlow(settingsManager.getLocalAuthorEmail())
     val localAuthorEmail: StateFlow<String> = _localAuthorEmail.asStateFlow()
 
-    var currentProvider: GitProvider? = null
-        private set
 
     init {
         _githubUser.value = authManager.getCurrentUser(GitProvider.GITHUB)
@@ -88,7 +86,6 @@ class AuthViewModel(
 
     /** Starts the OAuth WebView flow for GitHub, GitLab, or Bitbucket. */
     fun startAuth(provider: GitProvider, launchIntent: (Intent) -> Unit) {
-        currentProvider = provider
         _errorMessage.value = null
         _isLoading.value = true
 
@@ -123,7 +120,6 @@ class AuthViewModel(
                 _errorMessage.value = str(R.string.authvm_error_process, e.message ?: "")
             } finally {
                 _isLoading.value = false
-                currentProvider = null
             }
         }
     }
@@ -156,7 +152,6 @@ class AuthViewModel(
     fun setError(error: String) {
         _errorMessage.value = error
         _isLoading.value = false
-        currentProvider = null
     }
 
     fun clearError() {

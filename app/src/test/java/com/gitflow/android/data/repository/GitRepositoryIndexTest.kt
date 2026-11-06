@@ -292,6 +292,24 @@ class GitRepositoryIndexTest {
         assertEquals(before, git.log().call().toList().size)
     }
 
+    @Test
+    fun amendLastCommit_keepsOriginalAuthorAndRecordsNewCommitter() = runBlocking {
+        writeFile("a.txt", "1")
+        git.add().addFilepattern("a.txt").call()
+        git.commit().setMessage("by someone else")
+            .setAuthor("Original Author", "original@example.com")
+            .setCommitter("Original Author", "original@example.com")
+            .call()
+        val originalWhen = git.log().setMaxCount(1).call().first().authorIdent.`when`
+
+        assertTrue(repo.amendLastCommit(model, "reworded") is GitResult.Success)
+
+        val amended = git.log().setMaxCount(1).call().first()
+        assertEquals("Original Author", amended.authorIdent.name)
+        assertEquals(originalWhen, amended.authorIdent.`when`)
+        assertEquals("Test User", amended.committerIdent.name)
+    }
+
     // ---------- status ----------
 
     @Test
