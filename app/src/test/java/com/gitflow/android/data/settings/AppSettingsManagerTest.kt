@@ -31,4 +31,13 @@ class AppSettingsManagerTest {
         assertEquals(AppSettingsManager.DARK_MODE_DARK, observed.darkModeFlow.value)
         assertTrue("rs" in observed.previewExtensionsFlow.value)
     }
+
+    @Test
+    fun recentCloneParents_keepOrderWithoutDuplicatesAndAtMostFive() {
+        val settings = AppSettingsManager(context)
+
+        listOf("/a", "/b", "/c", "/d", "/e", "/f", "/b").forEach { settings.rememberCloneParent(it) }
+
+        assertEquals(listOf("/b", "/f", "/e", "/d", "/c"), settings.getRecentCloneParents())
+    }
 }

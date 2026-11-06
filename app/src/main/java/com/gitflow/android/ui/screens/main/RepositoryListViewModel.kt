@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.File
 
 data class RepositoryListUiState(
     val isLoading: Boolean = false,
@@ -84,15 +85,13 @@ class RepositoryListViewModel(
         authManager: AuthManager,
         name: String,
         url: String,
-        approximateSize: Long?
+        approximateSize: Long?,
+        targetPath: String
     ) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             try {
-                val baseDir = settingsManager.getRepositoriesBaseDir(getApplication())
-                val fallbackName = url.substringAfterLast('/').removeSuffix(".git")
-                val targetName = if (name.isBlank()) fallbackName else name
-                val targetPath = "${baseDir.absolutePath}/$targetName"
+                val targetName = File(targetPath).name
 
                 val resolvedSize = try {
                     approximateSize ?: authManager.getRepositoryApproximateSize(url)

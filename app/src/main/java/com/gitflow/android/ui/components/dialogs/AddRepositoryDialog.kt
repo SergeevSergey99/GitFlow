@@ -1,8 +1,5 @@
 package com.gitflow.android.ui.components.dialogs
 
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,7 +12,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -28,8 +24,11 @@ import androidx.compose.ui.window.Dialog
 import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
-import com.gitflow.android.data.storage.hasSharedStorageAccess
-import com.gitflow.android.data.storage.treeUriToFile
+import com.gitflow.android.ui.components.CloneDestinationPicker
+import com.gitflow.android.ui.components.isCloneTargetUsable
+import com.gitflow.android.ui.components.rememberDefaultCloneParent
+import com.gitflow.android.ui.components.rememberSharedFolderPicker
+import java.io.File
 import java.util.Locale
 import kotlinx.coroutines.delay
 
@@ -39,45 +38,29 @@ fun AddRepositoryDialog(
     onDismiss: () -> Unit,
     isLoading: Boolean = false,
     errorMessage: String? = null,
-    onAdd: (String, String, Boolean, Long?) -> Unit,
+    onAdd: (name: String, url: String, isClone: Boolean, approximateSize: Long?, clonePath: String?) -> Unit,
     onAddLocal: (String) -> Unit = {},
     onNavigateToRemote: () -> Unit = {},
     authManager: AuthManager? = null
 ) {
-    val context = LocalContext.current
     var name by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
     var localPath by remember { mutableStateOf("") }
     var selectedTab by remember { mutableStateOf(0) }
-    var customDestination by remember { mutableStateOf("") }
+    var cloneParent by remember { mutableStateOf<String?>(null) }
+    val effectiveCloneParent = cloneParent ?: rememberDefaultCloneParent()
     var approximateSize by remember { mutableStateOf<Long?>(null) }
     var isSizeLoading by remember { mutableStateOf(false) }
     var sizeError by remember { mutableStateOf<String?>(null) }
     var pickerError by remember { mutableStateOf<String?>(null) }
 
-    fun pickedFolderPath(uri: Uri): String? {
-        if (!hasSharedStorageAccess(context)) {
-            pickerError = context.getString(R.string.add_repo_storage_access_required)
-            return null
-        }
-        val folder = treeUriToFile(uri)
-        pickerError = if (folder == null) context.getString(R.string.add_repo_folder_unresolved) else null
-        return folder?.absolutePath
-    }
-
-    // Launcher for choosing directory for cloning
-    val directoryPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree()
-    ) { uri: Uri? ->
-        uri?.let { pickedFolderPath(it) }?.let { customDestination = it }
-    }
-
-    // Launcher for choosing existing repository directory
-    val repoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree()
-    ) { uri: Uri? ->
-        uri?.let { pickedFolderPath(it) }?.let { localPath = it }
-    }
+    val pickLocalRepository = rememberSharedFolderPicker(
+        onPicked = { path ->
+            pickerError = null
+            localPath = path
+        },
+        onError = { message -> pickerError = message }
+    )
 
     LaunchedEffect(url, authManager, selectedTab) {
         approximateSize = null
@@ -135,7 +118,7 @@ fun AddRepositoryDialog(
                     0 -> CloneTab(
                         url = url,
                         name = name,
-                        customDestination = customDestination,
+                        cloneParent = effectiveCloneParent,
                         isLoading = isLoading,
                         authManager = authManager,
                         isSizeLoading = isSizeLoading,
@@ -151,14 +134,13 @@ fun AddRepositoryDialog(
                             }
                         },
                         onNameChange = { name = it },
-                        onDestinationChange = { customDestination = it },
-                        onBrowseDestination = { directoryPickerLauncher.launch(null) }
+                        onCloneParentChange = { cloneParent = it }
                     )
                     1 -> LocalTab(
                         localPath = localPath,
                         isLoading = isLoading,
                         onPathChange = { localPath = it },
-                        onBrowsePath = { repoPickerLauncher.launch(null) }
+                        onBrowsePath = pickLocalRepository
                     )
                     2 -> CreateTab(
                         name = name,
@@ -204,6 +186,7 @@ fun AddRepositoryDialog(
                     name = name,
                     url = url,
                     localPath = localPath,
+                    cloneParent = effectiveCloneParent,
                     approximateSize = approximateSize,
                     onDismiss = onDismiss,
                     onAdd = onAdd,
@@ -263,7 +246,7 @@ private fun RepositoryTabs(
 private fun CloneTab(
     url: String,
     name: String,
-    customDestination: String,
+    cloneParent: String,
     isLoading: Boolean,
     authManager: AuthManager?,
     isSizeLoading: Boolean,
@@ -271,8 +254,7 @@ private fun CloneTab(
     sizeError: String?,
     onUrlChange: (String) -> Unit,
     onNameChange: (String) -> Unit,
-    onDestinationChange: (String) -> Unit,
-    onBrowseDestination: () -> Unit
+    onCloneParentChange: (String) -> Unit
 ) {
     @Suppress("DEPRECATION")
     val clipboardManager = LocalClipboardManager.current
@@ -299,39 +281,13 @@ private fun CloneTab(
         enabled = !isLoading
     )
 
-    Spacer(modifier = Modifier.height(8.dp))
+    Spacer(modifier = Modifier.height(12.dp))
 
-    OutlinedTextField(
-        value = name,
-        onValueChange = onNameChange,
-        label = { Text(stringResource(R.string.add_repo_name_label)) },
-        placeholder = { Text(stringResource(R.string.add_repo_name_placeholder)) },
-        modifier = Modifier.fillMaxWidth(),
-        leadingIcon = {
-            Icon(Icons.Default.Folder, contentDescription = null)
-        },
-        enabled = !isLoading
-    )
-
-    Spacer(modifier = Modifier.height(8.dp))
-
-    OutlinedTextField(
-        value = customDestination,
-        onValueChange = onDestinationChange,
-        label = { Text(stringResource(R.string.add_repo_destination_label)) },
-        placeholder = { Text(stringResource(R.string.add_repo_destination_placeholder)) },
-        modifier = Modifier.fillMaxWidth(),
-        leadingIcon = {
-            Icon(Icons.Default.FolderOpen, contentDescription = null)
-        },
-        trailingIcon = {
-            IconButton(
-                onClick = onBrowseDestination,
-                enabled = !isLoading
-            ) {
-                Icon(Icons.Default.Search, contentDescription = stringResource(R.string.add_repo_browse))
-            }
-        },
+    CloneDestinationPicker(
+        parentPath = cloneParent,
+        folderName = name,
+        onParentChange = onCloneParentChange,
+        onFolderNameChange = onNameChange,
         enabled = !isLoading
     )
 
@@ -558,9 +514,10 @@ private fun DialogActions(
     name: String,
     url: String,
     localPath: String,
+    cloneParent: String,
     approximateSize: Long?,
     onDismiss: () -> Unit,
-    onAdd: (String, String, Boolean, Long?) -> Unit,
+    onAdd: (name: String, url: String, isClone: Boolean, approximateSize: Long?, clonePath: String?) -> Unit,
     onAddLocal: (String) -> Unit
 ) {
     Row(
@@ -577,8 +534,8 @@ private fun DialogActions(
             onClick = {
                 when (selectedTab) {
                     0 -> { // Clone
-                        if (name.isNotEmpty() && url.isNotEmpty()) {
-                            onAdd(name, url, true, approximateSize)
+                        if (url.isNotEmpty() && isCloneTargetUsable(cloneParent, name)) {
+                            onAdd(name.trim(), url, true, approximateSize, File(cloneParent, name.trim()).absolutePath)
                         }
                     }
                     1 -> { // Local
@@ -588,13 +545,13 @@ private fun DialogActions(
                     }
                     2 -> { // Create
                         if (name.isNotEmpty()) {
-                            onAdd(name, "", false, null)
+                            onAdd(name, "", false, null, null)
                         }
                     }
                 }
             },
             enabled = when (selectedTab) {
-                0 -> name.isNotEmpty() && url.isNotEmpty() && !isLoading
+                0 -> url.isNotEmpty() && isCloneTargetUsable(cloneParent, name) && !isLoading
                 1 -> localPath.isNotEmpty() && !isLoading
                 2 -> name.isNotEmpty() && !isLoading
                 else -> false

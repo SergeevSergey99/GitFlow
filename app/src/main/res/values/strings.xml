@@ -82,6 +82,11 @@
     <string name="settings_permission_notifications_description">Required to display cloning progress and background task status.</string>
     <string name="settings_permission_storage">File access</string>
     <string name="settings_permission_storage_description">Allows keeping repositories in any device folder and opening existing ones. On Android 11+ this is the \"All files access\" permission.</string>
+    <string name="clone_destination_title">Where to clone</string>
+    <string name="clone_destination_default">Default</string>
+    <string name="clone_destination_choose">Choose…</string>
+    <string name="clone_destination_folder_name">Folder name</string>
+    <string name="clone_destination_exists">This folder already exists — choose another name</string>
     <string name="add_repo_storage_access_required">Grant file access in Settings → Permissions to use folders outside the app.</string>
     <string name="add_repo_folder_unresolved">This folder can\'t be opened as a regular directory.</string>
     <string name="settings_permission_grant">Grant</string>
@@ -138,9 +143,7 @@
     <string name="remote_repos_clone_confirm">Yes, clone</string>
     <string name="remote_repos_clone_cancel">Cancel</string>
     <string name="remote_repos_clone_dialog_title">Clone repository</string>
-    <string name="remote_repos_clone_path_label">Choose clone path:</string>
     <string name="remote_repos_clone_size">Approximate size: %1$s</string>
-    <string name="remote_repos_local_path">Local path</string>
 
     <!-- About -->
     <string name="settings_about">About</string>
@@ -506,10 +509,6 @@
     <string name="add_repo_tab_remote">Remote</string>
     <string name="add_repo_url_label">Repository URL</string>
     <string name="add_repo_url_placeholder">https://github.com/user/repo.git</string>
-    <string name="add_repo_name_label">Local name</string>
-    <string name="add_repo_name_placeholder">my-project</string>
-    <string name="add_repo_destination_label">Destination (optional)</string>
-    <string name="add_repo_destination_placeholder">Leave empty for default location</string>
     <string name="add_repo_browse">Browse</string>
     <string name="add_repo_estimating_size">Estimating repository size...</string>
     <string name="add_repo_approximate_download">Approximate download: %1$s</string>

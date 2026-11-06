@@ -189,6 +189,18 @@ class AppSettingsManager(context: Context) {
         preferences.edit().putString(KEY_CUSTOM_STORAGE_URI, uri).apply()
     }
 
+    /** Folders recently cloned into, most recent first. Stored as one string: a StringSet loses the order. */
+    fun getRecentCloneParents(): List<String> =
+        preferences.getString(KEY_RECENT_CLONE_PARENTS, null)
+            ?.split('\n')
+            ?.filter { it.isNotBlank() }
+            .orEmpty()
+
+    fun rememberCloneParent(path: String) {
+        val updated = (listOf(path) + getRecentCloneParents().filter { it != path }).take(MAX_RECENT_CLONE_PARENTS)
+        preferences.edit().putString(KEY_RECENT_CLONE_PARENTS, updated.joinToString("\n")).apply()
+    }
+
     fun getRepositoriesBaseDir(context: Context): File {
         val uriString = getCustomStorageUri()
         if (uriString != null) {
@@ -232,6 +244,8 @@ class AppSettingsManager(context: Context) {
         internal const val KEY_PREVIEW_FILE_NAMES = "preview_file_names"
         private const val KEY_LANGUAGE = "app_language"
         private const val KEY_CUSTOM_STORAGE_URI = "custom_storage_uri"
+        private const val KEY_RECENT_CLONE_PARENTS = "recent_clone_parents"
+        private const val MAX_RECENT_CLONE_PARENTS = 5
         private const val KEY_GRAPH_PRESET = "graph_preset"
         private const val KEY_COLOR_THEME = "color_theme"
         private const val KEY_DARK_MODE = "dark_mode"

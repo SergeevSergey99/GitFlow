@@ -48,7 +48,7 @@ fun RepositoryListScreen(
     val authManager: AuthManager = koinInject()
 
     // Pending clone — временное состояние UI для flow с разрешением уведомлений
-    data class PendingClone(val name: String, val url: String, val approximateSize: Long?)
+    data class PendingClone(val name: String, val url: String, val approximateSize: Long?, val targetPath: String)
     var pendingClone by remember { mutableStateOf<PendingClone?>(null) }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -56,7 +56,7 @@ fun RepositoryListScreen(
     ) { granted ->
         val pending = pendingClone
         if (granted && pending != null) {
-            repoViewModel.startManualClone(context, authManager, pending.name, pending.url, pending.approximateSize)
+            repoViewModel.startManualClone(context, authManager, pending.name, pending.url, pending.approximateSize, pending.targetPath)
         } else if (!granted) {
             repoViewModel.setDialogError(context.getString(R.string.notification_permission_required))
         }
@@ -110,15 +110,15 @@ fun RepositoryListScreen(
             isLoading = uiState.isLoading,
             errorMessage = uiState.errorMessage,
             authManager = authManager,
-            onAdd = { name, url, isClone, approximateSize ->
-                if (isClone && url.isNotEmpty() &&
+            onAdd = { name, url, isClone, approximateSize, clonePath ->
+                if (isClone && url.isNotEmpty() && clonePath != null &&
                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                     ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
                 ) {
-                    pendingClone = PendingClone(name, url, approximateSize)
+                    pendingClone = PendingClone(name, url, approximateSize, clonePath)
                     notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                } else if (isClone && url.isNotEmpty()) {
-                    repoViewModel.startManualClone(context, authManager, name, url, approximateSize)
+                } else if (isClone && url.isNotEmpty() && clonePath != null) {
+                    repoViewModel.startManualClone(context, authManager, name, url, approximateSize, clonePath)
                 } else {
                     repoViewModel.createRepository(name)
                 }

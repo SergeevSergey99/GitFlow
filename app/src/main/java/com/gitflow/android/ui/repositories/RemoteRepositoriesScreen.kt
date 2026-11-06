@@ -22,17 +22,18 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
-import org.koin.compose.koinInject
 import org.koin.androidx.compose.koinViewModel
 import com.gitflow.android.R
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitRemoteRepository
-import com.gitflow.android.data.settings.AppSettingsManager
 import com.gitflow.android.ui.auth.providerDisplayName
 import com.gitflow.android.ui.auth.providerIcon
 import androidx.compose.foundation.clickable
 import com.gitflow.android.ui.auth.providerIconColor
+import com.gitflow.android.ui.components.CloneDestinationPicker
 import com.gitflow.android.ui.components.CloneProgressOverlay
+import com.gitflow.android.ui.components.isCloneTargetUsable
+import com.gitflow.android.ui.components.rememberDefaultCloneParent
 import com.gitflow.android.ui.util.formatBytes
 import com.gitflow.android.ui.util.isoToShortDate
 import java.io.File
@@ -477,13 +478,9 @@ fun CloneDialog(
     onDismiss: () -> Unit,
     onConfirm: (localPath: String, defaultBranchOnly: Boolean) -> Unit
 ) {
-    val context = LocalContext.current
-    val settingsManager: AppSettingsManager = koinInject()
-    val defaultLocalPath = remember(repositoryName) {
-        val baseDir = settingsManager.getRepositoriesBaseDir(context)
-        File(baseDir, repositoryName).absolutePath
-    }
-    var localPath by remember(defaultLocalPath) { mutableStateOf(defaultLocalPath) }
+    var cloneParent by remember { mutableStateOf<String?>(null) }
+    val effectiveCloneParent = cloneParent ?: rememberDefaultCloneParent()
+    var folderName by remember(repositoryName) { mutableStateOf(repositoryName) }
     var defaultBranchOnly by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -491,18 +488,17 @@ fun CloneDialog(
         title = { Text(stringResource(R.string.remote_repos_clone_dialog_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(stringResource(R.string.remote_repos_clone_path_label))
                 formatRepositorySize(approximateSizeBytes)?.let { sizeString ->
                     Text(
                         text = stringResource(R.string.remote_repos_clone_size, sizeString),
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
-                OutlinedTextField(
-                    value = localPath,
-                    onValueChange = { localPath = it },
-                    label = { Text(stringResource(R.string.remote_repos_local_path)) },
-                    modifier = Modifier.fillMaxWidth()
+                CloneDestinationPicker(
+                    parentPath = effectiveCloneParent,
+                    folderName = folderName,
+                    onParentChange = { cloneParent = it },
+                    onFolderNameChange = { folderName = it }
                 )
                 if (defaultBranch.isNotBlank()) {
                     Row(
@@ -522,8 +518,8 @@ fun CloneDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onConfirm(localPath, defaultBranchOnly) },
-                enabled = localPath.isNotBlank()
+                onClick = { onConfirm(File(effectiveCloneParent, folderName.trim()).absolutePath, defaultBranchOnly) },
+                enabled = isCloneTargetUsable(effectiveCloneParent, folderName)
             ) {
                 Text(stringResource(R.string.remote_repos_clone))
             }

@@ -26,6 +26,7 @@ import com.gitflow.android.data.repository.CloneProgressCallback
 import com.gitflow.android.data.repository.CloneProgressTracker
 import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.data.settings.AppSettingsManager
+import java.io.File
 import com.gitflow.android.ui.util.formatBytes
 import org.koin.android.ext.android.inject
 import org.koin.core.context.GlobalContext
@@ -382,6 +383,7 @@ class CloneRepositoryService : Service() {
                 singleBranch?.takeIf { it.isNotBlank() }?.let { putExtra(EXTRA_SINGLE_BRANCH, it) }
             }
             ContextCompat.startForegroundService(context, intent)
+            File(cloneKey).parent?.let { GlobalContext.get().get<AppSettingsManager>().rememberCloneParent(it) }
             return true
         }
 
