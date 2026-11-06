@@ -28,6 +28,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -108,8 +110,8 @@ fun ChangesScreen(
     }
 
     var isManualRefreshing by remember { mutableStateOf(false) }
-    LaunchedEffect(uiState.isLoading) {
-        if (!uiState.isLoading) isManualRefreshing = false
+    LaunchedEffect(uiState.isRefreshing) {
+        if (!uiState.isRefreshing) isManualRefreshing = false
     }
 
     PullToRefreshBox(
@@ -470,6 +472,13 @@ private fun CommitSection(
     // rarely-used extras (description, amend) folded behind a "Details" toggle.
     var showDetails by rememberSaveable { mutableStateOf(false) }
     val hasConflicts = unstagedFiles.any { it.hasConflicts }
+    val hasSomethingToCommit = isAmendMode || stagedFiles.isNotEmpty() || isMerging
+    val commitBlockedReason = when {
+        hasConflicts -> R.string.changes_commit_blocked_conflicts
+        !hasSomethingToCommit && unstagedFiles.isNotEmpty() -> R.string.changes_commit_blocked_nothing_staged
+        hasSomethingToCommit && commitMessage.isBlank() -> R.string.changes_commit_blocked_no_message
+        else -> null
+    }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
@@ -488,8 +497,7 @@ private fun CommitSection(
                     // A merge commit is legal even with an index identical to HEAD (all
                     // conflicts resolved to "ours"), hence the isMerging escape hatch.
                     // Unresolved conflicts always block the commit.
-                    enabled = (isAmendMode || stagedFiles.isNotEmpty() || isMerging) &&
-                        commitMessage.isNotBlank() && !isBusy && !hasConflicts,
+                    enabled = hasSomethingToCommit && commitMessage.isNotBlank() && !isBusy && !hasConflicts,
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
                 ) {
                     Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -499,6 +507,13 @@ private fun CommitSection(
                         else stringResource(R.string.changes_commit_button)
                     )
                 }
+            }
+            commitBlockedReason?.let { reason ->
+                Text(
+                    text = stringResource(reason),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (hasConflicts) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             val actions = listOf(
@@ -572,18 +587,13 @@ private fun CommitSection(
                 // Compact mode: action icons + the details toggle, all in one row (no extra height).
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    actions.forEach { action -> CompactActionIcon(action = action) }
-                    IconButton(onClick = { showDetails = true }, modifier = Modifier.size(44.dp)) {
-                        Icon(
-                            Icons.Default.Tune,
-                            contentDescription = stringResource(R.string.changes_commit_details),
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
+                    actions.forEach { action -> CompactActionIcon(action = action, modifier = Modifier.weight(1f)) }
+                    CompactActionIcon(
+                        action = QuickAction(Icons.Default.Tune, stringResource(R.string.changes_commit_details), true, 0) { showDetails = true },
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
 
@@ -606,21 +616,31 @@ private data class QuickAction(
     val onClick: () -> Unit
 )
 
-/** Icon-only action (compact mode) with an optional count badge. */
 @Composable
-private fun CompactActionIcon(action: QuickAction) {
-    IconButton(
-        onClick = action.onClick,
-        enabled = action.enabled,
-        modifier = Modifier.size(44.dp)
+private fun CompactActionIcon(action: QuickAction, modifier: Modifier = Modifier) {
+    val contentColor = if (action.enabled) MaterialTheme.colorScheme.onSurface
+    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(enabled = action.enabled, role = Role.Button, onClick = action.onClick)
+            .padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         if (action.badgeCount > 0) {
             BadgedBox(badge = { Badge { Text(action.badgeCount.toString(), fontSize = 9.sp) } }) {
-                Icon(action.icon, contentDescription = action.label, modifier = Modifier.size(22.dp))
+                Icon(action.icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(22.dp))
             }
         } else {
-            Icon(action.icon, contentDescription = action.label, modifier = Modifier.size(22.dp))
+            Icon(action.icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(22.dp))
         }
+        Text(
+            text = action.label,
+            fontSize = 10.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            color = contentColor
+        )
     }
 }
 

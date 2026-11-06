@@ -90,13 +90,13 @@ fun RepositoryListScreen(
             isLoading = uiState.isLoading,
             errorMessage = uiState.errorMessage,
             authManager = authManager,
-            onAdd = { name, url, isClone, approximateSize, clonePath ->
-                if (isClone && url.isNotEmpty() && clonePath != null) {
+            onAdd = { name, url, isClone, approximateSize, targetPath ->
+                if (isClone && url.isNotEmpty()) {
                     requestCloneNotifications {
-                        repoViewModel.startManualClone(context, authManager, name, url, approximateSize, clonePath)
+                        repoViewModel.startManualClone(context, authManager, name, url, approximateSize, targetPath)
                     }
                 } else {
-                    repoViewModel.createRepository(name)
+                    repoViewModel.createRepository(name, targetPath)
                 }
             },
             onAddLocal = { path -> repoViewModel.addRepository(path) },

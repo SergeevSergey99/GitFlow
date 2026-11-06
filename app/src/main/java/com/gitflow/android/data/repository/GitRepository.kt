@@ -195,6 +195,7 @@ class GitRepository(
     override suspend fun refreshRepository(repository: Repository): Repository? = refreshRepositoryImpl(repository)
 
     override suspend fun getCommits(repository: Repository, page: Int, pageSize: Int): GitResult<List<Commit>> = getCommitsImpl(repository, page, pageSize)
+    override suspend fun searchCommits(repository: Repository, query: String, limit: Int): GitResult<List<Commit>> = searchCommitsImpl(repository, query, limit)
     override suspend fun getCommitByHash(hash: String, repository: Repository): GitResult<Commit> = getCommitByHashImpl(hash, repository)
     override suspend fun getCommitDiffs(commit: Commit, repository: Repository): GitResult<List<FileDiff>> = getCommitDiffsImpl(commit, repository)
 

@@ -85,6 +85,7 @@
     <string name="settings_permission_storage">Доступ к файлам</string>
     <string name="settings_permission_storage_description">Позволяет хранить репозитории в любой папке устройства и открывать существующие. На Android 11+ это разрешение «Доступ ко всем файлам».</string>
     <string name="clone_destination_title">Куда клонировать</string>
+    <string name="create_destination_title">Где создать</string>
     <string name="clone_destination_default">По умолчанию</string>
     <string name="clone_destination_choose">Выбрать…</string>
     <string name="clone_destination_folder_name">Имя папки</string>
@@ -354,6 +355,9 @@
     <string name="changes_commit_details">Детали</string>
     <string name="changes_push_short">Push</string>
     <string name="changes_publish_branch">Опубликовать ветку</string>
+    <string name="changes_commit_blocked_conflicts">Сначала разрешите конфликты</string>
+    <string name="changes_commit_blocked_nothing_staged">Отметьте файлы для коммита</string>
+    <string name="changes_commit_blocked_no_message">Введите сообщение коммита</string>
 
     <!-- GraphPresetDialog -->
     <string name="graph_preset_title">Пресет графа</string>
@@ -536,8 +540,6 @@
     <string name="add_repo_path_label">Путь к репозиторию</string>
     <string name="add_repo_path_placeholder">/storage/emulated/0/MyRepos/project</string>
     <string name="add_repo_local_description">Выберите существующий Git-репозиторий из хранилища устройства</string>
-    <string name="add_repo_repo_name_label">Имя репозитория</string>
-    <string name="add_repo_create_placeholder">my-new-project</string>
     <string name="add_repo_create_description">Это создаст новый Git-репозиторий локально</string>
     <string name="add_repo_remote_title">Просмотр удалённых репозиториев</string>
     <string name="add_repo_remote_description">Подключитесь к GitHub или GitLab для просмотра и клонирования удалённых репозиториев</string>
@@ -567,6 +569,7 @@
     <string name="graph_load_more_commits">Загрузить ещё коммиты</string>
     <string name="graph_search_hint">Поиск по сообщению, автору или хешу…</string>
     <string name="graph_search_empty">Совпадений не найдено</string>
+    <string name="graph_search_truncated">Показаны первые %1$d совпадений — уточните запрос</string>
     <string name="graph_search_results">%1$d совпадений</string>
     <string name="graph_merge_commit">Merge-коммит</string>
     <string name="graph_from_badge">из %1$s</string>

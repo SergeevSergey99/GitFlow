@@ -31,6 +31,7 @@ import kotlinx.coroutines.launch
 data class ChangesUiState(
     val changes: List<FileChange> = emptyList(),
     val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
     val isProcessing: Boolean = false,
     val isConflictLoading: Boolean = false,
     val commitMessage: String = "",
@@ -99,7 +100,10 @@ class ChangesViewModel(
     private var mergeMessagePrefill: Pair<String, String>? = null
 
     init {
-        refresh()
+        viewModelScope.launch {
+            reloadChanges()
+            _uiState.update { it.copy(isLoading = false) }
+        }
         viewModelScope.launch {
             session.snapshot
                 .filterNotNull()
@@ -113,12 +117,12 @@ class ChangesViewModel(
         }
     }
 
-    /** Reloads the working-tree state without clobbering commit input. */
+    /** Reloads the working-tree state in place: the list, its scroll position and the commit input stay on screen. */
     fun refresh() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            _uiState.update { it.copy(isRefreshing = true) }
             reloadChanges()
-            _uiState.update { it.copy(isLoading = false) }
+            _uiState.update { it.copy(isRefreshing = false) }
         }
     }
 

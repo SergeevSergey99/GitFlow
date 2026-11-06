@@ -85,6 +85,7 @@
     <string name="settings_permission_storage">File access</string>
     <string name="settings_permission_storage_description">Allows keeping repositories in any device folder and opening existing ones. On Android 11+ this is the \"All files access\" permission.</string>
     <string name="clone_destination_title">Where to clone</string>
+    <string name="create_destination_title">Where to create</string>
     <string name="clone_destination_default">Default</string>
     <string name="clone_destination_choose">Choose…</string>
     <string name="clone_destination_folder_name">Folder name</string>
@@ -354,6 +355,9 @@
     <string name="changes_commit_details">Details</string>
     <string name="changes_push_short">Push</string>
     <string name="changes_publish_branch">Publish branch</string>
+    <string name="changes_commit_blocked_conflicts">Resolve the conflicts first</string>
+    <string name="changes_commit_blocked_nothing_staged">Select files to commit</string>
+    <string name="changes_commit_blocked_no_message">Enter a commit message</string>
 
     <!-- GraphPresetDialog -->
     <string name="graph_preset_title">Graph Preset</string>
@@ -536,8 +540,6 @@
     <string name="add_repo_path_label">Repository Path</string>
     <string name="add_repo_path_placeholder">/storage/emulated/0/MyRepos/project</string>
     <string name="add_repo_local_description">Select an existing Git repository from your device storage</string>
-    <string name="add_repo_repo_name_label">Repository name</string>
-    <string name="add_repo_create_placeholder">my-new-project</string>
     <string name="add_repo_create_description">This will create a new Git repository locally</string>
     <string name="add_repo_remote_title">Browse Remote Repositories</string>
     <string name="add_repo_remote_description">Connect to GitHub or GitLab to browse and clone your remote repositories</string>
@@ -567,6 +569,7 @@
     <string name="graph_load_more_commits">Load more commits</string>
     <string name="graph_search_hint">Search by message, author or hash…</string>
     <string name="graph_search_empty">No matching commits</string>
+    <string name="graph_search_truncated">Showing the first %1$d matches — refine the query</string>
     <string name="graph_search_results">%1$d matches</string>
     <string name="graph_merge_commit">Merge commit</string>
     <string name="graph_from_badge">from %1$s</string>

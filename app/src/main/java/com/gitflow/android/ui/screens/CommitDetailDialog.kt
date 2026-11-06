@@ -82,7 +82,8 @@ private const val MAX_PARENT_NAV_DEPTH = 10
 fun CommitDetailDialog(
     commit: Commit,
     repository: Repository,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onShowActions: (Commit) -> Unit
 ) {
     val navHistory = remember { mutableStateListOf<Commit>() }
     val currentCommit = navHistory.lastOrNull() ?: commit
@@ -110,6 +111,7 @@ fun CommitDetailDialog(
                 repository = repository,
                 onDismiss = effectiveOnDismiss,
                 onClose = onDismiss,
+                onShowActions = { onShowActions(currentCommit) },
                 onNavigateToCommit = { target ->
                     if (navHistory.size < MAX_PARENT_NAV_DEPTH) navHistory.add(target)
                 }
@@ -125,6 +127,7 @@ private fun CommitDetailContent(
     repository: Repository,
     onDismiss: () -> Unit,
     onClose: () -> Unit = onDismiss,
+    onShowActions: () -> Unit,
     onNavigateToCommit: (Commit) -> Unit = {}
 ) {
     val viewModel: CommitDetailViewModel = koinViewModel(
@@ -255,6 +258,9 @@ private fun CommitDetailContent(
                             }
                         }
 
+                        IconButton(onClick = onShowActions) {
+                            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.graph_commit_actions_title))
+                        }
                         IconButton(onClick = onClose) {
                             Icon(Icons.Default.Close, contentDescription = stringResource(R.string.commit_detail_close))
                         }

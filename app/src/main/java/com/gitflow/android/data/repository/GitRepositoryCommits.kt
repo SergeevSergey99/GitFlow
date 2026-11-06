@@ -2,9 +2,11 @@ package com.gitflow.android.data.repository
 
 import com.gitflow.android.R
 import com.gitflow.android.data.models.*
+import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.api.ListBranchCommand
 import org.eclipse.jgit.diff.DiffFormatter
 import org.eclipse.jgit.lib.ObjectId
+import org.eclipse.jgit.revwalk.RevCommit
 import org.eclipse.jgit.revwalk.RevSort
 import org.eclipse.jgit.revwalk.RevWalk
 import org.eclipse.jgit.treewalk.CanonicalTreeParser
@@ -14,6 +16,58 @@ import java.io.ByteArrayOutputStream
 internal suspend fun GitRepository.getCommitsImpl(
     repository: Repository, page: Int, pageSize: Int
 ): GitResult<List<Commit>> = withGit(repository) { git ->
+    val history = loadHistory(git, repository)
+    val pageIds = history.order.commitIds.drop(page * pageSize).take(pageSize)
+    val pageCommits = RevWalk(git.repository).use { revWalk ->
+        pageIds.map { commitId -> history.toCommit(revWalk.parseCommit(commitId)) }
+    }
+    GitResult.Success(pageCommits)
+}
+
+internal suspend fun GitRepository.searchCommitsImpl(
+    repository: Repository, query: String, limit: Int
+): GitResult<List<Commit>> = withGit(repository) { git ->
+    val needle = query.trim().lowercase()
+    val history = loadHistory(git, repository)
+    val found = RevWalk(git.repository).use { revWalk ->
+        history.order.commitIds.asSequence()
+            .map { commitId -> revWalk.parseCommit(commitId) }
+            .filter { commit ->
+                commit.fullMessage.lowercase().contains(needle) ||
+                    commit.authorIdent.name.lowercase().contains(needle) ||
+                    commit.id.name.startsWith(needle)
+            }
+            .take(limit)
+            .map { commit -> history.toCommit(commit) }
+            .toList()
+    }
+    GitResult.Success(found)
+}
+
+private class LoadedHistory(
+    val order: HistoryOrder,
+    private val branchHeadsByCommit: Map<String, List<String>>,
+    private val tagsByCommit: Map<String, List<String>>
+) {
+    fun toCommit(commit: RevCommit): Commit {
+        val branchHeads = branchHeadsByCommit[commit.id.name] ?: emptyList()
+        return Commit(
+            hash = commit.id.name,
+            message = commit.shortMessage,
+            description = commit.fullMessage.removePrefix(commit.shortMessage).trim(),
+            author = commit.authorIdent.name,
+            email = commit.authorIdent.emailAddress,
+            timestamp = commit.authorIdent.`when`.time,
+            parents = commit.parents.map { it.id.name },
+            branch = branchHeads.firstOrNull() ?: "unknown",
+            tags = tagsByCommit[commit.id.name] ?: emptyList(),
+            branchHeads = branchHeads,
+            isMergeCommit = commit.parentCount > 1
+        )
+    }
+}
+
+private fun GitRepository.loadHistory(git: Git, repository: Repository): LoadedHistory {
     val jRepo = git.repository
     val branchRefs = git.branchList().call() +
         git.branchList().setListMode(ListBranchCommand.ListMode.REMOTE).call()
@@ -34,27 +88,7 @@ internal suspend fun GitRepository.getCommitsImpl(
         }
     } catch (_: Exception) {}
 
-    val pageIds = order.commitIds.drop(page * pageSize).take(pageSize)
-    val pageCommits = RevWalk(jRepo).use { revWalk ->
-        pageIds.map { commitId ->
-            val commit = revWalk.parseCommit(commitId)
-            val branchHeads = branchHeadsByCommit[commit.id.name] ?: emptyList()
-            Commit(
-                hash = commit.id.name,
-                message = commit.shortMessage,
-                description = commit.fullMessage.removePrefix(commit.shortMessage).trim(),
-                author = commit.authorIdent.name,
-                email = commit.authorIdent.emailAddress,
-                timestamp = commit.authorIdent.`when`.time,
-                parents = commit.parents.map { it.id.name },
-                branch = branchHeads.firstOrNull() ?: "unknown",
-                tags = tagsByCommit[commit.id.name] ?: emptyList(),
-                branchHeads = branchHeads,
-                isMergeCommit = commit.parentCount > 1
-            )
-        }
-    }
-    GitResult.Success(pageCommits)
+    return LoadedHistory(order, branchHeadsByCommit, tagsByCommit)
 }
 
 /** Topological order of every commit reachable from the branch [tips]: ids only, no message bodies. */

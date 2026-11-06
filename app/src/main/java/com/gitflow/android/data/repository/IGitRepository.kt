@@ -28,6 +28,8 @@ interface IGitRepository {
     suspend fun updateRepository(repository: Repository)
     suspend fun refreshRepository(repository: Repository): Repository?
     suspend fun getCommits(repository: Repository, page: Int = 0, pageSize: Int = 50): GitResult<List<Commit>>
+    /** Searches the whole history by message, author or hash prefix, in the same order as [getCommits]. */
+    suspend fun searchCommits(repository: Repository, query: String, limit: Int): GitResult<List<Commit>>
     suspend fun getCommitByHash(hash: String, repository: Repository): GitResult<Commit>
     suspend fun getChangedFiles(repository: Repository): GitResult<List<FileChange>>
     suspend fun getWorkingFileDiff(repository: Repository, filePath: String, stage: ChangeStage): GitResult<FileDiff?>

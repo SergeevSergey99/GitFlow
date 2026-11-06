@@ -1,5 +1,6 @@
 package com.gitflow.android.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.koin.androidx.compose.koinViewModel
@@ -47,12 +49,17 @@ fun MainScreen(navController: NavController) {
     var showBranchDialog by remember { mutableStateOf(false) }
 
     val pendingPullCount = snapshot?.pendingPullCommits ?: 0
+    val pendingPushCount = selectedRepository?.pendingPushCommits ?: 0
     val conflictInfo = snapshot?.conflictInfo ?: ConflictInfo()
     val operationState = conflictInfo.operation
     val conflictPaths = conflictInfo.conflictPaths
     val inConflict = operationState != RepoOperationState.NONE
     var showConflictInfo by remember { mutableStateOf(false) }
     var showAbortConfirm by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = selectedTab != MainTab.REPOSITORIES) {
+        viewModel.selectTab(MainTab.REPOSITORIES)
+    }
 
     Scaffold(
         topBar = {
@@ -90,15 +97,28 @@ fun MainScreen(navController: NavController) {
                             }
                         } else {
                             Row(verticalAlignment = Alignment.CenterVertically) {
+                                // The branch matters more than the repository name, so the name shrinks first.
                                 Text(
-                                    text = "${repo.name}  •  ",
+                                    text = repo.name,
+                                    fontSize = 18.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                Text(
+                                    text = "  •  ",
                                     fontSize = 18.sp,
                                     maxLines = 1,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                if (pendingPullCount > 0) {
+                                val syncCounters = listOfNotNull(
+                                    "↓$pendingPullCount".takeIf { pendingPullCount > 0 },
+                                    "↑$pendingPushCount".takeIf { pendingPushCount > 0 }
+                                )
+                                if (syncCounters.isNotEmpty()) {
                                     Text(
-                                        text = "↓$pendingPullCount ",
+                                        text = syncCounters.joinToString(" ") + " ",
                                         fontSize = 18.sp,
                                         fontWeight = FontWeight.Bold,
                                         maxLines = 1,
@@ -109,6 +129,7 @@ fun MainScreen(navController: NavController) {
                                     text = repo.currentBranch,
                                     fontSize = 18.sp,
                                     maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }

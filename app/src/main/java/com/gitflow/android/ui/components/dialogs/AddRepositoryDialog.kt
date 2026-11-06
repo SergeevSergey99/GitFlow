@@ -38,7 +38,7 @@ fun AddRepositoryDialog(
     onDismiss: () -> Unit,
     isLoading: Boolean = false,
     errorMessage: String? = null,
-    onAdd: (name: String, url: String, isClone: Boolean, approximateSize: Long?, clonePath: String?) -> Unit,
+    onAdd: (name: String, url: String, isClone: Boolean, approximateSize: Long?, targetPath: String) -> Unit,
     onAddLocal: (String) -> Unit = {},
     onNavigateToRemote: () -> Unit = {},
     authManager: AuthManager? = null
@@ -144,8 +144,10 @@ fun AddRepositoryDialog(
                     )
                     2 -> CreateTab(
                         name = name,
+                        parentPath = effectiveCloneParent,
                         isLoading = isLoading,
-                        onNameChange = { name = it }
+                        onNameChange = { name = it },
+                        onParentChange = { cloneParent = it }
                     )
                     3 -> RemoteTab(
                         onNavigateToRemote = {
@@ -424,19 +426,18 @@ private fun LocalTab(
 @Composable
 private fun CreateTab(
     name: String,
+    parentPath: String,
     isLoading: Boolean,
-    onNameChange: (String) -> Unit
+    onNameChange: (String) -> Unit,
+    onParentChange: (String) -> Unit
 ) {
-    OutlinedTextField(
-        value = name,
-        onValueChange = onNameChange,
-        label = { Text(stringResource(R.string.add_repo_repo_name_label)) },
-        placeholder = { Text(stringResource(R.string.add_repo_create_placeholder)) },
-        modifier = Modifier.fillMaxWidth(),
-        leadingIcon = {
-            Icon(Icons.Default.Create, contentDescription = null)
-        },
-        enabled = !isLoading
+    CloneDestinationPicker(
+        parentPath = parentPath,
+        folderName = name,
+        onParentChange = onParentChange,
+        onFolderNameChange = onNameChange,
+        enabled = !isLoading,
+        title = stringResource(R.string.create_destination_title)
     )
 
     Spacer(modifier = Modifier.height(8.dp))
@@ -517,7 +518,7 @@ private fun DialogActions(
     cloneParent: String,
     approximateSize: Long?,
     onDismiss: () -> Unit,
-    onAdd: (name: String, url: String, isClone: Boolean, approximateSize: Long?, clonePath: String?) -> Unit,
+    onAdd: (name: String, url: String, isClone: Boolean, approximateSize: Long?, targetPath: String) -> Unit,
     onAddLocal: (String) -> Unit
 ) {
     Row(
@@ -544,8 +545,8 @@ private fun DialogActions(
                         }
                     }
                     2 -> { // Create
-                        if (name.isNotEmpty()) {
-                            onAdd(name, "", false, null, null)
+                        if (isCloneTargetUsable(cloneParent, name)) {
+                            onAdd(name.trim(), "", false, null, File(cloneParent, name.trim()).absolutePath)
                         }
                     }
                 }
@@ -553,7 +554,7 @@ private fun DialogActions(
             enabled = when (selectedTab) {
                 0 -> url.isNotEmpty() && isCloneTargetUsable(cloneParent, name) && !isLoading
                 1 -> localPath.isNotEmpty() && !isLoading
-                2 -> name.isNotEmpty() && !isLoading
+                2 -> isCloneTargetUsable(cloneParent, name) && !isLoading
                 else -> false
             }
         ) {

@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
+import com.gitflow.android.data.models.GitResult
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.models.ResetMode
 import com.gitflow.android.data.repository.GitRepository
@@ -103,6 +104,24 @@ class GraphViewModelTest {
         val reset = viewModel.awaitState { it.operationResult != null && it.commits.size == 1 }
         assertEquals(GraphOperationResult("reset done", closeDialogs = true), reset.operationResult)
         assertNull(reset.actionCommit)
+    }
+
+    @Test
+    fun searchCommits_findsCommitsBeyondTheFirstPageAndRespectsLimit() = runBlocking<Unit> {
+        repeat(60) { index ->
+            writeFile("file$index.txt", "$index")
+            commit("file$index.txt", "change $index")
+        }
+
+        val byMessage = (gitRepository.searchCommits(model, "CHANGE 0", limit = 10) as GitResult.Success).data
+        assertEquals(listOf("change 0"), byMessage.map { it.message })
+
+        val byAuthor = (gitRepository.searchCommits(model, "test user", limit = 5) as GitResult.Success).data
+        assertEquals(5, byAuthor.size)
+
+        val initHash = git.log().all().call().last().name
+        val byHash = (gitRepository.searchCommits(model, initHash.take(8), limit = 10) as GitResult.Success).data
+        assertEquals(listOf(initHash), byHash.map { it.hash })
     }
 
     @Test

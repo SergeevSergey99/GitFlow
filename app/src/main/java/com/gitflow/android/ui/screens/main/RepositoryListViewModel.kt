@@ -50,13 +50,14 @@ class RepositoryListViewModel(
         _uiState.update { it.copy(deleteMessage = null) }
     }
 
-    fun createRepository(name: String) {
+    fun createRepository(name: String, targetPath: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-            val baseDir = settingsManager.getRepositoriesBaseDir(getApplication())
-            val localPath = "${baseDir.absolutePath}/$name"
-            when (val result = gitRepository.createRepository(name, localPath)) {
-                is GitResult.Success -> _uiState.update { it.copy(showAddDialog = false, isLoading = false) }
+            when (val result = gitRepository.createRepository(name, targetPath)) {
+                is GitResult.Success -> {
+                    File(targetPath).parent?.let { settingsManager.rememberCloneParent(it) }
+                    _uiState.update { it.copy(showAddDialog = false, isLoading = false) }
+                }
                 is GitResult.Failure -> _uiState.update {
                     it.copy(errorMessage = result.message.ifBlank { str(R.string.repo_list_create_error) }, isLoading = false)
                 }

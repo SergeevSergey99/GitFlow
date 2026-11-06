@@ -120,7 +120,8 @@ fun CloneDestinationPicker(
     folderName: String,
     onParentChange: (String) -> Unit,
     onFolderNameChange: (String) -> Unit,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    title: String = stringResource(R.string.clone_destination_title)
 ) {
     val settingsManager: AppSettingsManager = koinInject()
     val defaultParent = rememberDefaultCloneParent()
@@ -141,7 +142,7 @@ fun CloneDestinationPicker(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(stringResource(R.string.clone_destination_title), style = MaterialTheme.typography.labelLarge)
+        Text(title, style = MaterialTheme.typography.labelLarge)
         Row(
             modifier = Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)

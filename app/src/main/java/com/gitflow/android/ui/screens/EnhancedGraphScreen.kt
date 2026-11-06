@@ -138,24 +138,16 @@ fun EnhancedGraphView(
     val graphData = remember(commits) { buildGraphData(commits) }
 
     var searchQuery by remember { mutableStateOf("") }
-    val filteredCommits = remember(commits, searchQuery) {
-        if (searchQuery.isBlank()) emptyList()
-        else {
-            val q = searchQuery.trim().lowercase()
-            commits.filter { c ->
-                c.message.lowercase().contains(q) ||
-                    c.author.lowercase().contains(q) ||
-                    c.hash.startsWith(q, ignoreCase = true)
-            }
-        }
-    }
 
     Column(Modifier.fillMaxSize()) {
         // Search bar — always visible when commits are loaded
         if (!isLoading && commits.isNotEmpty()) {
             CommitSearchBar(
                 query = searchQuery,
-                onQueryChange = { searchQuery = it }
+                onQueryChange = {
+                    searchQuery = it
+                    viewModel.search(it)
+                }
             )
         }
 
@@ -171,9 +163,12 @@ fun EnhancedGraphView(
                 GraphLoadError(message = uiState.loadError.orEmpty(), onRetry = viewModel::retry)
             } else if (commits.isEmpty()) {
                 EmptyStateMessage(stringResource(R.string.graph_no_commits))
+            } else if (searchQuery.isNotBlank() && uiState.isSearching) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             } else if (searchQuery.isNotBlank()) {
                 SearchResultsList(
-                    commits = filteredCommits,
+                    commits = uiState.searchResults,
+                    isTruncated = uiState.searchResults.size >= GraphViewModel.SEARCH_LIMIT,
                     onCommitClick = { commit ->
                         selectedCommit = commit
                         showCommitDetail = true
@@ -219,6 +214,12 @@ fun EnhancedGraphView(
                 onDismiss = {
                     showCommitDetail = false
                     selectedCommit = null
+                },
+                onShowActions = { target ->
+                    showCommitDetail = false
+                    selectedCommit = null
+                    viewModel.selectActionCommit(target)
+                    showActionsSheet = true
                 }
             )
         }
@@ -661,6 +662,7 @@ private fun CommitSearchBar(
 @Composable
 private fun SearchResultsList(
     commits: List<Commit>,
+    isTruncated: Boolean,
     onCommitClick: (Commit) -> Unit,
     onCommitLongPress: (Commit) -> Unit
 ) {
@@ -678,6 +680,16 @@ private fun SearchResultsList(
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
+        if (isTruncated) {
+            item {
+                Text(
+                    text = stringResource(R.string.graph_search_truncated, commits.size),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(4.dp)
+                )
+            }
+        }
         items(commits, key = { it.hash }) { commit ->
             Surface(
                 modifier = Modifier

@@ -12,6 +12,7 @@ import com.gitflow.android.data.models.getOrNull
 import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.data.repository.genericFailure
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,7 +32,9 @@ data class GraphUiState(
     val actionCommitTags: List<String> = emptyList(),
     val isTagsLoading: Boolean = false,
     val isOperationRunning: Boolean = false,
-    val operationResult: GraphOperationResult? = null
+    val operationResult: GraphOperationResult? = null,
+    val searchResults: List<Commit> = emptyList(),
+    val isSearching: Boolean = false
 )
 
 class GraphViewModel(
@@ -48,6 +51,7 @@ class GraphViewModel(
     private var pageSize = PAGE_SIZE
     private var commitsJob: Job? = null
     private var tagsJob: Job? = null
+    private var searchJob: Job? = null
 
     init {
         loadCommits()
@@ -64,6 +68,20 @@ class GraphViewModel(
     fun loadMore() {
         pageSize += PAGE_SIZE
         loadCommits()
+    }
+
+    fun search(query: String) {
+        searchJob?.cancel()
+        if (query.isBlank()) {
+            _uiState.update { it.copy(searchResults = emptyList(), isSearching = false) }
+            return
+        }
+        _uiState.update { it.copy(isSearching = true) }
+        searchJob = viewModelScope.launch {
+            delay(SEARCH_DEBOUNCE_MS)
+            val results = gitRepository.searchCommits(repository, query, SEARCH_LIMIT).getOrNull().orEmpty()
+            _uiState.update { it.copy(searchResults = results, isSearching = false) }
+        }
     }
 
     fun selectActionCommit(commit: Commit) {
@@ -147,7 +165,9 @@ class GraphViewModel(
         }
     }
 
-    private companion object {
-        const val PAGE_SIZE = 50
+    companion object {
+        private const val PAGE_SIZE = 50
+        private const val SEARCH_DEBOUNCE_MS = 300L
+        const val SEARCH_LIMIT = 200
     }
 }
