@@ -34,7 +34,8 @@ data class GraphUiState(
     val isOperationRunning: Boolean = false,
     val operationResult: GraphOperationResult? = null,
     val searchResults: List<Commit> = emptyList(),
-    val isSearching: Boolean = false
+    val isSearching: Boolean = false,
+    val isFetching: Boolean = false
 )
 
 class GraphViewModel(
@@ -68,6 +69,29 @@ class GraphViewModel(
     fun loadMore() {
         pageSize += PAGE_SIZE
         loadCommits()
+    }
+
+    // A successful fetch reports nothing: history reloads on the change event it emits and the new commits show up.
+    fun fetch() {
+        if (_uiState.value.isFetching) return
+        if (!repository.hasRemoteOrigin) {
+            loadCommits()
+            return
+        }
+        _uiState.update { it.copy(isFetching = true) }
+        viewModelScope.launch {
+            val failure = when (val result = gitRepository.fetch(repository)) {
+                is GitResult.Success -> null
+                is GitResult.Failure.AuthRequired -> str(R.string.auth_session_expired_banner)
+                is GitResult.Failure -> result.message.ifBlank { str(R.string.changes_fetch_failed) }
+            }
+            _uiState.update {
+                it.copy(
+                    isFetching = false,
+                    operationResult = failure?.let { message -> GraphOperationResult(message, closeDialogs = false) } ?: it.operationResult
+                )
+            }
+        }
     }
 
     fun search(query: String) {

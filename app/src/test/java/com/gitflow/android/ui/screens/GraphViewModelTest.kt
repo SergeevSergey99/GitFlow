@@ -19,6 +19,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.transport.URIish
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -104,6 +105,27 @@ class GraphViewModelTest {
         val reset = viewModel.awaitState { it.operationResult != null && it.commits.size == 1 }
         assertEquals(GraphOperationResult("reset done", closeDialogs = true), reset.operationResult)
         assertNull(reset.actionCommit)
+    }
+
+    @Test
+    fun fetch_bringsRemoteCommitsIntoHistory() = runBlocking<Unit> {
+        val serverDir = tempFolder.newFolder("server")
+        Git.cloneRepository().setURI(repoDir.toURI().toString()).setDirectory(serverDir).call().use { server ->
+            File(serverDir, "remote.txt").writeText("remote")
+            server.add().addFilepattern("remote.txt").call()
+            server.commit().setMessage("remote change")
+                .setAuthor("Test User", "test@example.com")
+                .setCommitter("Test User", "test@example.com")
+                .call()
+        }
+        git.remoteAdd().setName("origin").setUri(URIish(serverDir.toURI().toURL())).call()
+        val viewModel = GraphViewModel(application, gitRepository, model.copy(hasRemoteOrigin = true))
+        viewModel.awaitState { !it.isLoading }
+
+        viewModel.fetch()
+
+        val fetched = viewModel.awaitState { state -> !state.isFetching && state.commits.any { it.message == "remote change" } }
+        assertNull(fetched.operationResult)
     }
 
     @Test
