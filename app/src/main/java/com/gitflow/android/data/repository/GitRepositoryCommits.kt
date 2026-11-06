@@ -1,5 +1,6 @@
 package com.gitflow.android.data.repository
 
+import com.gitflow.android.R
 import com.gitflow.android.data.models.*
 import org.eclipse.jgit.api.ListBranchCommand
 import org.eclipse.jgit.diff.DiffFormatter
@@ -78,7 +79,7 @@ private fun topologicalOrder(
 internal suspend fun GitRepository.getCommitByHashImpl(hash: String, repository: Repository): GitResult<Commit> =
     withGit(repository) { git ->
         val objectId = git.repository.resolve(hash)
-            ?: return@withGit GitResult.Failure.Generic("Commit not found: $hash")
+            ?: return@withGit GitResult.Failure.Generic(text(R.string.git_error_cannot_resolve_commit, hash))
         val revCommit = RevWalk(git.repository).use { revWalk -> revWalk.parseCommit(objectId) }
         GitResult.Success(Commit(
             hash = revCommit.id.name,

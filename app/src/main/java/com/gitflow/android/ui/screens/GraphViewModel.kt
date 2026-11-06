@@ -10,6 +10,7 @@ import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.models.ResetMode
 import com.gitflow.android.data.models.getOrNull
 import com.gitflow.android.data.repository.IGitRepository
+import com.gitflow.android.data.repository.genericFailure
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -130,7 +131,7 @@ class GraphViewModel(
             val outcome = try {
                 operation()
             } catch (exception: Exception) {
-                GitResult.Failure.Generic(exception.localizedMessage ?: "Unknown error", exception)
+                genericFailure(exception)
             }
             val result = when (outcome) {
                 is GitResult.Success -> GraphOperationResult(successMessage, closeDialogs = true)

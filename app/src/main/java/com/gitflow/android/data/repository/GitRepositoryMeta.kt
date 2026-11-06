@@ -2,6 +2,7 @@ package com.gitflow.android.data.repository
 
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
+import com.gitflow.android.R
 import com.gitflow.android.data.models.GitResult
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.models.getOrNull
@@ -17,15 +18,15 @@ internal suspend fun GitRepository.addRepositoryImpl(path: String): GitResult<Re
             val uri = Uri.parse(path)
             val documentFile = DocumentFile.fromTreeUri(context, uri)
             if (documentFile == null || !documentFile.exists()) {
-                return@withContext GitResult.Failure.Generic("Cannot access directory")
+                return@withContext GitResult.Failure.Generic(text(R.string.git_error_cannot_access_directory))
             }
-            return@withContext GitResult.Failure.Generic("SAF URI support needs additional implementation")
+            return@withContext GitResult.Failure.Generic(text(R.string.git_error_saf_unsupported))
         } else {
             File(path)
         }
 
         if (!repoDir.exists() || !File(repoDir, ".git").exists()) {
-            return@withContext GitResult.Failure.Generic("Directory is not a Git repository: $path")
+            return@withContext GitResult.Failure.Generic(text(R.string.git_error_not_a_repository, path))
         }
 
         Git.open(repoDir).use { git ->
@@ -51,7 +52,7 @@ internal suspend fun GitRepository.addRepositoryImpl(path: String): GitResult<Re
             GitResult.Success(repository)
         }
     } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+        genericFailure(e)
     }
 }
 
@@ -59,14 +60,14 @@ internal suspend fun GitRepository.createRepositoryImpl(name: String, localPath:
     try {
         val repoDir = File(localPath)
         if (repoDir.exists()) {
-            return@withContext GitResult.Failure.Generic("Directory already exists: ${repoDir.absolutePath}")
+            return@withContext GitResult.Failure.Generic(text(R.string.git_error_directory_exists, repoDir.absolutePath))
         }
 
         repoDir.mkdirs()
         Git.init().setDirectory(repoDir).call().use { git ->
             val (authorName, authorEmail) = resolveCommitIdentity(git) ?: run {
                 repoDir.deleteRecursively()
-                return@withContext GitResult.Failure.IdentityRequired()
+                return@withContext identityRequired()
             }
             File(repoDir, "README.md").writeText("# $name\n\nThis repository was created with GitFlow Android.")
             git.add().addFilepattern("README.md").call()
@@ -96,7 +97,7 @@ internal suspend fun GitRepository.createRepositoryImpl(name: String, localPath:
             GitResult.Success(repository)
         }
     } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+        genericFailure(e)
     }
 }
 
@@ -111,7 +112,7 @@ internal suspend fun GitRepository.cloneRepositoryImpl(
         val targetDir = if (!customDestination.isNullOrEmpty()) File(customDestination) else File(localPath)
 
         if (targetDir.exists()) {
-            return@withContext GitResult.Failure.Generic("Directory already exists: ${targetDir.absolutePath}")
+            return@withContext GitResult.Failure.Generic(text(R.string.git_error_directory_exists, targetDir.absolutePath))
         }
 
         targetDir.parentFile?.mkdirs()
@@ -141,7 +142,7 @@ internal suspend fun GitRepository.cloneRepositoryImpl(
         } catch (e: Exception) {
             if (progressCallback?.isCancelled() == true) {
                 if (targetDir.exists()) targetDir.deleteRecursively()
-                return@withContext GitResult.Failure.Cancelled("Clone cancelled by user")
+                return@withContext GitResult.Failure.Cancelled(text(R.string.git_error_clone_cancelled))
             } else {
                 throw e
             }
@@ -169,26 +170,26 @@ internal suspend fun GitRepository.cloneRepositoryImpl(
             GitResult.Success(repository)
         }
     } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+        genericFailure(e)
     }
 }
 
 internal suspend fun GitRepository.removeRepositoryWithFilesImpl(repositoryId: String): GitResult<Unit> = withContext(Dispatchers.IO) {
     try {
         val repository = getRepositories().find { it.id == repositoryId }
-            ?: return@withContext GitResult.Failure.Generic("Repository not found")
+            ?: return@withContext GitResult.Failure.Generic(text(R.string.git_error_repository_not_found))
 
         val repoDir = java.io.File(repository.path)
         if (repoDir.exists()) {
             if (!repoDir.deleteRecursively()) {
-                return@withContext GitResult.Failure.Generic("Failed to delete repository files")
+                return@withContext GitResult.Failure.Generic(text(R.string.git_error_delete_files_failed))
             }
         }
 
         dataStore.removeRepository(repositoryId)
         GitResult.Success(Unit)
     } catch (e: Exception) {
-        GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+        genericFailure(e)
     }
 }
 

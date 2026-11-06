@@ -1,9 +1,9 @@
 package com.gitflow.android.ui.screens.main
 
 import android.app.Application
-import android.content.SharedPreferences
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitUser
@@ -11,7 +11,9 @@ import com.gitflow.android.data.settings.AppSettingsManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 data class ConnectedAccount(
     val user: GitUser,
@@ -42,16 +44,13 @@ class SettingsViewModel(
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
-    private val previewListener: SharedPreferences.OnSharedPreferenceChangeListener
-
     init {
         loadInitialState()
-        previewListener = settingsManager.registerPreviewSettingsListener {
-            _uiState.update {
-                it.copy(
-                    previewExtensions = settingsManager.getPreviewExtensions().toList(),
-                    previewFileNames = settingsManager.getPreviewFileNames().toList()
-                )
+        viewModelScope.launch {
+            combine(settingsManager.previewExtensionsFlow, settingsManager.previewFileNamesFlow) { extensions, fileNames ->
+                extensions.toList() to fileNames.toList()
+            }.collect { (extensions, fileNames) ->
+                _uiState.update { it.copy(previewExtensions = extensions, previewFileNames = fileNames) }
             }
         }
     }
@@ -75,9 +74,7 @@ class SettingsViewModel(
             customStoragePath = customUri,
             repositoriesBaseDir = if (customUri != null) {
                 settingsManager.getRepositoriesBaseDir(app).absolutePath
-            } else null,
-            previewExtensions = settingsManager.getPreviewExtensions().toList(),
-            previewFileNames = settingsManager.getPreviewFileNames().toList()
+            } else null
         )
     }
 
@@ -134,28 +131,11 @@ class SettingsViewModel(
         _uiState.update { it.copy(showPreviewSettings = show) }
     }
 
-    fun addPreviewExtension(value: String) {
-        settingsManager.addPreviewExtension(value)
-        _uiState.update { it.copy(previewExtensions = settingsManager.getPreviewExtensions().toList()) }
-    }
+    fun addPreviewExtension(value: String) = settingsManager.addPreviewExtension(value)
 
-    fun removePreviewExtension(value: String) {
-        settingsManager.removePreviewExtension(value)
-        _uiState.update { it.copy(previewExtensions = settingsManager.getPreviewExtensions().toList()) }
-    }
+    fun removePreviewExtension(value: String) = settingsManager.removePreviewExtension(value)
 
-    fun addPreviewFileName(value: String) {
-        settingsManager.addPreviewFileName(value)
-        _uiState.update { it.copy(previewFileNames = settingsManager.getPreviewFileNames().toList()) }
-    }
+    fun addPreviewFileName(value: String) = settingsManager.addPreviewFileName(value)
 
-    fun removePreviewFileName(value: String) {
-        settingsManager.removePreviewFileName(value)
-        _uiState.update { it.copy(previewFileNames = settingsManager.getPreviewFileNames().toList()) }
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        settingsManager.unregisterPreviewSettingsListener(previewListener)
-    }
+    fun removePreviewFileName(value: String) = settingsManager.removePreviewFileName(value)
 }

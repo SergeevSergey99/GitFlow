@@ -24,6 +24,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.*
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -89,16 +92,29 @@ fun CommitDetailDialog(
         onDismiss
     }
 
-    key(currentCommit.hash) {
-        CommitDetailContent(
-            commit = currentCommit,
-            repository = repository,
-            onDismiss = effectiveOnDismiss,
-            onClose = onDismiss,
-            onNavigateToCommit = { target ->
-                if (navHistory.size < MAX_PARENT_NAV_DEPTH) navHistory.add(target)
-            }
-        )
+    // Scoped to the dialog: in the host screen's store every opened commit's ViewModel, diffs
+    // included, would stay in memory until the user leaves that screen.
+    val dialogStoreOwner = remember {
+        object : ViewModelStoreOwner {
+            override val viewModelStore = ViewModelStore()
+        }
+    }
+    DisposableEffect(dialogStoreOwner) {
+        onDispose { dialogStoreOwner.viewModelStore.clear() }
+    }
+
+    CompositionLocalProvider(LocalViewModelStoreOwner provides dialogStoreOwner) {
+        key(currentCommit.hash) {
+            CommitDetailContent(
+                commit = currentCommit,
+                repository = repository,
+                onDismiss = effectiveOnDismiss,
+                onClose = onDismiss,
+                onNavigateToCommit = { target ->
+                    if (navHistory.size < MAX_PARENT_NAV_DEPTH) navHistory.add(target)
+                }
+            )
+        }
     }
 }
 
@@ -119,18 +135,8 @@ private fun CommitDetailContent(
 
     val context = LocalContext.current
     val settingsManager: AppSettingsManager = koinInject()
-    var previewExtensions by remember { mutableStateOf(settingsManager.getPreviewExtensions()) }
-    var previewFileNames by remember { mutableStateOf(settingsManager.getPreviewFileNames()) }
-
-    DisposableEffect(settingsManager) {
-        val listener = settingsManager.registerPreviewSettingsListener {
-            previewExtensions = settingsManager.getPreviewExtensions()
-            previewFileNames = settingsManager.getPreviewFileNames()
-        }
-        onDispose {
-            settingsManager.unregisterPreviewSettingsListener(listener)
-        }
-    }
+    val previewExtensions by settingsManager.previewExtensionsFlow.collectAsState()
+    val previewFileNames by settingsManager.previewFileNamesFlow.collectAsState()
 
     val normalizedPreviewExtensions = remember(previewExtensions) {
         previewExtensions.mapNotNull { normalizeExtensionToken(it) }.toSet()
@@ -1634,18 +1640,8 @@ fun FileTreeView(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val settingsManager: AppSettingsManager = koinInject()
-    var previewExtensions by remember { mutableStateOf(settingsManager.getPreviewExtensions()) }
-    var previewFileNames by remember { mutableStateOf(settingsManager.getPreviewFileNames()) }
-
-    DisposableEffect(settingsManager) {
-        val listener = settingsManager.registerPreviewSettingsListener {
-            previewExtensions = settingsManager.getPreviewExtensions()
-            previewFileNames = settingsManager.getPreviewFileNames()
-        }
-        onDispose {
-            settingsManager.unregisterPreviewSettingsListener(listener)
-        }
-    }
+    val previewExtensions by settingsManager.previewExtensionsFlow.collectAsState()
+    val previewFileNames by settingsManager.previewFileNamesFlow.collectAsState()
 
     val normalizedPreviewExtensions = remember(previewExtensions) {
         previewExtensions.mapNotNull { normalizeExtensionToken(it) }.toSet()

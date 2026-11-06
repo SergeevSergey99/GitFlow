@@ -35,8 +35,7 @@ class MainViewModel(
     )
     val selectedTab: StateFlow<MainTab> = _selectedTab.asStateFlow()
 
-    private val _selectedGraphPreset = MutableStateFlow(settingsManager.getGraphPreset())
-    val selectedGraphPreset: StateFlow<String> = _selectedGraphPreset.asStateFlow()
+    val selectedGraphPreset: StateFlow<String> = settingsManager.graphPresetFlow
 
     val selectedColorTheme: StateFlow<String> = settingsManager.colorThemeFlow
     val selectedDarkMode: StateFlow<String> = settingsManager.darkModeFlow
@@ -62,10 +61,7 @@ class MainViewModel(
         _selectedTab.value = MainTab.GRAPH
     }
 
-    fun changeGraphPreset(preset: String) {
-        _selectedGraphPreset.value = preset
-        settingsManager.setGraphPreset(preset)
-    }
+    fun changeGraphPreset(preset: String) = settingsManager.setGraphPreset(preset)
 
     fun changeColorTheme(theme: String) = settingsManager.setColorTheme(theme)
 

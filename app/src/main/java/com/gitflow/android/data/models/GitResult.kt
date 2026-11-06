@@ -32,24 +32,16 @@ sealed class GitResult<out T> {
         ) : Failure()
 
         /** Commit attempted with nothing staged. */
-        data class NoStagedChanges(
-            override val message: String = "No staged changes to commit"
-        ) : Failure()
+        data class NoStagedChanges(override val message: String) : Failure()
 
         /** Neither the repo config, a signed-in account nor the app settings give a name and email. */
-        data class IdentityRequired(
-            override val message: String = "Commit author is not configured"
-        ) : Failure()
+        data class IdentityRequired(override val message: String) : Failure()
 
         /** Tag creation failed because the tag already exists. */
-        data class TagAlreadyExists(val tagName: String) : Failure() {
-            override val message: String get() = "Tag '$tagName' already exists"
-        }
+        data class TagAlreadyExists(val tagName: String, override val message: String) : Failure()
 
         /** Operation was cancelled by the user. */
-        data class Cancelled(
-            override val message: String = "Operation cancelled"
-        ) : Failure()
+        data class Cancelled(override val message: String) : Failure()
 
         /**
          * Network-level failure during a remote operation (push, pull, fetch, clone).

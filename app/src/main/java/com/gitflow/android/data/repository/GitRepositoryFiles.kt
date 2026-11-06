@@ -1,5 +1,6 @@
 package com.gitflow.android.data.repository
 
+import com.gitflow.android.R
 import com.gitflow.android.data.models.*
 import com.gitflow.android.data.models.GitResult
 import org.eclipse.jgit.lib.Constants
@@ -37,7 +38,7 @@ internal suspend fun GitRepository.getFileContentBytesImpl(commit: Commit, fileP
         val bytes = RevWalk(jRepo).use { revWalk ->
             val revCommit = revWalk.parseCommit(jRepo.resolve(commit.hash))
             getFileContentFromCommitBytes(jRepo, revCommit, filePath)
-        } ?: return@withGit GitResult.Failure.Generic("File not found in commit: $filePath")
+        } ?: return@withGit GitResult.Failure.Generic(text(R.string.git_error_file_not_in_commit, filePath))
         GitResult.Success(bytes)
     }
 
@@ -48,7 +49,7 @@ internal suspend fun GitRepository.getFileContentBytesImpl(commit: Commit, fileP
 internal suspend fun GitRepository.restoreFileToCommitImpl(commit: Commit, filePath: String, repository: Repository): GitResult<Unit> =
     withGit(repository) { git ->
         git.repository.resolve(commit.hash)
-            ?: return@withGit GitResult.Failure.Generic("Cannot resolve commit: ${commit.hash}")
+            ?: return@withGit GitResult.Failure.Generic(text(R.string.git_error_cannot_resolve_commit, commit.hash))
         git.checkout().setStartPoint(commit.hash).setForce(true).addPath(filePath).call()
         GitResult.Success(Unit)
     }
@@ -57,10 +58,10 @@ internal suspend fun GitRepository.restoreFileToParentCommitImpl(commit: Commit,
     withGit(repository) { git ->
         val jRepo = git.repository
         val commitId = jRepo.resolve(commit.hash)
-            ?: return@withGit GitResult.Failure.Generic("Cannot resolve commit: ${commit.hash}")
+            ?: return@withGit GitResult.Failure.Generic(text(R.string.git_error_cannot_resolve_commit, commit.hash))
         val parentHash = RevWalk(jRepo).use { revWalk ->
             revWalk.parseCommit(commitId).parents.firstOrNull()?.name
-        } ?: return@withGit GitResult.Failure.Generic("Commit has no parent: ${commit.hash}")
+        } ?: return@withGit GitResult.Failure.Generic(text(R.string.git_error_no_parent, commit.hash))
 
         git.checkout().setStartPoint(parentHash).setForce(true).addPath(filePath).call()
         GitResult.Success(Unit)
@@ -73,7 +74,7 @@ internal suspend fun GitRepository.restoreFileToParentCommitImpl(commit: Commit,
 internal suspend fun GitRepository.getFileHistoryImpl(commit: Commit, filePath: String, repository: Repository): GitResult<List<Commit>> =
     withGit(repository) { git ->
         val commitId = git.repository.resolve(commit.hash)
-            ?: return@withGit GitResult.Failure.Generic("Cannot resolve commit: ${commit.hash}")
+            ?: return@withGit GitResult.Failure.Generic(text(R.string.git_error_cannot_resolve_commit, commit.hash))
         GitResult.Success(git.log().add(commitId).addPath(filePath).call().map { mapRevCommitToCommit(it) })
     }
 

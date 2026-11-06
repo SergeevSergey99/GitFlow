@@ -1,6 +1,7 @@
 package com.gitflow.android.data.repository
 
 import android.content.Context
+import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.*
 import com.gitflow.android.data.settings.AppSettingsManager
@@ -250,6 +251,10 @@ class GitRepository(
 
     // ---------- Shared internal helpers ----------
 
+    internal fun text(id: Int, vararg args: Any): String = context.getString(id, *args)
+
+    internal fun identityRequired() = GitResult.Failure.IdentityRequired(text(R.string.git_error_identity_required))
+
     internal suspend fun <T> withGit(
         repository: Repository,
         onError: (Exception) -> GitResult.Failure = ::genericFailure,
@@ -472,4 +477,4 @@ internal class HistoryOrder(
 )
 
 internal fun genericFailure(exception: Exception): GitResult.Failure =
-    GitResult.Failure.Generic(exception.message ?: "Unknown error", exception)
+    GitResult.Failure.Generic(exception.message ?: exception.javaClass.simpleName, exception)

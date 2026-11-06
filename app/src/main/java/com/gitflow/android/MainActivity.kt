@@ -20,6 +20,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import com.gitflow.android.ui.theme.GitFlowTheme
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
+import org.koin.core.context.GlobalContext
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
@@ -28,7 +29,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun updateBaseContextLocale(context: Context): Context {
-        val settingsManager = AppSettingsManager(context)
+        val settingsManager: AppSettingsManager = GlobalContext.get().get()
         val language = settingsManager.getLanguage()
 
         if (language == AppSettingsManager.LANGUAGE_SYSTEM) {

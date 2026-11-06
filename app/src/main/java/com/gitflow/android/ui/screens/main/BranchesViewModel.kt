@@ -3,6 +3,7 @@ package com.gitflow.android.ui.screens.main
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.gitflow.android.R
 import com.gitflow.android.data.models.Branch
 import com.gitflow.android.data.models.GitResult
 import com.gitflow.android.data.models.RepoOperationState
@@ -33,6 +34,8 @@ class BranchesViewModel(
     private val gitRepository: IGitRepository,
     session: RepositorySession
 ) : AndroidViewModel(application) {
+
+    private fun str(id: Int, vararg args: Any): String = getApplication<Application>().getString(id, *args)
 
     private val _uiState = MutableStateFlow(BranchesUiState())
     val uiState: StateFlow<BranchesUiState> = _uiState.asStateFlow()
@@ -67,7 +70,7 @@ class BranchesViewModel(
     fun checkoutBranch(branch: Branch) {
         runOp {
             when (val result = gitRepository.checkoutBranch(repository, branch.name, branch.isLocal)) {
-                is GitResult.Success -> succeed("Switched to ${branch.name}")
+                is GitResult.Success -> succeed(str(R.string.branches_checked_out, branch.name))
                 is GitResult.Failure -> fail(result.message)
             }
         }
@@ -75,12 +78,12 @@ class BranchesViewModel(
 
     fun createBranch(name: String, checkout: Boolean) {
         if (name.isBlank()) {
-            _uiState.update { it.copy(errorMessage = "Branch name cannot be empty") }
+            _uiState.update { it.copy(errorMessage = str(R.string.branches_name_empty)) }
             return
         }
         runOp {
             when (val result = gitRepository.createBranch(repository, name.trim(), checkout)) {
-                is GitResult.Success -> succeed("Branch $name created")
+                is GitResult.Success -> succeed(str(R.string.branches_created, name.trim()))
                 is GitResult.Failure -> fail(result.message)
             }
         }
@@ -89,7 +92,7 @@ class BranchesViewModel(
     fun deleteBranch(branch: Branch, force: Boolean) {
         runOp {
             when (val result = gitRepository.deleteBranch(repository, branch.name, force)) {
-                is GitResult.Success -> succeed("Branch ${branch.name} deleted")
+                is GitResult.Success -> succeed(str(R.string.branches_deleted, branch.name))
                 is GitResult.Failure -> fail(result.message)
             }
         }
@@ -98,7 +101,7 @@ class BranchesViewModel(
     fun pushBranch(branch: Branch) {
         runOp {
             when (val result = gitRepository.pushBranch(repository, branch.name)) {
-                is GitResult.Success -> succeed("Pushed ${branch.name}")
+                is GitResult.Success -> succeed(str(R.string.branches_pushed, branch.name))
                 is GitResult.Failure -> fail(result.message)
             }
         }
@@ -109,7 +112,7 @@ class BranchesViewModel(
         if (trimmed.isBlank() || trimmed == branch.name) return
         runOp {
             when (val result = gitRepository.renameBranch(repository, branch.name, trimmed)) {
-                is GitResult.Success -> succeed("Branch renamed to $trimmed")
+                is GitResult.Success -> succeed(str(R.string.branches_renamed, trimmed))
                 is GitResult.Failure -> fail(result.message)
             }
         }
@@ -118,7 +121,7 @@ class BranchesViewModel(
     fun mergeBranch(branch: Branch) {
         runOp {
             when (val result = gitRepository.mergeBranch(repository, branch.name)) {
-                is GitResult.Success -> succeed("Merged ${branch.name} into current branch")
+                is GitResult.Success -> succeed(str(R.string.branches_merged, branch.name))
                 is GitResult.Failure.Conflict -> conflict()
                 is GitResult.Failure -> fail(result.message)
             }
@@ -128,7 +131,7 @@ class BranchesViewModel(
     fun rebaseOnto(branch: Branch) {
         runOp {
             when (val result = gitRepository.rebaseCurrentOnto(repository, branch.name)) {
-                is GitResult.Success -> succeed("Rebased current branch onto ${branch.name}")
+                is GitResult.Success -> succeed(str(R.string.branches_rebased, branch.name))
                 is GitResult.Failure.Conflict -> conflict()
                 is GitResult.Failure -> fail(result.message)
             }
@@ -138,7 +141,7 @@ class BranchesViewModel(
     fun continueRebase() {
         runOp {
             when (val result = gitRepository.rebaseContinue(repository)) {
-                is GitResult.Success -> succeed("Rebase completed")
+                is GitResult.Success -> succeed(str(R.string.branches_rebase_completed))
                 is GitResult.Failure.Conflict -> conflict()
                 is GitResult.Failure -> fail(result.message)
             }
@@ -153,7 +156,7 @@ class BranchesViewModel(
                 else -> gitRepository.abortMerge(repository)
             }
             when (result) {
-                is GitResult.Success -> succeed("Operation aborted")
+                is GitResult.Success -> succeed(str(R.string.branches_operation_aborted))
                 is GitResult.Failure -> fail(result.message)
             }
         }

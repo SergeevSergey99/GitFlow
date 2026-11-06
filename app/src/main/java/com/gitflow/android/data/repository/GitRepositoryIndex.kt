@@ -1,5 +1,6 @@
 package com.gitflow.android.data.repository
 
+import com.gitflow.android.R
 import com.gitflow.android.data.models.*
 import com.gitflow.android.data.models.GitResult
 import org.eclipse.jgit.api.CheckoutCommand
@@ -174,10 +175,10 @@ internal suspend fun GitRepository.commitImpl(repository: Repository, message: S
         // "nothing staged" case for a normal, non-merge commit.
         val mergeInProgress = git.repository.readMergeHeads()?.isNotEmpty() == true
         if (!mergeInProgress && status.added.isEmpty() && status.changed.isEmpty() && status.removed.isEmpty()) {
-            return@withGit GitResult.Failure.NoStagedChanges()
+            return@withGit GitResult.Failure.NoStagedChanges(text(R.string.git_error_no_staged_changes))
         }
         val (name, email) = resolveCommitIdentity(git)
-            ?: return@withGit GitResult.Failure.IdentityRequired()
+            ?: return@withGit identityRequired()
         git.commit().setMessage(message)
             .setAuthor(name, email)
             .setCommitter(name, email)
@@ -193,7 +194,7 @@ internal suspend fun GitRepository.commitImpl(repository: Repository, message: S
 internal suspend fun GitRepository.amendLastCommitImpl(repository: Repository, message: String): GitResult<Unit> =
     withGit(repository) { git ->
         val (name, email) = resolveCommitIdentity(git)
-            ?: return@withGit GitResult.Failure.IdentityRequired()
+            ?: return@withGit identityRequired()
         git.commit().setAmend(true).setMessage(message)
             .setAuthor(name, email)
             .setCommitter(name, email)

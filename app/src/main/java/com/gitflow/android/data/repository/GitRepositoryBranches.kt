@@ -1,5 +1,6 @@
 package com.gitflow.android.data.repository
 
+import com.gitflow.android.R
 import com.gitflow.android.data.models.*
 import org.eclipse.jgit.api.CreateBranchCommand
 import org.eclipse.jgit.api.errors.RefAlreadyExistsException
@@ -76,7 +77,7 @@ internal fun classifyNetworkException(e: Exception): GitResult.Failure {
             isOffline = false
         )
     }
-    return GitResult.Failure.Generic(e.message ?: "Unknown error", e)
+    return genericFailure(e)
 }
 
 private class JGitProgressMonitor(
@@ -103,7 +104,10 @@ private class JGitProgressMonitor(
     override fun isCancelled(): Boolean = false
 }
 
-private fun evaluatePushResult(results: Iterable<PushResult>): GitResult<Unit> {
+private fun GitRepository.conflictPathList(paths: List<String>): String =
+    paths.joinToString(", ").ifEmpty { text(R.string.git_conflicts_see_working_tree) }
+
+private fun GitRepository.evaluatePushResult(results: Iterable<PushResult>): GitResult<Unit> {
     val failedUpdates = mutableListOf<String>()
     var hasUpdates = false
 
@@ -125,7 +129,7 @@ private fun evaluatePushResult(results: Iterable<PushResult>): GitResult<Unit> {
     return when {
         !hasUpdates -> GitResult.Success(Unit)
         failedUpdates.isEmpty() -> GitResult.Success(Unit)
-        else -> GitResult.Failure.Generic("Push failed: ${failedUpdates.joinToString("; ")}")
+        else -> GitResult.Failure.Generic(text(R.string.git_error_push_failed, failedUpdates.joinToString("; ")))
     }
 }
 
@@ -176,7 +180,7 @@ internal suspend fun GitRepository.deleteBranchImpl(
     force: Boolean
 ): GitResult<Unit> = withGit(repository) { git ->
     val deleted = git.branchDelete().setBranchNames(branchName).setForce(force).call()
-    if (deleted.isEmpty()) return@withGit GitResult.Failure.Generic("Branch not deleted")
+    if (deleted.isEmpty()) return@withGit GitResult.Failure.Generic(text(R.string.git_error_branch_not_deleted))
     refreshRepository(repository)
     GitResult.Success(Unit)
 }
@@ -188,7 +192,7 @@ internal suspend fun GitRepository.renameBranchImpl(
 ): GitResult<Unit> = withGit(
     repository,
     onError = { exception ->
-        if (exception is RefAlreadyExistsException) GitResult.Failure.Generic("Branch '$newName' already exists")
+        if (exception is RefAlreadyExistsException) GitResult.Failure.Generic(text(R.string.git_error_branch_exists, newName))
         else genericFailure(exception)
     }
 ) { git ->
@@ -230,11 +234,11 @@ internal suspend fun GitRepository.pullImpl(repository: Repository): GitResult<U
             mergeConflicts != null || rebaseStopped -> {
                 val paths = mergeConflicts ?: git.status().call().conflicting.toList()
                 GitResult.Failure.Conflict(
-                    message = "Pull produced conflicts: ${paths.joinToString(", ").ifEmpty { "see working tree" }}",
+                    message = text(R.string.git_conflicts_pull, conflictPathList(paths)),
                     paths = paths
                 )
             }
-            else -> GitResult.Failure.Generic("Pull failed")
+            else -> GitResult.Failure.Generic(text(R.string.git_error_pull_failed))
         }
     }
 
@@ -290,10 +294,10 @@ internal suspend fun GitRepository.createTagImpl(
     repository: Repository, tagName: String, commitHash: String, force: Boolean
 ): GitResult<Unit> = withGit(repository) { git ->
     val existing = git.tagList().call().any { it.name.removePrefix("refs/tags/") == tagName }
-    if (existing && !force) return@withGit GitResult.Failure.TagAlreadyExists(tagName)
+    if (existing && !force) return@withGit GitResult.Failure.TagAlreadyExists(tagName, text(R.string.git_error_tag_exists, tagName))
 
     val objectId = git.repository.resolve(commitHash)
-        ?: return@withGit GitResult.Failure.Generic("Cannot resolve commit: $commitHash")
+        ?: return@withGit GitResult.Failure.Generic(text(R.string.git_error_cannot_resolve_commit, commitHash))
     val revObject = RevWalk(git.repository).use { revWalk -> revWalk.parseAny(objectId) }
     git.tag().setName(tagName).setObjectId(revObject).setAnnotated(false).setForceUpdate(force).call()
     refreshRepository(repository)
@@ -313,8 +317,8 @@ internal suspend fun GitRepository.getTagsForCommitImpl(repository: Repository, 
 internal suspend fun GitRepository.cherryPickCommitImpl(repository: Repository, commitHash: String): GitResult<Unit> =
     withGit(repository) { git ->
         val objectId = git.repository.resolve(commitHash)
-            ?: return@withGit GitResult.Failure.Generic("Cannot resolve commit: $commitHash")
-        if (!applyCommitIdentity(git)) return@withGit GitResult.Failure.IdentityRequired()
+            ?: return@withGit GitResult.Failure.Generic(text(R.string.git_error_cannot_resolve_commit, commitHash))
+        if (!applyCommitIdentity(git)) return@withGit identityRequired()
         val result = git.cherryPick().include(objectId).call()
         when (result.status) {
             CherryPickResult.CherryPickStatus.OK -> {
@@ -324,19 +328,19 @@ internal suspend fun GitRepository.cherryPickCommitImpl(repository: Repository, 
             CherryPickResult.CherryPickStatus.CONFLICTING -> {
                 val paths = result.failingPaths?.keys?.toList() ?: emptyList()
                 GitResult.Failure.Conflict(
-                    message = "Cherry-pick produced conflicts: ${paths.joinToString(", ").ifEmpty { "see working tree" }}",
+                    message = text(R.string.git_conflicts_cherry_pick, conflictPathList(paths)),
                     paths = paths
                 )
             }
-            else -> GitResult.Failure.Generic("Cherry-pick failed: ${result.status}")
+            else -> GitResult.Failure.Generic(text(R.string.git_error_cherry_pick_failed, result.status))
         }
     }
 
 internal suspend fun GitRepository.mergeCommitIntoCurrentBranchImpl(repository: Repository, commitHash: String): GitResult<Unit> =
     withGit(repository) { git ->
         val objectId = git.repository.resolve(commitHash)
-            ?: return@withGit GitResult.Failure.Generic("Cannot resolve commit: $commitHash")
-        if (!applyCommitIdentity(git)) return@withGit GitResult.Failure.IdentityRequired()
+            ?: return@withGit GitResult.Failure.Generic(text(R.string.git_error_cannot_resolve_commit, commitHash))
+        if (!applyCommitIdentity(git)) return@withGit identityRequired()
         interpretMergeResult(git.merge().include(objectId).setCommit(true).call(), repository)
     }
 
@@ -346,7 +350,7 @@ internal suspend fun GitRepository.mergeCommitIntoCurrentBranchImpl(repository: 
 
 internal suspend fun GitRepository.mergeBranchImpl(repository: Repository, branchName: String): GitResult<Unit> =
     withGit(repository) { git ->
-        if (!applyCommitIdentity(git)) return@withGit GitResult.Failure.IdentityRequired()
+        if (!applyCommitIdentity(git)) return@withGit identityRequired()
         val mergeCommand = git.merge().setCommit(true)
         // Prefer a named ref so the merge commit message references the branch.
         val ref = git.repository.findRef(branchName)
@@ -354,7 +358,7 @@ internal suspend fun GitRepository.mergeBranchImpl(repository: Repository, branc
             mergeCommand.include(ref)
         } else {
             val objectId = git.repository.resolve(branchName)
-                ?: return@withGit GitResult.Failure.Generic("Cannot resolve branch: $branchName")
+                ?: return@withGit GitResult.Failure.Generic(text(R.string.git_error_cannot_resolve_branch, branchName))
             mergeCommand.include(objectId)
         }
         interpretMergeResult(mergeCommand.call(), repository)
@@ -372,24 +376,24 @@ private suspend fun GitRepository.interpretMergeResult(result: MergeResult, repo
         MergeResult.MergeStatus.CONFLICTING -> {
             val paths = result.conflicts?.keys?.toList() ?: emptyList()
             GitResult.Failure.Conflict(
-                message = "Merge produced conflicts: ${paths.joinToString(", ").ifEmpty { "see working tree" }}",
+                message = text(R.string.git_conflicts_merge, conflictPathList(paths)),
                 paths = paths
             )
         }
-        else -> GitResult.Failure.Generic("Merge failed: ${result.mergeStatus}")
+        else -> GitResult.Failure.Generic(text(R.string.git_error_merge_failed, result.mergeStatus))
     }
 
 internal suspend fun GitRepository.abortMergeImpl(repository: Repository): GitResult<Unit> =
     withGit(repository) { git ->
         val jRepo = git.repository
         val headId = jRepo.resolve(Constants.HEAD)
-            ?: return@withGit GitResult.Failure.Generic("Cannot resolve HEAD")
+            ?: return@withGit GitResult.Failure.Generic(text(R.string.git_error_cannot_resolve_head))
         val mergeHeadId = jRepo.readMergeHeads()?.firstOrNull()
         val cherryPickHeadId = jRepo.readCherryPickHead()
         val incomingPaths = when {
             mergeHeadId != null -> pathsChangedSinceMergeBase(jRepo, headId, mergeHeadId)
             cherryPickHeadId != null -> pathsChangedByCommit(jRepo, cherryPickHeadId)
-            else -> return@withGit GitResult.Failure.Generic("No merge or cherry-pick in progress")
+            else -> return@withGit GitResult.Failure.Generic(text(R.string.git_error_nothing_to_abort))
         }
 
         // JGit has no "merge --abort", and a hard reset would also wipe uncommitted changes
@@ -462,13 +466,13 @@ private fun pathsChangedBetween(
 
 internal suspend fun GitRepository.rebaseCurrentOntoImpl(repository: Repository, branchName: String): GitResult<Unit> =
     withGit(repository) { git ->
-        if (!applyCommitIdentity(git)) return@withGit GitResult.Failure.IdentityRequired()
+        if (!applyCommitIdentity(git)) return@withGit identityRequired()
         interpretRebaseResult(git.rebase().setUpstream(branchName).call(), repository, git)
     }
 
 internal suspend fun GitRepository.rebaseContinueImpl(repository: Repository): GitResult<Unit> =
     withGit(repository) { git ->
-        if (!applyCommitIdentity(git)) return@withGit GitResult.Failure.IdentityRequired()
+        if (!applyCommitIdentity(git)) return@withGit identityRequired()
         interpretRebaseResult(git.rebase().setOperation(RebaseCommand.Operation.CONTINUE).call(), repository, git)
     }
 
@@ -498,13 +502,13 @@ private suspend fun GitRepository.interpretRebaseResult(
             // the source of truth consistent with the merge path and ChangesScreen.
             val paths = runCatching { git.status().call().conflicting.toList() }.getOrDefault(emptyList())
             GitResult.Failure.Conflict(
-                message = "Rebase stopped on conflicts: ${paths.joinToString(", ").ifEmpty { "see working tree" }}",
+                message = text(R.string.git_conflicts_rebase, conflictPathList(paths)),
                 paths = paths
             )
         }
         RebaseResult.Status.UNCOMMITTED_CHANGES ->
-            GitResult.Failure.Generic("Commit or stash your changes before rebasing")
-        else -> GitResult.Failure.Generic("Rebase failed: ${result.status}")
+            GitResult.Failure.Generic(text(R.string.git_error_rebase_uncommitted))
+        else -> GitResult.Failure.Generic(text(R.string.git_error_rebase_failed, result.status))
     }
 }
 

@@ -1,5 +1,6 @@
 package com.gitflow.android.data.repository
 
+import com.gitflow.android.R
 import com.gitflow.android.data.models.GitResult
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.models.StashEntry
@@ -8,10 +9,10 @@ internal suspend fun GitRepository.stashSaveImpl(
     repository: Repository,
     message: String
 ): GitResult<Unit> = withGit(repository) { git ->
-    if (!applyCommitIdentity(git)) return@withGit GitResult.Failure.IdentityRequired()
+    if (!applyCommitIdentity(git)) return@withGit identityRequired()
     val stashCommand = git.stashCreate()
     if (message.isNotBlank()) stashCommand.setWorkingDirectoryMessage(message)
-    stashCommand.call() ?: return@withGit GitResult.Failure.Generic("Nothing to stash")
+    stashCommand.call() ?: return@withGit GitResult.Failure.Generic(text(R.string.git_error_nothing_to_stash))
     GitResult.Success(Unit)
 }
 
@@ -41,7 +42,7 @@ internal suspend fun GitRepository.stashApplyImpl(
     stashIndex: Int
 ): GitResult<Unit> = withGit(repository) { git ->
     val stashes = git.stashList().call().toList()
-    if (stashIndex >= stashes.size) return@withGit GitResult.Failure.Generic("Invalid stash index")
+    if (stashIndex >= stashes.size) return@withGit GitResult.Failure.Generic(text(R.string.git_error_stash_not_found))
     git.stashApply()
         .setStashRef(stashes[stashIndex].name)
         .call()
@@ -53,7 +54,7 @@ internal suspend fun GitRepository.stashPopImpl(
     stashIndex: Int
 ): GitResult<Unit> = withGit(repository) { git ->
     val stashes = git.stashList().call().toList()
-    if (stashIndex >= stashes.size) return@withGit GitResult.Failure.Generic("Invalid stash index")
+    if (stashIndex >= stashes.size) return@withGit GitResult.Failure.Generic(text(R.string.git_error_stash_not_found))
     git.stashApply()
         .setStashRef(stashes[stashIndex].name)
         .call()

@@ -28,6 +28,7 @@ import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.data.settings.AppSettingsManager
 import com.gitflow.android.ui.util.formatBytes
 import org.koin.android.ext.android.inject
+import org.koin.core.context.GlobalContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -409,7 +410,7 @@ class CloneRepositoryService : Service() {
         }
 
         private fun isNetworkAllowed(context: Context): Boolean {
-            val settingsManager = AppSettingsManager(context)
+            val settingsManager: AppSettingsManager = GlobalContext.get().get()
             if (!settingsManager.isWifiOnlyDownloadsEnabled()) {
                 return true
             }

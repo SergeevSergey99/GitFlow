@@ -24,6 +24,31 @@ class AppSettingsManager(context: Context) {
     private val _darkModeFlow = MutableStateFlow(getDarkMode())
     val darkModeFlow: StateFlow<String> = _darkModeFlow.asStateFlow()
 
+    private val _graphPresetFlow = MutableStateFlow(getGraphPreset())
+    val graphPresetFlow: StateFlow<String> = _graphPresetFlow.asStateFlow()
+
+    private val _previewExtensionsFlow = MutableStateFlow(getPreviewExtensions())
+    val previewExtensionsFlow: StateFlow<Set<String>> = _previewExtensionsFlow.asStateFlow()
+
+    private val _previewFileNamesFlow = MutableStateFlow(getPreviewFileNames())
+    val previewFileNamesFlow: StateFlow<Set<String>> = _previewFileNamesFlow.asStateFlow()
+
+    // Kept in a field: SharedPreferences holds listeners only weakly. Listening, rather than
+    // updating the flows in the setters, also picks up writes made through another instance.
+    private val preferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        when (key) {
+            KEY_COLOR_THEME -> _colorThemeFlow.value = getColorTheme()
+            KEY_DARK_MODE -> _darkModeFlow.value = getDarkMode()
+            KEY_GRAPH_PRESET -> _graphPresetFlow.value = getGraphPreset()
+            KEY_PREVIEW_EXTENSIONS -> _previewExtensionsFlow.value = getPreviewExtensions()
+            KEY_PREVIEW_FILE_NAMES -> _previewFileNamesFlow.value = getPreviewFileNames()
+        }
+    }
+
+    init {
+        preferences.registerOnSharedPreferenceChangeListener(preferenceListener)
+    }
+
     fun isWifiOnlyDownloadsEnabled(): Boolean {
         return preferences.getBoolean(KEY_WIFI_ONLY_DOWNLOADS, true)
     }
@@ -106,20 +131,6 @@ class AppSettingsManager(context: Context) {
         }
     }
 
-    fun registerPreviewSettingsListener(onChange: () -> Unit): SharedPreferences.OnSharedPreferenceChangeListener {
-        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == KEY_PREVIEW_EXTENSIONS || key == KEY_PREVIEW_FILE_NAMES) {
-                onChange()
-            }
-        }
-        preferences.registerOnSharedPreferenceChangeListener(listener)
-        return listener
-    }
-
-    fun unregisterPreviewSettingsListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
-        preferences.unregisterOnSharedPreferenceChangeListener(listener)
-    }
-
     fun getGraphPreset(): String {
         return preferences.getString(KEY_GRAPH_PRESET, GRAPH_PRESET_DEFAULT) ?: GRAPH_PRESET_DEFAULT
     }
@@ -134,7 +145,6 @@ class AppSettingsManager(context: Context) {
 
     fun setColorTheme(theme: String) {
         preferences.edit().putString(KEY_COLOR_THEME, theme).apply()
-        _colorThemeFlow.value = theme
     }
 
     fun getLastRepositoryId(): String? {
@@ -152,7 +162,6 @@ class AppSettingsManager(context: Context) {
 
     fun setDarkMode(mode: String) {
         preferences.edit().putString(KEY_DARK_MODE, mode).apply()
-        _darkModeFlow.value = mode
     }
 
     fun getLanguage(): String {
