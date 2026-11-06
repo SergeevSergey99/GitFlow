@@ -17,6 +17,7 @@ import kotlinx.coroutines.withContext
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.api.ListBranchCommand
 import org.eclipse.jgit.lib.BranchTrackingStatus
+import org.eclipse.jgit.lib.Constants
 import org.eclipse.jgit.lib.ObjectId
 import org.eclipse.jgit.lib.ProgressMonitor
 import org.eclipse.jgit.lib.Ref
@@ -452,6 +453,12 @@ class GitRepository(
             0 to 0
         }
     }
+
+    /** The current local branch has never been pushed, so it has no upstream to count pending commits against. */
+    internal fun isBranchUnpublished(git: Git): Boolean = runCatching {
+        val fullBranch = git.repository.fullBranch ?: return false
+        fullBranch.startsWith(Constants.R_HEADS) && BranchTrackingStatus.of(git.repository, fullBranch) == null
+    }.getOrDefault(false)
 
     internal fun getBranchName(ref: Ref): String = when {
         ref.name.startsWith("refs/heads/") -> ref.name.removePrefix("refs/heads/")

@@ -337,7 +337,7 @@ class GitRepositoryMergeRebaseTest {
 
 // JGit layers ~/.gitconfig and the system config under the repo config; without isolating them
 // the developer's own git identity would leak into the "no identity" tests.
-private class IsolatedConfigReader(
+internal class IsolatedConfigReader(
     private val delegate: SystemReader,
     private val configDir: File
 ) : SystemReader() {

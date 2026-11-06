@@ -24,6 +24,7 @@ import com.gitflow.android.data.models.RepoOperationState
 import com.gitflow.android.ui.config.GraphConfig
 import com.gitflow.android.ui.components.CloneProgressOverlay
 import com.gitflow.android.ui.components.dialogs.BranchManagementDialog
+import com.gitflow.android.ui.components.dialogs.ConfirmActionDialog
 import com.gitflow.android.ui.screens.main.ChangesScreen
 import com.gitflow.android.ui.screens.main.RepositoryListScreen
 import com.gitflow.android.ui.screens.main.SettingsScreen
@@ -51,6 +52,7 @@ fun MainScreen(navController: NavController) {
     val conflictPaths = conflictInfo.conflictPaths
     val inConflict = operationState != RepoOperationState.NONE
     var showConflictInfo by remember { mutableStateOf(false) }
+    var showAbortConfirm by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -118,10 +120,9 @@ fun MainScreen(navController: NavController) {
                         if (inConflict) {
                             // Rebase can be continued (once resolved); both can be aborted.
                             if (operationState == RepoOperationState.REBASING) {
-                                IconButton(
-                                    onClick = { viewModel.continueRebase() },
-                                    enabled = conflictPaths.isEmpty()
-                                ) {
+                                IconButton(onClick = {
+                                    if (conflictPaths.isEmpty()) viewModel.continueRebase() else showConflictInfo = true
+                                }) {
                                     Icon(
                                         Icons.Default.PlayArrow,
                                         contentDescription = stringResource(R.string.main_conflict_continue),
@@ -129,7 +130,7 @@ fun MainScreen(navController: NavController) {
                                     )
                                 }
                             }
-                            IconButton(onClick = { viewModel.abortMergeOrRebase() }) {
+                            IconButton(onClick = { showAbortConfirm = true }) {
                                 Icon(
                                     Icons.Default.Cancel,
                                     contentDescription = stringResource(R.string.main_conflict_abort),
@@ -242,6 +243,20 @@ fun MainScreen(navController: NavController) {
                 onDismiss = { showBranchDialog = false }
             )
         }
+    }
+
+    if (showAbortConfirm && inConflict) {
+        val isRebase = operationState == RepoOperationState.REBASING
+        ConfirmActionDialog(
+            title = stringResource(if (isRebase) R.string.main_conflict_abort_rebase_title else R.string.main_conflict_abort_merge_title),
+            message = stringResource(R.string.main_conflict_abort_message),
+            confirmLabel = stringResource(R.string.main_conflict_abort_confirm),
+            onConfirm = {
+                showAbortConfirm = false
+                viewModel.abortMergeOrRebase()
+            },
+            onDismiss = { showAbortConfirm = false }
+        )
     }
 
     if (showConflictInfo) {

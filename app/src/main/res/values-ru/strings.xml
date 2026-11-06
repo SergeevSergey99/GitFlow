@@ -253,6 +253,17 @@
     <string name="main_conflict_rebase_ready">Rebase готов — продолжите</string>
     <string name="main_conflict_abort">Отменить</string>
     <string name="main_conflict_continue">Продолжить</string>
+    <string name="main_conflict_abort_merge_title">Прервать merge?</string>
+    <string name="main_conflict_abort_rebase_title">Прервать rebase?</string>
+    <string name="main_conflict_abort_message">Разрешённые конфликты пропадут, репозиторий вернётся к состоянию до операции.</string>
+    <string name="main_conflict_abort_confirm">Прервать</string>
+    <string name="confirm_dialog_cancel">Отмена</string>
+    <string name="changes_discard_confirm_title">Сбросить изменения?</string>
+    <string name="changes_discard_confirm_message">Изменения в «%1$s» будут потеряны. Отменить это нельзя.</string>
+    <string name="changes_discard_confirm_message_new">Новый файл «%1$s» будет удалён. Отменить это нельзя.</string>
+    <string name="changes_discard_confirm_ok">Сбросить</string>
+    <string name="changes_stash_drop_confirm_title">Удалить stash?</string>
+    <string name="changes_stash_drop_confirm_message">«%1$s» будет удалён. Отменить это нельзя.</string>
     <string name="main_conflict_info_title">Конфликты merge/rebase</string>
     <string name="main_conflict_info_merge_flow">Слияние «%1$s» в «%2$s»</string>
     <string name="main_conflict_info_rebase_flow">Rebase «%1$s» на %2$s</string>
@@ -342,6 +353,7 @@
     <string name="changes_operation_aborted">Операция отменена</string>
     <string name="changes_commit_details">Детали</string>
     <string name="changes_push_short">Push</string>
+    <string name="changes_publish_branch">Опубликовать ветку</string>
 
     <!-- GraphPresetDialog -->
     <string name="graph_preset_title">Пресет графа</string>

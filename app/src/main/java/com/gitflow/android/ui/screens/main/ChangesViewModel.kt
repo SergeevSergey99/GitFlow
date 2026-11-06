@@ -42,6 +42,7 @@ data class ChangesUiState(
     val conflictDetails: MergeConflict? = null,
     val canPush: Boolean = false,
     val pendingPushCommits: Int = 0,
+    val isBranchUnpublished: Boolean = false,
     val pendingPullCommits: Int = 0,
     /** Non-null while push is in progress; null otherwise. */
     val syncProgress: SyncProgress? = null,
@@ -88,7 +89,8 @@ class ChangesViewModel(
     private val _uiState = MutableStateFlow(
         ChangesUiState(
             canPush = repository.hasRemoteOrigin,
-            pendingPushCommits = repository.pendingPushCommits
+            pendingPushCommits = repository.pendingPushCommits,
+            isBranchUnpublished = repository.isBranchUnpublished
         )
     )
     val uiState: StateFlow<ChangesUiState> = _uiState.asStateFlow()
@@ -153,6 +155,7 @@ class ChangesViewModel(
             it.copy(
                 canPush = snapshot.repository.hasRemoteOrigin,
                 pendingPushCommits = snapshot.repository.pendingPushCommits,
+                isBranchUnpublished = snapshot.repository.isBranchUnpublished,
                 pendingPullCommits = snapshot.pendingPullCommits,
                 operationState = operation,
                 conflictOursLabel = oursLabel,

@@ -41,7 +41,8 @@ internal suspend fun GitRepository.addRepositoryImpl(path: String): GitResult<Re
                 currentBranch = currentBranch,
                 totalBranches = branches.size,
                 hasRemoteOrigin = hasRemoteOrigin,
-                pendingPushCommits = aheadCount
+                pendingPushCommits = aheadCount,
+                isBranchUnpublished = isBranchUnpublished(git)
             )
 
             dataStore.addRepository(repository)
@@ -159,7 +160,8 @@ internal suspend fun GitRepository.cloneRepositoryImpl(
                 currentBranch = currentBranch,
                 totalBranches = branches.size,
                 hasRemoteOrigin = hasRemoteOrigin,
-                pendingPushCommits = aheadCount
+                pendingPushCommits = aheadCount,
+                isBranchUnpublished = isBranchUnpublished(git)
             )
 
             dataStore.addRepository(repository)
@@ -202,7 +204,8 @@ internal suspend fun GitRepository.refreshRepositoryImpl(repository: Repository)
             lastUpdated = lastCommit,
             totalBranches = branches.size,
             hasRemoteOrigin = hasRemoteOrigin,
-            pendingPushCommits = aheadCount
+            pendingPushCommits = aheadCount,
+            isBranchUnpublished = isBranchUnpublished(git)
         )
 
         updateRepository(updated)

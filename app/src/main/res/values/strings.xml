@@ -253,6 +253,17 @@
     <string name="main_conflict_rebase_ready">Rebase ready — continue</string>
     <string name="main_conflict_abort">Abort</string>
     <string name="main_conflict_continue">Continue</string>
+    <string name="main_conflict_abort_merge_title">Abort merge?</string>
+    <string name="main_conflict_abort_rebase_title">Abort rebase?</string>
+    <string name="main_conflict_abort_message">Resolved conflicts will be lost and the repository returns to its state before the operation.</string>
+    <string name="main_conflict_abort_confirm">Abort</string>
+    <string name="confirm_dialog_cancel">Cancel</string>
+    <string name="changes_discard_confirm_title">Discard changes?</string>
+    <string name="changes_discard_confirm_message">Changes in \"%1$s\" will be lost. This can\'t be undone.</string>
+    <string name="changes_discard_confirm_message_new">The new file \"%1$s\" will be deleted. This can\'t be undone.</string>
+    <string name="changes_discard_confirm_ok">Discard</string>
+    <string name="changes_stash_drop_confirm_title">Delete stash?</string>
+    <string name="changes_stash_drop_confirm_message">\"%1$s\" will be deleted. This can\'t be undone.</string>
     <string name="main_conflict_info_title">Merge/rebase conflicts</string>
     <string name="main_conflict_info_merge_flow">Merging \"%1$s\" into \"%2$s\"</string>
     <string name="main_conflict_info_rebase_flow">Rebasing \"%1$s\" onto %2$s</string>
@@ -342,6 +353,7 @@
     <string name="changes_operation_aborted">Operation aborted</string>
     <string name="changes_commit_details">Details</string>
     <string name="changes_push_short">Push</string>
+    <string name="changes_publish_branch">Publish branch</string>
 
     <!-- GraphPresetDialog -->
     <string name="graph_preset_title">Graph Preset</string>

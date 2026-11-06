@@ -11,6 +11,7 @@ import org.eclipse.jgit.api.MergeResult
 import org.eclipse.jgit.api.RebaseCommand
 import org.eclipse.jgit.api.RebaseResult
 import org.eclipse.jgit.api.ResetCommand
+import org.eclipse.jgit.lib.ConfigConstants
 import org.eclipse.jgit.lib.Constants
 import org.eclipse.jgit.lib.RepositoryState
 import org.eclipse.jgit.transport.PushResult
@@ -246,7 +247,7 @@ internal suspend fun GitRepository.pushImpl(repository: Repository): GitResult<U
     withGit(repository, onError = ::classifyNetworkException) { git ->
         val pushCommand = git.push()
         originCredentials(git)?.let { pushCommand.setCredentialsProvider(it) }
-        finishPush(repository, evaluatePushResult(pushCommand.call()))
+        finishPush(repository, git, currentLocalBranch(git), evaluatePushResult(pushCommand.call()))
     }
 
 /**
@@ -260,7 +261,7 @@ internal suspend fun GitRepository.pushBranchImpl(repository: Repository, branch
         val refSpec = RefSpec("refs/heads/$branchName:refs/heads/$branchName")
         val pushCommand = git.push().setRefSpecs(refSpec)
         originCredentials(git)?.let { pushCommand.setCredentialsProvider(it) }
-        finishPush(repository, evaluatePushResult(pushCommand.call()))
+        finishPush(repository, git, branchName, evaluatePushResult(pushCommand.call()))
     }
 
 internal suspend fun GitRepository.pushWithProgressImpl(
@@ -270,12 +271,31 @@ internal suspend fun GitRepository.pushWithProgressImpl(
     val pushCommand = git.push()
     originCredentials(git)?.let { pushCommand.setCredentialsProvider(it) }
     pushCommand.setProgressMonitor(JGitProgressMonitor(onProgress))
-    finishPush(repository, evaluatePushResult(pushCommand.call()))
+    finishPush(repository, git, currentLocalBranch(git), evaluatePushResult(pushCommand.call()))
 }
 
-private suspend fun GitRepository.finishPush(repository: Repository, pushResult: GitResult<Unit>): GitResult<Unit> {
-    if (pushResult is GitResult.Success) refreshRepository(repository)
+private fun currentLocalBranch(git: Git): String? =
+    git.repository.fullBranch?.takeIf { it.startsWith(Constants.R_HEADS) }?.removePrefix(Constants.R_HEADS)
+
+/** Like git push -u: without a remembered upstream the branch never shows pending commits and can't be pushed again. */
+private suspend fun GitRepository.finishPush(
+    repository: Repository,
+    git: Git,
+    branchName: String?,
+    pushResult: GitResult<Unit>
+): GitResult<Unit> {
+    if (pushResult !is GitResult.Success) return pushResult
+    if (branchName != null) rememberUpstream(git, branchName)
+    refreshRepository(repository)
     return pushResult
+}
+
+private fun rememberUpstream(git: Git, branchName: String) {
+    val config = git.repository.config
+    if (config.getString(ConfigConstants.CONFIG_BRANCH_SECTION, branchName, ConfigConstants.CONFIG_KEY_MERGE) != null) return
+    config.setString(ConfigConstants.CONFIG_BRANCH_SECTION, branchName, ConfigConstants.CONFIG_KEY_REMOTE, "origin")
+    config.setString(ConfigConstants.CONFIG_BRANCH_SECTION, branchName, ConfigConstants.CONFIG_KEY_MERGE, Constants.R_HEADS + branchName)
+    config.save()
 }
 
 internal suspend fun GitRepository.resetToCommitImpl(repository: Repository, commitHash: String, mode: ResetMode): GitResult<Unit> =

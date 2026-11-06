@@ -48,6 +48,7 @@ import com.gitflow.android.data.models.StashEntry
 import com.gitflow.android.data.models.SyncProgress
 import com.gitflow.android.ui.components.FileChangeCard
 import com.gitflow.android.ui.components.StartEllipsizedText
+import com.gitflow.android.ui.components.dialogs.ConfirmActionDialog
 import com.gitflow.android.ui.screens.SideBySideDiffView
 import com.gitflow.android.ui.screens.UnifiedDiffView
 import java.text.SimpleDateFormat
@@ -72,6 +73,7 @@ fun ChangesScreen(
     )
     val uiState by viewModel.uiState.collectAsState()
 
+    var pathToDiscard by remember { mutableStateOf<String?>(null) }
     var diffOldLabel by remember { mutableStateOf<String?>(null) }
     var diffNewLabel by remember { mutableStateOf<String?>(null) }
 
@@ -139,7 +141,7 @@ fun ChangesScreen(
             onPush = viewModel::push,
             onFileToggle = viewModel::toggleFile,
             onFilesToggle = viewModel::toggleFiles,
-            onDiscardFile = viewModel::discardFileChanges,
+            onDiscardFile = { path -> pathToDiscard = path },
             onOpenFileDiff = { file ->
                 // For a conflicted file, label the two diff sides with the branch names
                 // (matching the resolve buttons); otherwise keep the generic Old/New.
@@ -162,6 +164,7 @@ fun ChangesScreen(
             onAcceptTheirs = viewModel::acceptTheirs,
             canPush = uiState.canPush,
             pendingPushCommits = uiState.pendingPushCommits,
+            isBranchUnpublished = uiState.isBranchUnpublished,
             pendingPullCommits = uiState.pendingPullCommits,
             operationState = uiState.operationState,
             oursBranchLabel = uiState.conflictOursLabel,
@@ -212,6 +215,26 @@ fun ChangesScreen(
             isBusy = uiState.isProcessing,
             onDismiss = viewModel::dismissConflict,
             onApply = viewModel::resolveConflictWithContent
+        )
+    }
+
+    pathToDiscard?.let { path ->
+        val deletesFile = uiState.changes.any {
+            it.path == path && (it.status == ChangeStatus.UNTRACKED || it.status == ChangeStatus.ADDED)
+        }
+        val fileName = path.substringAfterLast('/')
+        ConfirmActionDialog(
+            title = stringResource(R.string.changes_discard_confirm_title),
+            message = stringResource(
+                if (deletesFile) R.string.changes_discard_confirm_message_new else R.string.changes_discard_confirm_message,
+                fileName
+            ),
+            confirmLabel = stringResource(R.string.changes_discard_confirm_ok),
+            onConfirm = {
+                pathToDiscard = null
+                viewModel.discardFileChanges(path)
+            },
+            onDismiss = { pathToDiscard = null }
         )
     }
 
@@ -306,6 +329,7 @@ private fun ChangesContent(
     onAcceptTheirs: (FileChange) -> Unit,
     canPush: Boolean,
     pendingPushCommits: Int,
+    isBranchUnpublished: Boolean,
     pendingPullCommits: Int,
     operationState: RepoOperationState,
     oursBranchLabel: String?,
@@ -362,6 +386,7 @@ private fun ChangesContent(
                                 isBusy = isProcessing,
                                 canPush = canPush,
                                 pendingPushCommits = pendingPushCommits,
+                                isBranchUnpublished = isBranchUnpublished,
                                 pendingPullCommits = pendingPullCommits,
                                 isMerging = operationState == RepoOperationState.MERGING
                             )
@@ -437,6 +462,7 @@ private fun CommitSection(
     isBusy: Boolean,
     canPush: Boolean,
     pendingPushCommits: Int,
+    isBranchUnpublished: Boolean,
     pendingPullCommits: Int,
     isMerging: Boolean
 ) {
@@ -480,7 +506,13 @@ private fun CommitSection(
                 QuickAction(Icons.Default.Archive, stringResource(R.string.changes_stash_button), !isBusy, 0, onStashOpen),
                 QuickAction(Icons.Default.Sync, stringResource(R.string.changes_fetch_button), canPush && !isBusy, 0, onFetch),
                 QuickAction(Icons.Default.CloudDownload, stringResource(R.string.changes_pull_button), canPush && !isBusy, pendingPullCommits, onPull),
-                QuickAction(Icons.Default.CloudUpload, stringResource(R.string.changes_push_short), canPush && pendingPushCommits > 0 && !isBusy, pendingPushCommits, onPush)
+                QuickAction(
+                    Icons.Default.CloudUpload,
+                    stringResource(if (isBranchUnpublished) R.string.changes_publish_branch else R.string.changes_push_short),
+                    canPush && (pendingPushCommits > 0 || isBranchUnpublished) && !isBusy,
+                    pendingPushCommits,
+                    onPush
+                )
             )
 
             if (showDetails) {
@@ -1545,7 +1577,21 @@ private fun StashDialog(
 ) {
     var stashMessage by remember { mutableStateOf("") }
     var includeUntracked by remember { mutableStateOf(true) }
+    var stashToDrop by remember { mutableStateOf<StashEntry?>(null) }
     val dateFormat = remember { SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault()) }
+
+    stashToDrop?.let { entry ->
+        ConfirmActionDialog(
+            title = stringResource(R.string.changes_stash_drop_confirm_title),
+            message = stringResource(R.string.changes_stash_drop_confirm_message, entry.message.ifBlank { "stash@{${entry.index}}" }),
+            confirmLabel = stringResource(R.string.changes_stash_drop),
+            onConfirm = {
+                stashToDrop = null
+                onDrop(entry.index)
+            },
+            onDismiss = { stashToDrop = null }
+        )
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1636,13 +1682,17 @@ private fun StashDialog(
                                             Text(stringResource(R.string.changes_stash_pop))
                                         }
                                         OutlinedButton(
-                                            onClick = { onDrop(entry.index) },
+                                            onClick = { stashToDrop = entry },
                                             enabled = !isBusy,
                                             colors = ButtonDefaults.outlinedButtonColors(
                                                 contentColor = MaterialTheme.colorScheme.error
                                             )
                                         ) {
-                                            Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = stringResource(R.string.changes_stash_drop),
+                                                modifier = Modifier.size(16.dp)
+                                            )
                                         }
                                     }
                                 }
