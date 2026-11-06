@@ -49,7 +49,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
@@ -785,44 +787,51 @@ private fun GraphCanvas(
     onCommitLongPress: (Commit) -> Unit
 ) {
     val horizontalScrollState = rememberScrollState()
+    // Inside a horizontal scroll every row is only as wide as its text, so the highlight and the tap area
+    // would stop at short messages: all rows stretch to the widest one measured so far (at least the screen).
+    var widestRowPx by remember { mutableIntStateOf(0) }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .horizontalScroll(horizontalScrollState)
-    ) {
-        itemsIndexed(graphData.commits, key = { _, c -> c.hash }) { _, commit ->
-            val node = graphData.nodePositions.getValue(commit.hash)
-            val conns = graphData.connections[commit.hash].orEmpty()
-            val forkInfo = graphData.forkFrom[commit.hash]
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val rowMinWidth = with(LocalDensity.current) { maxOf(constraints.maxWidth, widestRowPx).toDp() }
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .horizontalScroll(horizontalScrollState)
+        ) {
+            itemsIndexed(graphData.commits, key = { _, listed -> listed.hash }) { _, commit ->
+                val node = graphData.nodePositions.getValue(commit.hash)
+                val rowConnections = graphData.connections[commit.hash].orEmpty()
+                val forkInfo = graphData.forkFrom[commit.hash]
 
-            GraphCommitRow(
-                commit = commit,
-                nodeData = node,
-                connections = conns,
-                forkInfo = forkInfo,
-                maxLanes = graphData.maxLane,
-                config = config,
-                isCurrent = currentBranch.isNotEmpty() && commit.branchHeads.contains(currentBranch),
-                isConflictTip = commit.hash in conflictHashes,
-                horizontalScrollState = horizontalScrollState,
-                onClick = { onCommitClick(commit) },
-                onLongPress = { onCommitLongPress(commit) }
-            )
-        }
-        if (hasMoreCommits) {
-            item {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Button(onClick = onLoadMore) {
-                        Text(stringResource(R.string.graph_load_more_commits))
+                GraphCommitRow(
+                    commit = commit,
+                    nodeData = node,
+                    connections = rowConnections,
+                    forkInfo = forkInfo,
+                    maxLanes = graphData.maxLane,
+                    config = config,
+                    isCurrent = currentBranch.isNotEmpty() && commit.branchHeads.contains(currentBranch),
+                    isConflictTip = commit.hash in conflictHashes,
+                    minWidth = rowMinWidth,
+                    onContentWidth = { width -> if (width > widestRowPx) widestRowPx = width },
+                    onClick = { onCommitClick(commit) },
+                    onLongPress = { onCommitLongPress(commit) }
+                )
+            }
+            if (hasMoreCommits) {
+                item {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Button(onClick = onLoadMore) {
+                            Text(stringResource(R.string.graph_load_more_commits))
+                        }
                     }
                 }
             }
+            item { Spacer(Modifier.height(24.dp)) }
         }
-        item { Spacer(Modifier.height(24.dp)) }
     }
 }
 
@@ -898,16 +907,17 @@ private fun GraphCommitRow(
     config: GraphConfig,
     isCurrent: Boolean,
     isConflictTip: Boolean,
-    horizontalScrollState: androidx.compose.foundation.ScrollState,
+    minWidth: Dp,
+    onContentWidth: (Int) -> Unit,
     onClick: () -> Unit,
     onLongPress: () -> Unit
 ) {
     val nodeColor = laneColor(nodeData.lane)
     val conflictColor = MaterialTheme.colorScheme.error
 
-    Row(
+    Box(
         modifier = Modifier
-            .wrapContentWidth()
+            .widthIn(min = minWidth)
             .height(config.rowHeight)
             .combinedClickable(
                 onClick = onClick,
@@ -923,196 +933,202 @@ private fun GraphCommitRow(
                 if (isConflictTip) Modifier.dashedBorder(conflictColor, cornerRadius = 6.dp)
                 else Modifier
             )
-            .padding(horizontal = config.rowPadding),
-        verticalAlignment = Alignment.CenterVertically
     ) {
-        // Левая колонка с графом
-        Box(
+        Row(
             modifier = Modifier
-                .width(config.getGraphWidth(maxLanes))
+                .onSizeChanged { size -> onContentWidth(size.width) }
                 .fillMaxHeight()
-                .drawBehind {
-                    // Все соединения для текущей строки
-                    connections.forEach { connection ->
-                        drawConnection(
-                            connection = connection,
-                            config = config,
-                            colorFromLane = laneColor(connection.fromLane)
-                        )
-                    }
-                }
+                .padding(horizontal = config.rowPadding),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Узел
+            // Левая колонка с графом
             Box(
                 modifier = Modifier
-                    .offset(x = (nodeData.lane * config.laneStep + config.nodeCenterOffset))
-                    .align(Alignment.CenterStart)
+                    .width(config.getGraphWidth(maxLanes))
+                    .fillMaxHeight()
+                    .drawBehind {
+                        // Все соединения для текущей строки
+                        connections.forEach { connection ->
+                            drawConnection(
+                                connection = connection,
+                                config = config,
+                                colorFromLane = laneColor(connection.fromLane)
+                            )
+                        }
+                    }
             ) {
-                // Основная точка с учетом типа коммита
-                if (commit.isMergeCommit) {
-                    // Квадратный узел для merge коммитов
-                    Box(
-                        modifier = Modifier
-                            .size(config.nodeSize)
-                            .offset(x = -(config.nodeSize / 2), y = 0.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(nodeColor)
-                            .border(config.nodeBorderWidth, Color.White, RoundedCornerShape(2.dp))
-                    )
-                } else {
-                    // Круглый узел для обычных коммитов
-                    Box(
-                        modifier = Modifier
-                            .size(config.nodeSize)
-                            .offset(x = -(config.nodeSize / 2), y = 0.dp)
-                            .clip(CircleShape)
-                            .background(nodeColor)
-                            .border(config.nodeBorderWidth, Color.White, CircleShape)
-                    )
-                }
-            }
-        }
-
-        // Правая информационная часть с возможностью прокрутки
-        Column(
-            modifier = Modifier
-                .wrapContentWidth()
-                .padding(start = config.infoStartPadding)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Иконка merge коммита
-                if (commit.isMergeCommit) {
-                    androidx.compose.material3.Icon(
-                        Icons.AutoMirrored.Filled.MergeType,
-                        contentDescription = stringResource(R.string.graph_merge_commit),
-                        modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(Modifier.width(4.dp))
-                }
-                
-                Text(
-                    text = commit.message,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Visible,
-                    softWrap = false
-                )
-            }
-
-            Spacer(Modifier.height(config.textSpacing))
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(config.badgeSpacing)
-            ) {
-                // hash
-                /*Surface(
-                    shape = RoundedCornerShape(config.badgeCornerRadius),
-                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+                // Узел
+                Box(
+                    modifier = Modifier
+                        .offset(x = (nodeData.lane * config.laneStep + config.nodeCenterOffset))
+                        .align(Alignment.CenterStart)
                 ) {
+                    // Основная точка с учетом типа коммита
+                    if (commit.isMergeCommit) {
+                        // Квадратный узел для merge коммитов
+                        Box(
+                            modifier = Modifier
+                                .size(config.nodeSize)
+                                .offset(x = -(config.nodeSize / 2), y = 0.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(nodeColor)
+                                .border(config.nodeBorderWidth, Color.White, RoundedCornerShape(2.dp))
+                        )
+                    } else {
+                        // Круглый узел для обычных коммитов
+                        Box(
+                            modifier = Modifier
+                                .size(config.nodeSize)
+                                .offset(x = -(config.nodeSize / 2), y = 0.dp)
+                                .clip(CircleShape)
+                                .background(nodeColor)
+                                .border(config.nodeBorderWidth, Color.White, CircleShape)
+                        )
+                    }
+                }
+            }
+
+            // Правая информационная часть с возможностью прокрутки
+            Column(
+                modifier = Modifier
+                    .wrapContentWidth()
+                    .padding(start = config.infoStartPadding)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Иконка merge коммита
+                    if (commit.isMergeCommit) {
+                        androidx.compose.material3.Icon(
+                            Icons.AutoMirrored.Filled.MergeType,
+                            contentDescription = stringResource(R.string.graph_merge_commit),
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.width(4.dp))
+                    }
+                    
                     Text(
-                        commit.hash.take(7),
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.padding(
-                            horizontal = config.badgeHorizontalPadding,
-                            vertical = config.badgeVerticalPadding
-                        )
+                        text = commit.message,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Visible,
+                        softWrap = false
                     )
-                }*/
-
-                // время
-                Surface(
-                    shape = RoundedCornerShape(config.badgeCornerRadius),
-                    color = MaterialTheme.colorScheme.surfaceVariant
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(
-                            horizontal = config.badgeHorizontalPadding,
-                            vertical = config.badgeVerticalPadding
-                        )
-                    ) {
-                        androidx.compose.material3.Icon(
-                            Icons.Default.AccessTime,
-                            contentDescription = null,
-                            modifier = Modifier.size(config.badgeIconSize),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.width(config.badgeIconSpacing))
-                        Text(timeAgo(commit.timestamp), fontSize = 11.sp)
-                    }
                 }
 
-                // автор
-                Surface(
-                    shape = RoundedCornerShape(config.badgeCornerRadius),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                Spacer(Modifier.height(config.textSpacing))
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(config.badgeSpacing)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(
-                            horizontal = config.badgeHorizontalPadding,
-                            vertical = config.badgeVerticalPadding
-                        )
+                    // hash
+                    /*Surface(
+                        shape = RoundedCornerShape(config.badgeCornerRadius),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
                     ) {
-                        androidx.compose.material3.Icon(
-                            Icons.Default.Person,
-                            contentDescription = null,
-                            modifier = Modifier.size(config.badgeIconSize),
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                        Spacer(Modifier.width(config.badgeIconSpacing))
                         Text(
-                            text = commit.author,
+                            commit.hash.take(7),
                             fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.padding(
+                                horizontal = config.badgeHorizontalPadding,
+                                vertical = config.badgeVerticalPadding
+                            )
+                        )
+                    }*/
+
+                    // время
+                    Surface(
+                        shape = RoundedCornerShape(config.badgeCornerRadius),
+                        color = MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(
+                                horizontal = config.badgeHorizontalPadding,
+                                vertical = config.badgeVerticalPadding
+                            )
+                        ) {
+                            androidx.compose.material3.Icon(
+                                Icons.Default.AccessTime,
+                                contentDescription = null,
+                                modifier = Modifier.size(config.badgeIconSize),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.width(config.badgeIconSpacing))
+                            Text(timeAgo(commit.timestamp), fontSize = 11.sp)
+                        }
+                    }
+
+                    // автор
+                    Surface(
+                        shape = RoundedCornerShape(config.badgeCornerRadius),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(
+                                horizontal = config.badgeHorizontalPadding,
+                                vertical = config.badgeVerticalPadding
+                            )
+                        ) {
+                            androidx.compose.material3.Icon(
+                                Icons.Default.Person,
+                                contentDescription = null,
+                                modifier = Modifier.size(config.badgeIconSize),
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Spacer(Modifier.width(config.badgeIconSpacing))
+                            Text(
+                                text = commit.author,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    // Показываем только ветки, где коммит является HEAD
+                    val darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
+                    commit.branchHeads.forEach { branchHead ->
+                        val branchColor = getBranchColor(branchHead, darkTheme)
+                        Badge(
+                            text = branchHead,
+                            icon = Icons.Default.AccountTree,
+                            background = branchColor.copy(alpha = if (darkTheme) 0.25f else 0.15f),
+                            foreground = branchColor,
+                            config = config
                         )
                     }
-                }
 
-                // Показываем только ветки, где коммит является HEAD
-                val darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
-                commit.branchHeads.forEach { branchHead ->
-                    val branchColor = getBranchColor(branchHead, darkTheme)
-                    Badge(
-                        text = branchHead,
-                        icon = Icons.Default.AccountTree,
-                        background = branchColor.copy(alpha = if (darkTheme) 0.25f else 0.15f),
-                        foreground = branchColor,
-                        config = config
-                    )
-                }
+                    // бейджи тегов
+                    commit.tags.forEach { tag ->
+                        Badge(
+                            text = tag,
+                            icon = Icons.Default.LocalOffer,
+                            background = MaterialTheme.colorScheme.tertiaryContainer,
+                            foreground = MaterialTheme.colorScheme.onTertiaryContainer,
+                            config = config
+                        )
+                    }
 
-                // бейджи тегов
-                commit.tags.forEach { t ->
-                    Badge(
-                        text = t,
-                        icon = Icons.Default.LocalOffer,
-                        background = MaterialTheme.colorScheme.tertiaryContainer,
-                        foreground = MaterialTheme.colorScheme.onTertiaryContainer,
-                        config = config
-                    )
-                }
-
-                // «из какой ветки/коммита» если это старт новой ветки
-                if (forkInfo != null) {
-                    Badge(
-                        text = if (forkInfo.parentBranch != null) {
-                            stringResource(R.string.graph_from_badge_branch, forkInfo.parentHash.take(7), forkInfo.parentBranch)
-                        } else {
-                            stringResource(R.string.graph_from_badge, forkInfo.parentHash.take(7))
-                        },
-                        icon = Icons.Default.AccountTree,
-                        background = MaterialTheme.colorScheme.surfaceVariant,
-                        foreground = MaterialTheme.colorScheme.onSurfaceVariant,
-                        config = config
-                    )
+                    // «из какой ветки/коммита» если это старт новой ветки
+                    if (forkInfo != null) {
+                        Badge(
+                            text = if (forkInfo.parentBranch != null) {
+                                stringResource(R.string.graph_from_badge_branch, forkInfo.parentHash.take(7), forkInfo.parentBranch)
+                            } else {
+                                stringResource(R.string.graph_from_badge, forkInfo.parentHash.take(7))
+                            },
+                            icon = Icons.Default.AccountTree,
+                            background = MaterialTheme.colorScheme.surfaceVariant,
+                            foreground = MaterialTheme.colorScheme.onSurfaceVariant,
+                            config = config
+                        )
+                    }
                 }
             }
         }
