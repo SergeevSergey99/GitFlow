@@ -2161,6 +2161,7 @@ fun FileViewerDialog(
     onDismiss: () -> Unit
 ) {
     val loadError = loadErrorReason?.let { stringResource(R.string.commit_detail_viewer_load_error, it) }
+    val context = LocalContext.current
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -2222,8 +2223,15 @@ fun FileViewerDialog(
 
                         Row {
                             IconButton(
+                                enabled = fileContent != null,
                                 onClick = {
-                                    // TODO: Добавить копирование содержимого в буфер обмена
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    clipboard.setPrimaryClip(ClipData.newPlainText(file.name, fileContent.orEmpty()))
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.commit_detail_toast_copied_file_content),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 }
                             ) {
                                 Icon(

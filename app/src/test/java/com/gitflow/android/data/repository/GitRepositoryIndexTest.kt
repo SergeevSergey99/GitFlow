@@ -206,6 +206,18 @@ class GitRepositoryIndexTest {
     }
 
     @Test
+    fun stashSave_withUntracked_stashesNewFilesAndApplyBringsThemBack() = runBlocking {
+        writeFile("new.txt", "fresh")
+
+        assertTrue(repo.stashSave(model, includeUntracked = false) is GitResult.Failure)
+        assertTrue(repo.stashSave(model, includeUntracked = true) is GitResult.Success)
+        assertFalse(File(repoDir, "new.txt").exists())
+
+        assertTrue(repo.stashApply(model, 0) is GitResult.Success)
+        assertEquals("fresh", File(repoDir, "new.txt").readText())
+    }
+
+    @Test
     fun readsFromMissingRepository_reportFailureInsteadOfEmptyResults() = runBlocking {
         val missing = model.copy(path = tempFolder.newFolder("not-a-repo").absolutePath)
 

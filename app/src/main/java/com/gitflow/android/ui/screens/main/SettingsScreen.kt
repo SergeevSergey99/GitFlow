@@ -40,6 +40,7 @@ import androidx.compose.ui.layout.ContentScale
 import coil3.compose.AsyncImage
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.settings.AppSettingsManager
+import com.gitflow.android.data.storage.hasSharedStorageAccess
 import com.gitflow.android.ui.auth.providerDisplayName
 import com.gitflow.android.ui.auth.providerIcon
 import com.gitflow.android.ui.auth.providerIconColor
@@ -1132,17 +1133,6 @@ private fun PermissionsSection(
                     )
                 }
             }
-
-            // On Android 13+ there's no storage permission requirement,
-            // but SAF works without it — show picker directly
-            if (requirements.none { it.id == "storage" }) {
-                StoragePathPicker(
-                    customStoragePath = customStoragePath,
-                    repositoriesBaseDir = repositoriesBaseDir,
-                    onChooseFolder = onChooseFolder,
-                    onReset = onResetFolder
-                )
-            }
         }
     }
 }
@@ -1301,34 +1291,32 @@ private data class PermissionRequirement(
                 )
             )
 
-            val storagePermissions = mutableListOf<String>()
-            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
-                storagePermissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            // Android 11+ has no runtime dialog for "all files access": only its settings screen.
+            val storagePermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                emptyList()
+            } else {
+                listOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE)
             }
-            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
-                storagePermissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-            }
-
-            if (storagePermissions.isNotEmpty()) {
-                requirements.add(
-                    PermissionRequirement(
-                        id = "storage",
-                        titleResId = R.string.settings_permission_storage,
-                        descriptionResId = R.string.settings_permission_storage_description,
-                        permissions = storagePermissions,
-                        settingsIntentBuilder = { ctx ->
+            requirements.add(
+                PermissionRequirement(
+                    id = "storage",
+                    titleResId = R.string.settings_permission_storage,
+                    descriptionResId = R.string.settings_permission_storage_description,
+                    permissions = storagePermissions,
+                    settingsIntentBuilder = { ctx ->
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                                data = Uri.fromParts("package", ctx.packageName, null)
+                            }
+                        } else {
                             Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                                 data = Uri.fromParts("package", ctx.packageName, null)
                             }
-                        },
-                        statusChecker = { ctx ->
-                            storagePermissions.all { permission ->
-                                ContextCompat.checkSelfPermission(ctx, permission) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                            }
                         }
-                    )
+                    },
+                    statusChecker = { ctx -> hasSharedStorageAccess(ctx) }
                 )
-            }
+            )
 
             return requirements
         }

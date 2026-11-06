@@ -4,8 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
-import android.os.Environment
-import android.provider.DocumentsContract
+import com.gitflow.android.data.storage.treeUriToFile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -193,7 +192,7 @@ class AppSettingsManager(context: Context) {
     fun getRepositoriesBaseDir(context: Context): File {
         val uriString = getCustomStorageUri()
         if (uriString != null) {
-            val resolved = resolveTreeUriToFile(context, Uri.parse(uriString))
+            val resolved = treeUriToFile(Uri.parse(uriString))
             if (resolved != null && resolved.isDirectory && resolved.canWrite()) {
                 ensureNomediaFile(resolved)
                 return resolved
@@ -202,21 +201,6 @@ class AppSettingsManager(context: Context) {
         val fallback = File(context.getExternalFilesDir(null) ?: context.filesDir, "repositories")
         if (!fallback.exists()) fallback.mkdirs()
         return fallback
-    }
-
-    private fun resolveTreeUriToFile(context: Context, treeUri: Uri): File? {
-        return try {
-            val docId = DocumentsContract.getTreeDocumentId(treeUri)
-            val split = docId.split(":")
-            val basePath = if (split[0] == "primary") {
-                Environment.getExternalStorageDirectory()
-            } else {
-                File("/storage/${split[0]}")
-            }
-            File(basePath, split.getOrElse(1) { "" })
-        } catch (e: Exception) {
-            null
-        }
     }
 
     fun ensureNomediaFile(dir: File) {

@@ -243,7 +243,7 @@ class GitRepository(
     override suspend fun getFileHistory(commit: Commit, filePath: String, repository: Repository): GitResult<List<Commit>> = getFileHistoryImpl(commit, filePath, repository)
     override suspend fun getFileHistoryForPath(repository: Repository, filePath: String): GitResult<List<Commit>> = getFileHistoryForPathImpl(repository, filePath)
 
-    override suspend fun stashSave(repository: Repository, message: String): GitResult<Unit> = stashSaveImpl(repository, message).also { notifyChanged(repository) }
+    override suspend fun stashSave(repository: Repository, message: String, includeUntracked: Boolean): GitResult<Unit> = stashSaveImpl(repository, message, includeUntracked).also { notifyChanged(repository) }
     override suspend fun stashList(repository: Repository): GitResult<List<StashEntry>> = stashListImpl(repository)
     override suspend fun stashApply(repository: Repository, stashIndex: Int): GitResult<Unit> = stashApplyImpl(repository, stashIndex).also { notifyChanged(repository) }
     override suspend fun stashPop(repository: Repository, stashIndex: Int): GitResult<Unit> = stashPopImpl(repository, stashIndex).also { notifyChanged(repository) }

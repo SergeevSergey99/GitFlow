@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -1537,12 +1538,13 @@ private fun StashDialog(
     isLoading: Boolean,
     isBusy: Boolean,
     onDismiss: () -> Unit,
-    onSave: (String) -> Unit,
+    onSave: (message: String, includeUntracked: Boolean) -> Unit,
     onApply: (Int) -> Unit,
     onPop: (Int) -> Unit,
     onDrop: (Int) -> Unit
 ) {
     var stashMessage by remember { mutableStateOf("") }
+    var includeUntracked by remember { mutableStateOf(true) }
     val dateFormat = remember { SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault()) }
 
     AlertDialog(
@@ -1562,9 +1564,22 @@ private fun StashDialog(
                     singleLine = true,
                     enabled = !isBusy
                 )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = !isBusy) { includeUntracked = !includeUntracked },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = includeUntracked,
+                        onCheckedChange = { includeUntracked = it },
+                        enabled = !isBusy
+                    )
+                    Text(stringResource(R.string.changes_stash_include_untracked), fontSize = 14.sp)
+                }
                 Button(
                     onClick = {
-                        onSave(stashMessage)
+                        onSave(stashMessage, includeUntracked)
                         stashMessage = ""
                     },
                     modifier = Modifier.fillMaxWidth(),

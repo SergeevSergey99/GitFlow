@@ -1,11 +1,11 @@
 package com.gitflow.android.data.repository
 
 import android.net.Uri
-import androidx.documentfile.provider.DocumentFile
 import com.gitflow.android.R
 import com.gitflow.android.data.models.GitResult
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.models.getOrNull
+import com.gitflow.android.data.storage.treeUriToFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.eclipse.jgit.api.Git
@@ -15,12 +15,8 @@ import java.util.*
 internal suspend fun GitRepository.addRepositoryImpl(path: String): GitResult<Repository> = withContext(Dispatchers.IO) {
     try {
         val repoDir = if (path.startsWith("content://")) {
-            val uri = Uri.parse(path)
-            val documentFile = DocumentFile.fromTreeUri(context, uri)
-            if (documentFile == null || !documentFile.exists()) {
-                return@withContext GitResult.Failure.Generic(text(R.string.git_error_cannot_access_directory))
-            }
-            return@withContext GitResult.Failure.Generic(text(R.string.git_error_saf_unsupported))
+            treeUriToFile(Uri.parse(path))
+                ?: return@withContext GitResult.Failure.Generic(text(R.string.git_error_cannot_access_directory))
         } else {
             File(path)
         }

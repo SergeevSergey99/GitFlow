@@ -81,7 +81,9 @@
     <string name="settings_permission_notifications">Уведомления</string>
     <string name="settings_permission_notifications_description">Нужны для отображения прогресса клонирования и статуса фоновых задач.</string>
     <string name="settings_permission_storage">Доступ к файлам</string>
-    <string name="settings_permission_storage_description">Позволяет выбирать папку для клонирования и работать с репозиториями на устройстве.</string>
+    <string name="settings_permission_storage_description">Позволяет хранить репозитории в любой папке устройства и открывать существующие. На Android 11+ это разрешение «Доступ ко всем файлам».</string>
+    <string name="add_repo_storage_access_required">Разрешите доступ к файлам в Настройках → Разрешения, чтобы использовать папки вне приложения.</string>
+    <string name="add_repo_folder_unresolved">Эту папку нельзя открыть как обычный каталог.</string>
     <string name="settings_permission_grant">Разрешить</string>
     <string name="settings_permission_open_settings">Открыть настройки</string>
     <string name="settings_permission_manage">Управлять разрешением</string>
@@ -197,6 +199,7 @@
     <string name="commit_detail_toast_restore_failed">Не удалось восстановить файл</string>
     <string name="commit_detail_toast_copied_file_name">Имя файла скопировано</string>
     <string name="commit_detail_toast_copied_file_path">Путь файла скопирован</string>
+    <string name="commit_detail_toast_copied_file_content">Содержимое файла скопировано</string>
     <string name="commit_detail_toast_no_parent">Нет родительского коммита</string>
     <string name="commit_detail_toast_load_failed">Не удалось загрузить содержимое файла</string>
     <string name="commit_detail_toast_open_failed">Нет приложения для открытия этого файла</string>
@@ -278,6 +281,7 @@
     <string name="changes_stash_button">Stash</string>
     <string name="changes_stash_title">Git Stash</string>
     <string name="changes_stash_message_hint">Сообщение stash (необязательно)</string>
+    <string name="changes_stash_include_untracked">Включая неотслеживаемые файлы</string>
     <string name="changes_stash_save_button">Сохранить stash</string>
     <string name="changes_stash_empty">Нет сохранённых stash</string>
     <string name="changes_stash_apply">Применить</string>
@@ -411,7 +415,6 @@
     <string name="git_error_file_not_in_commit">Файла %1$s нет в этом коммите</string>
     <string name="git_error_no_parent">У коммита %1$s нет родителя</string>
     <string name="git_error_cannot_access_directory">Нет доступа к папке</string>
-    <string name="git_error_saf_unsupported">Добавление папки через системный выбор пока не поддерживается</string>
     <string name="git_error_not_a_repository">Папка не является Git-репозиторием: %1$s</string>
     <string name="git_error_directory_exists">Папка уже существует: %1$s</string>
     <string name="git_error_clone_cancelled">Клонирование отменено</string>

@@ -7,10 +7,11 @@ import com.gitflow.android.data.models.StashEntry
 
 internal suspend fun GitRepository.stashSaveImpl(
     repository: Repository,
-    message: String
+    message: String,
+    includeUntracked: Boolean
 ): GitResult<Unit> = withGit(repository) { git ->
     if (!applyCommitIdentity(git)) return@withGit identityRequired()
-    val stashCommand = git.stashCreate()
+    val stashCommand = git.stashCreate().setIncludeUntracked(includeUntracked)
     if (message.isNotBlank()) stashCommand.setWorkingDirectoryMessage(message)
     stashCommand.call() ?: return@withGit GitResult.Failure.Generic(text(R.string.git_error_nothing_to_stash))
     GitResult.Success(Unit)

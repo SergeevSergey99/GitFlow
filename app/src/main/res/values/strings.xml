@@ -81,7 +81,9 @@
     <string name="settings_permission_notifications">Notifications</string>
     <string name="settings_permission_notifications_description">Required to display cloning progress and background task status.</string>
     <string name="settings_permission_storage">File access</string>
-    <string name="settings_permission_storage_description">Allows selecting a folder for cloning and working with repositories on the device.</string>
+    <string name="settings_permission_storage_description">Allows keeping repositories in any device folder and opening existing ones. On Android 11+ this is the \"All files access\" permission.</string>
+    <string name="add_repo_storage_access_required">Grant file access in Settings → Permissions to use folders outside the app.</string>
+    <string name="add_repo_folder_unresolved">This folder can\'t be opened as a regular directory.</string>
     <string name="settings_permission_grant">Grant</string>
     <string name="settings_permission_open_settings">Open settings</string>
     <string name="settings_permission_manage">Manage permission</string>
@@ -197,6 +199,7 @@
     <string name="commit_detail_toast_restore_failed">Failed to restore file</string>
     <string name="commit_detail_toast_copied_file_name">File name copied</string>
     <string name="commit_detail_toast_copied_file_path">File path copied</string>
+    <string name="commit_detail_toast_copied_file_content">File content copied</string>
     <string name="commit_detail_toast_no_parent">No parent commit available</string>
     <string name="commit_detail_toast_load_failed">Failed to load file content</string>
     <string name="commit_detail_toast_open_failed">No application available to open this file</string>
@@ -278,6 +281,7 @@
     <string name="changes_stash_button">Stash</string>
     <string name="changes_stash_title">Git Stash</string>
     <string name="changes_stash_message_hint">Stash message (optional)</string>
+    <string name="changes_stash_include_untracked">Include untracked files</string>
     <string name="changes_stash_save_button">Save Stash</string>
     <string name="changes_stash_empty">No stash entries</string>
     <string name="changes_stash_apply">Apply</string>
@@ -411,7 +415,6 @@
     <string name="git_error_file_not_in_commit">File %1$s is not in this commit</string>
     <string name="git_error_no_parent">Commit %1$s has no parent</string>
     <string name="git_error_cannot_access_directory">Cannot access the folder</string>
-    <string name="git_error_saf_unsupported">Adding a folder through the system picker is not supported yet</string>
     <string name="git_error_not_a_repository">Not a Git repository: %1$s</string>
     <string name="git_error_directory_exists">Folder already exists: %1$s</string>
     <string name="git_error_clone_cancelled">Clone cancelled</string>

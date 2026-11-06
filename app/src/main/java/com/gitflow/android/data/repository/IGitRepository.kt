@@ -76,7 +76,7 @@ interface IGitRepository {
     suspend fun restoreFileToParentCommit(commit: Commit, filePath: String, repository: Repository): GitResult<Unit>
     suspend fun getFileHistory(commit: Commit, filePath: String, repository: Repository): GitResult<List<Commit>>
     suspend fun getFileHistoryForPath(repository: Repository, filePath: String): GitResult<List<Commit>>
-    suspend fun stashSave(repository: Repository, message: String = ""): GitResult<Unit>
+    suspend fun stashSave(repository: Repository, message: String = "", includeUntracked: Boolean = false): GitResult<Unit>
     suspend fun stashList(repository: Repository): GitResult<List<StashEntry>>
     suspend fun stashApply(repository: Repository, stashIndex: Int): GitResult<Unit>
     suspend fun stashPop(repository: Repository, stashIndex: Int): GitResult<Unit>

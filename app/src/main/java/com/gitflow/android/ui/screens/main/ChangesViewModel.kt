@@ -496,9 +496,9 @@ class ChangesViewModel(
         _uiState.update { it.copy(showStashDialog = false) }
     }
 
-    fun stashSave(message: String) {
+    fun stashSave(message: String, includeUntracked: Boolean) {
         guard {
-            val result = gitRepository.stashSave(repository, message)
+            val result = gitRepository.stashSave(repository, message, includeUntracked)
             if (result is GitResult.Success) {
                 emit(str(R.string.changes_stash_saved))
                 reloadStashList()

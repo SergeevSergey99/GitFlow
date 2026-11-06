@@ -28,6 +28,8 @@ import androidx.compose.ui.window.Dialog
 import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
 import com.gitflow.android.data.models.GitProvider
+import com.gitflow.android.data.storage.hasSharedStorageAccess
+import com.gitflow.android.data.storage.treeUriToFile
 import java.util.Locale
 import kotlinx.coroutines.delay
 
@@ -51,22 +53,30 @@ fun AddRepositoryDialog(
     var approximateSize by remember { mutableStateOf<Long?>(null) }
     var isSizeLoading by remember { mutableStateOf(false) }
     var sizeError by remember { mutableStateOf<String?>(null) }
+    var pickerError by remember { mutableStateOf<String?>(null) }
+
+    fun pickedFolderPath(uri: Uri): String? {
+        if (!hasSharedStorageAccess(context)) {
+            pickerError = context.getString(R.string.add_repo_storage_access_required)
+            return null
+        }
+        val folder = treeUriToFile(uri)
+        pickerError = if (folder == null) context.getString(R.string.add_repo_folder_unresolved) else null
+        return folder?.absolutePath
+    }
+
     // Launcher for choosing directory for cloning
     val directoryPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->
-        uri?.let {
-            customDestination = getRealPathFromUri(it)
-        }
+        uri?.let { pickedFolderPath(it) }?.let { customDestination = it }
     }
 
     // Launcher for choosing existing repository directory
     val repoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->
-        uri?.let {
-            localPath = getRealPathFromUri(it)
-        }
+        uri?.let { pickedFolderPath(it) }?.let { localPath = it }
     }
 
     LaunchedEffect(url, authManager, selectedTab) {
@@ -164,7 +174,7 @@ fun AddRepositoryDialog(
                 }
 
                 // Error message display
-                errorMessage?.let { error ->
+                (pickerError ?: errorMessage)?.let { error ->
                     Spacer(modifier = Modifier.height(8.dp))
                     Card(
                         colors = CardDefaults.cardColors(
@@ -635,13 +645,4 @@ fun extractRepoNameFromUrl(url: String): String {
     } catch (e: Exception) {
         ""
     }
-}
-
-fun getRealPathFromUri(uri: Uri): String {
-    // Для простоты возвращаем строковое представление URI
-    // В реальном приложении здесь должна быть более сложная логика
-    // для преобразования content:// URI в реальные пути
-    return uri.toString().replace("content://com.android.externalstorage.documents/tree/", "/storage/emulated/0/")
-        .replace("%3A", "/")
-        .replace("%2F", "/")
 }
