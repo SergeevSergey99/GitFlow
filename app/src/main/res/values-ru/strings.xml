@@ -596,6 +596,13 @@
     <string name="auth_error_user_fetch_failed">Не удалось получить информацию о пользователе: %1$d</string>
     <string name="auth_error_empty_response">Пустой ответ от сервера</string>
     <string name="auth_error_github">Ошибка авторизации GitHub</string>
+    <string name="auth_github_device_title">Вход в GitHub</string>
+    <string name="auth_github_device_message">Откройте %1$s и введите этот код:</string>
+    <string name="auth_github_device_waiting">Жду подтверждения на GitHub…</string>
+    <string name="auth_github_device_open">Скопировать и открыть GitHub</string>
+    <string name="auth_github_device_cancel">Отмена</string>
+    <string name="auth_error_device_code_expired">Код устарел — начните вход заново.</string>
+    <string name="auth_error_device_access_denied">Вход отклонён на GitHub.</string>
     <string name="auth_error_gitlab">Ошибка авторизации GitLab</string>
     <string name="auth_error_bitbucket">Ошибка авторизации Bitbucket</string>
     <string name="auth_error_token_fetch_bitbucket">Не удалось получить токен Bitbucket: %1$d</string>

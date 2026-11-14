@@ -1,7 +1,15 @@
 package com.gitflow.android.ui.auth
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -21,15 +29,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import coil3.compose.AsyncImage
 import org.koin.androidx.compose.koinViewModel
 import com.gitflow.android.R
+import com.gitflow.android.data.auth.GitHubDeviceCode
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitUser
 import com.gitflow.android.data.models.TokenInfo
@@ -50,6 +62,7 @@ fun AuthScreen(
     val errorMessage by viewModel.errorMessage.collectAsState()
     val localAuthorName by viewModel.localAuthorName.collectAsState()
     val localAuthorEmail by viewModel.localAuthorEmail.collectAsState()
+    val githubDeviceCode by viewModel.githubDeviceCode.collectAsState()
 
     val cancelledMessage = stringResource(R.string.auth_manage_cancelled)
 
@@ -68,6 +81,10 @@ fun AuthScreen(
             val error = result.data?.getStringExtra(OAuthActivity.RESULT_ERROR) ?: cancelledMessage
             viewModel.setError(error)
         }
+    }
+
+    githubDeviceCode?.let { code ->
+        GitHubDeviceCodeDialog(code = code, onCancel = viewModel::cancelGitHubSignIn)
     }
 
     Scaffold(
@@ -131,7 +148,7 @@ fun AuthScreen(
                 user = githubUser,
                 isLoading = isLoading,
                 tokenInfo = if (githubUser != null) viewModel.getTokenInfo(GitProvider.GITHUB) else null,
-                onLoginOAuth = { viewModel.startAuth(GitProvider.GITHUB) { oauthLauncher.launch(it) } },
+                onLoginOAuth = viewModel::startGitHubSignIn,
                 onLogout = { viewModel.logout(GitProvider.GITHUB) }
             )
 
@@ -624,4 +641,50 @@ internal fun providerIconColor(provider: GitProvider): Color = when (provider) {
     GitProvider.BITBUCKET -> Color(0xFF0052CC)
     GitProvider.GITEA -> Color(0xFF609926)
     GitProvider.AZURE_DEVOPS -> Color(0xFF0078D4)
+}
+
+@Composable
+private fun GitHubDeviceCodeDialog(code: GitHubDeviceCode, onCancel: () -> Unit) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = onCancel,
+        properties = DialogProperties(dismissOnClickOutside = false),
+        title = { Text(stringResource(R.string.auth_github_device_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(stringResource(R.string.auth_github_device_message, code.verificationUri))
+                SelectionContainer(modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                    Text(
+                        text = code.userCode,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.auth_github_device_waiting),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("github_device_code", code.userCode))
+                try {
+                    CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(code.verificationUri))
+                } catch (error: ActivityNotFoundException) {
+                    Toast.makeText(context, context.getString(R.string.oauth_error_no_browser), Toast.LENGTH_SHORT).show()
+                }
+            }) { Text(stringResource(R.string.auth_github_device_open)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onCancel) { Text(stringResource(R.string.auth_github_device_cancel)) }
+        }
+    )
 }

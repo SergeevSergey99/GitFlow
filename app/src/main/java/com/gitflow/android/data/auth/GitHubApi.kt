@@ -11,6 +11,24 @@ data class GitHubOAuthResponse(
     val scope: String
 )
 
+data class GitHubDeviceCodeResponse(
+    val device_code: String,
+    val user_code: String,
+    val verification_uri: String,
+    val expires_in: Int,
+    val interval: Int
+)
+
+/** While the user has not confirmed yet GitHub answers 200 with [error] set instead of a token. */
+data class GitHubDeviceTokenResponse(
+    val access_token: String? = null,
+    val token_type: String? = null,
+    val scope: String? = null,
+    val error: String? = null,
+    val error_description: String? = null,
+    val interval: Int? = null
+)
+
 data class GitHubUser(
     val id: Long,
     val login: String,
@@ -42,11 +60,22 @@ data class GitHubRepository(
 
 interface GitHubApi {
     
-    @POST("login/oauth/access_token")
+    @POST("login/device/code")
+    @FormUrlEncoded
     @Headers("Accept: application/json")
-    suspend fun getAccessToken(
-        @Body request: Map<String, String>
-    ): Response<GitHubOAuthResponse>
+    suspend fun requestDeviceCode(
+        @Field("client_id") clientId: String,
+        @Field("scope") scope: String
+    ): Response<GitHubDeviceCodeResponse>
+
+    @POST("login/oauth/access_token")
+    @FormUrlEncoded
+    @Headers("Accept: application/json")
+    suspend fun pollDeviceToken(
+        @Field("client_id") clientId: String,
+        @Field("device_code") deviceCode: String,
+        @Field("grant_type") grantType: String = "urn:ietf:params:oauth:grant-type:device_code"
+    ): Response<GitHubDeviceTokenResponse>
     
     @GET("user")
     suspend fun getCurrentUser(

@@ -5,10 +5,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gitflow.android.R
 import com.gitflow.android.data.auth.AuthManager
+import com.gitflow.android.data.auth.GitHubDeviceCode
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitUser
 import com.gitflow.android.data.models.TokenInfo
 import com.gitflow.android.data.settings.AppSettingsManager
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,6 +52,10 @@ class AuthViewModel(
     private val _localAuthorEmail = MutableStateFlow(settingsManager.getLocalAuthorEmail())
     val localAuthorEmail: StateFlow<String> = _localAuthorEmail.asStateFlow()
 
+    private val _githubDeviceCode = MutableStateFlow<GitHubDeviceCode?>(null)
+    val githubDeviceCode: StateFlow<GitHubDeviceCode?> = _githubDeviceCode.asStateFlow()
+
+    private var githubSignInJob: Job? = null
 
     init {
         _githubUser.value = authManager.getCurrentUser(GitProvider.GITHUB)
@@ -84,7 +91,7 @@ class AuthViewModel(
         _localAuthorEmail.value = email
     }
 
-    /** Starts the OAuth WebView flow for GitHub, GitLab, or Bitbucket. */
+    /** Starts the browser OAuth flow for GitLab or Bitbucket. */
     fun startAuth(provider: GitProvider, launchIntent: (Intent) -> Unit) {
         _errorMessage.value = null
         _isLoading.value = true
@@ -104,7 +111,43 @@ class AuthViewModel(
         }
     }
 
-    /** Handles the OAuth callback code from OAuthActivity (GitHub, GitLab, Bitbucket). */
+    fun startGitHubSignIn() {
+        cancelGitHubSignIn()
+        _errorMessage.value = null
+        _isLoading.value = true
+        githubSignInJob = viewModelScope.launch {
+            try {
+                val code = authManager.requestGitHubDeviceCode()
+                _githubDeviceCode.value = code
+                val result = authManager.awaitGitHubDeviceAuthorization(code)
+                resetGitHubSignIn()
+                if (result.success) {
+                    setUserForProvider(GitProvider.GITHUB, result.user)
+                } else {
+                    _errorMessage.value = result.error ?: str(R.string.authvm_error_auth)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                resetGitHubSignIn()
+                _errorMessage.value = str(R.string.authvm_error_start, e.message ?: "")
+            }
+        }
+    }
+
+    fun cancelGitHubSignIn() {
+        val job = githubSignInJob ?: return
+        resetGitHubSignIn()
+        job.cancel()
+    }
+
+    private fun resetGitHubSignIn() {
+        githubSignInJob = null
+        _githubDeviceCode.value = null
+        _isLoading.value = false
+    }
+
+    /** Handles the OAuth callback code from OAuthActivity (GitLab, Bitbucket). */
     fun handleAuthCallback(provider: GitProvider, code: String, state: String) {
         viewModelScope.launch {
             _isLoading.value = true

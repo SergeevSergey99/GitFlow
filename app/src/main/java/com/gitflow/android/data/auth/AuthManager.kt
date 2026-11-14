@@ -7,6 +7,7 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.gitflow.android.data.models.*
 import com.google.gson.Gson
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -91,7 +92,6 @@ class AuthManager(private val context: Context) {
         private const val KEY_PENDING_AUTH_PREFIX = "pending_auth_"
         private const val TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000L
 
-        private const val GITHUB_AUTH_URL = "https://github.com/login/oauth/authorize"
         private const val GITHUB_API_URL = "https://api.github.com/"
         private const val GITLAB_AUTH_URL = "https://gitlab.com/oauth/authorize"
         private const val GITLAB_API_URL = "https://gitlab.com/"
@@ -189,8 +189,8 @@ class AuthManager(private val context: Context) {
     // ---------------------------------------------------------------------------
 
     /**
-     * Returns (authUrl, state) pair for OAuth providers (GitHub, GitLab, Bitbucket).
-     * Gitea and Azure DevOps use PAT — call [validateAndSavePAT] instead.
+     * Returns (authUrl, state) pair for the redirect-based OAuth providers (GitLab, Bitbucket).
+     * GitHub signs in with [requestGitHubDeviceCode]; Gitea and Azure DevOps use [validateAndSavePAT].
      */
     fun getAuthUrl(provider: GitProvider): Pair<String, String> {
         if (!OAuthConfig.isProviderConfigured(provider)) {
@@ -208,13 +208,6 @@ class AuthManager(private val context: Context) {
         val stateEncoded = URLEncoder.encode(state, "UTF-8")
 
         val url = when (provider) {
-            GitProvider.GITHUB -> {
-                val scope = URLEncoder.encode("repo user", "UTF-8")
-                "$GITHUB_AUTH_URL?client_id=${OAuthConfig.githubClientId}" +
-                    "&redirect_uri=$redirectEncoded&scope=$scope&response_type=code" +
-                    "&code_challenge=$challengeEncoded&code_challenge_method=S256" +
-                    "&state=$stateEncoded"
-            }
             GitProvider.GITLAB -> {
                 val scope = URLEncoder.encode("read_user read_repository write_repository", "UTF-8")
                 "$GITLAB_AUTH_URL?client_id=${OAuthConfig.gitlabClientId}" +
@@ -229,6 +222,8 @@ class AuthManager(private val context: Context) {
                     "&code_challenge=$challengeEncoded&code_challenge_method=S256" +
                     "&state=$stateEncoded"
             }
+            GitProvider.GITHUB ->
+                throw UnsupportedOperationException("GitHub signs in with the device flow")
             GitProvider.GITEA, GitProvider.AZURE_DEVOPS ->
                 throw UnsupportedOperationException("$provider uses PAT authentication, not OAuth")
         }
@@ -271,7 +266,7 @@ class AuthManager(private val context: Context) {
             }
 
             when (provider) {
-                GitProvider.GITHUB -> handleGitHubCallback(code, pending.codeVerifier)
+                GitProvider.GITHUB -> AuthResult(success = false, error = "GitHub signs in with the device flow")
                 GitProvider.GITLAB -> handleGitLabCallback(code, pending.codeVerifier)
                 GitProvider.BITBUCKET -> handleBitbucketCallback(code, pending.codeVerifier)
                 GitProvider.GITEA, GitProvider.AZURE_DEVOPS ->
@@ -282,33 +277,60 @@ class AuthManager(private val context: Context) {
         }
     }
 
-    private suspend fun handleGitHubCallback(code: String, codeVerifier: String): AuthResult {
+    // ---------------------------------------------------------------------------
+    // GitHub device flow: the token is issued without the client secret, which a published APK can't keep
+    // ---------------------------------------------------------------------------
+
+    suspend fun requestGitHubDeviceCode(): GitHubDeviceCode = withContext(Dispatchers.IO) {
+        check(OAuthConfig.isProviderConfigured(GitProvider.GITHUB)) {
+            "OAuth credentials for GITHUB are not configured in oauth.properties"
+        }
+        val response = githubTokenApi.requestDeviceCode(OAuthConfig.githubClientId, scope = "repo user")
+        val body = response.body()
+        if (!response.isSuccessful || body == null) {
+            throw IllegalStateException(context.getString(R.string.auth_error_token_fetch_failed, response.code()))
+        }
+        GitHubDeviceCode(
+            deviceCode = body.device_code,
+            userCode = body.user_code,
+            verificationUri = body.verification_uri,
+            intervalSeconds = body.interval,
+            expiresInSeconds = body.expires_in
+        )
+    }
+
+    suspend fun awaitGitHubDeviceAuthorization(code: GitHubDeviceCode): AuthResult = withContext(Dispatchers.IO) {
         try {
-            val tokenResponse = githubTokenApi.getAccessToken(
-                mapOf(
-                    "client_id" to OAuthConfig.githubClientId,
-                    "client_secret" to OAuthConfig.githubClientSecret,
-                    "code" to code,
-                    "redirect_uri" to OAuthConfig.REDIRECT_URI,
-                    "code_verifier" to codeVerifier
-                )
-            )
-            if (!tokenResponse.isSuccessful) {
-                return AuthResult(success = false, error = context.getString(R.string.auth_error_token_fetch_failed, tokenResponse.code()))
+            val response = pollGitHubDeviceToken(code) {
+                val reply = githubTokenApi.pollDeviceToken(OAuthConfig.githubClientId, code.deviceCode)
+                reply.body() ?: throw IllegalStateException(context.getString(R.string.auth_error_token_fetch_failed, reply.code()))
             }
-            val oauthResponse = tokenResponse.body()
-                ?: return AuthResult(success = false, error = context.getString(R.string.auth_error_empty_response))
+            val accessToken = response.access_token
+            when {
+                accessToken != null -> completeGitHubSignIn(
+                    OAuthToken(accessToken = accessToken, tokenType = response.token_type ?: "Bearer", scope = response.scope)
+                )
+                response.error == GITHUB_DEVICE_EXPIRED ->
+                    AuthResult(success = false, error = context.getString(R.string.auth_error_device_code_expired))
+                response.error == GITHUB_DEVICE_DENIED ->
+                    AuthResult(success = false, error = context.getString(R.string.auth_error_device_access_denied))
+                else -> AuthResult(
+                    success = false,
+                    error = response.error_description ?: response.error ?: context.getString(R.string.auth_error_github)
+                )
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            AuthResult(success = false, error = e.message ?: context.getString(R.string.auth_error_github))
+        }
+    }
 
-            val token = OAuthToken(
-                accessToken = oauthResponse.access_token,
-                tokenType = oauthResponse.token_type,
-                scope = oauthResponse.scope
-            )
-
-            // Warn if required scopes are missing
-            val grantedScopes = oauthResponse.scope?.split(",")?.map { it.trim() } ?: emptyList()
+    private suspend fun completeGitHubSignIn(token: OAuthToken): AuthResult {
+        try {
+            val grantedScopes = token.scope?.split(",")?.map { it.trim() } ?: emptyList()
             if (!grantedScopes.any { it == "repo" || it == "public_repo" }) {
-                Timber.w("GitHub OAuth: 'repo' scope not granted. Granted: ${oauthResponse.scope}")
+                Timber.w("GitHub OAuth: 'repo' scope not granted. Granted: ${token.scope}")
             }
 
             val userResponse = githubApi.getCurrentUser("Bearer ${token.accessToken}")
@@ -360,7 +382,6 @@ class AuthManager(private val context: Context) {
         try {
             val tokenResponse = gitlabApi.getAccessToken(
                 clientId = OAuthConfig.gitlabClientId,
-                clientSecret = OAuthConfig.gitlabClientSecret,
                 code = code,
                 redirectUri = OAuthConfig.REDIRECT_URI,
                 codeVerifier = codeVerifier
@@ -608,7 +629,6 @@ class AuthManager(private val context: Context) {
         try {
             val response = gitlabApi.refreshToken(
                 clientId = OAuthConfig.gitlabClientId,
-                clientSecret = OAuthConfig.gitlabClientSecret,
                 refreshToken = refreshToken,
                 redirectUri = OAuthConfig.REDIRECT_URI
             )

@@ -41,4 +41,4 @@ Details: `ARCHITECTURE.md`, file map and commands: `QUICK_REFERENCE.md`.
 - God files: `CommitDetailDialog.kt`, `ChangesScreen.kt`, `EnhancedGraphScreen.kt`, `SettingsScreen.kt`, `AuthManager.kt`.
 - Network operations (fetch/pull/push) can't be cancelled.
 - `MANAGE_EXTERNAL_STORAGE` requires a Google Play declaration.
-- `client_secret` ships in the APK (`assets/oauth.properties`).
+- Bitbucket's `client_secret` ships in the APK (`assets/oauth.properties`); GitHub (device flow) and GitLab (public client + PKCE) need none.

@@ -10,8 +10,8 @@
 
 | Провайдер     | Тип авторизации | Требует `oauth.properties` |
 |---------------|-----------------|----------------------------|
-| GitHub        | OAuth 2.0 + PKCE | Да |
-| GitLab        | OAuth 2.0 + PKCE | Да |
+| GitHub        | OAuth Device Flow (без секрета) | Да, только client id |
+| GitLab        | OAuth 2.0 + PKCE, публичное приложение (без секрета) | Да, только client id |
 | Bitbucket     | OAuth 2.0 + PKCE | Да |
 | Gitea/Forgejo | Personal Access Token | Нет |
 | Azure DevOps  | Personal Access Token | Нет |
@@ -29,7 +29,9 @@ cp app/src/main/assets/oauth.properties.example \
    app/src/main/assets/oauth.properties
 ```
 
-> **Важно:** `oauth.properties` уже добавлен в `.gitignore`. Никогда не коммитьте этот файл — он содержит секреты приложения.
+> **Важно:** `oauth.properties` уже добавлен в `.gitignore`. Никогда не коммитьте этот файл.
+> Для GitHub и GitLab в нём только client id — секрет в APK не спрятать, поэтому вход устроен без него.
+> Секрет нужен только Bitbucket.
 
 ---
 
@@ -41,13 +43,14 @@ cp app/src/main/assets/oauth.properties.example \
 2. Заполните поля:
    - **Application name:** GitFlow Android (любое)
    - **Homepage URL:** любой URL
-   - **Authorization callback URL:** `gitflow://oauth/callback`
-3. Нажмите **Register application**
-4. Скопируйте **Client ID** и сгенерируйте **Client Secret**
+   - **Authorization callback URL:** `gitflow://oauth/callback` (Device Flow его не использует, но GitHub требует поле)
+3. Отметьте **Enable Device Flow** и нажмите **Register application**
+4. Скопируйте **Client ID**. Client Secret не нужен
+
+В приложении вход показывает код: пользователь вводит его на `github.com/login/device`, приложение ждёт подтверждения.
 
 ```properties
 github.client.id=Ov23liXXXXXXXXXXXXXX
-github.client.secret=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 ---
@@ -58,13 +61,13 @@ github.client.secret=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 2. Заполните поля:
    - **Name:** GitFlow Android
    - **Redirect URI:** `gitflow://oauth/callback`
+   - **Confidential:** снимите галочку — приложение публичное, токен выдаётся по PKCE без секрета
    - **Scopes:** отметьте `read_user`, `read_repository`, `write_repository`
 3. Нажмите **Save application**
-4. Скопируйте **Application ID** и **Secret**
+4. Скопируйте **Application ID**. Secret не нужен
 
 ```properties
 gitlab.client.id=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-gitlab.client.secret=gloas-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 ---
@@ -94,10 +97,8 @@ bitbucket.client.secret=XXXXXXXXXXXXXXXXXXXXXXXXXXXXxxxx
 # app/src/main/assets/oauth.properties
 
 github.client.id=Ov23liXXXXXXXXXXXXXX
-github.client.secret=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 gitlab.client.id=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-gitlab.client.secret=gloas-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 bitbucket.client.id=XXXXXXXXXXXXXXXXXXXX
 bitbucket.client.secret=XXXXXXXXXXXXXXXXXXXXXXXXXXXXxxxx
@@ -128,16 +129,14 @@ bitbucket.client.secret=XXXXXXXXXXXXXXXXXXXXXXXXXXXXxxxx
 `OAuthConfig` ищет учётные данные в следующем порядке:
 
 1. `app/src/main/assets/oauth.properties` — основной способ для разработчиков
-2. Переменные окружения (`GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, и т.д.) — для CI/CD
+2. Переменные окружения (`GITHUB_CLIENT_ID`, `GITLAB_CLIENT_ID` и т.д.) — для CI/CD
 3. `context.filesDir/oauth.properties` — для production-сборок без встроенных секретов
 
 Переменные окружения для CI:
 
 ```
 GITHUB_CLIENT_ID
-GITHUB_CLIENT_SECRET
 GITLAB_CLIENT_ID
-GITLAB_CLIENT_SECRET
 BITBUCKET_CLIENT_ID
 BITBUCKET_CLIENT_SECRET
 ```

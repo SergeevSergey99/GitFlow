@@ -5,14 +5,14 @@
 # GitHub OAuth App Credentials
 # Create app at: https://github.com/settings/applications/new
 # Callback URL: gitflow://oauth/callback
+# Tick "Enable Device Flow"; no client secret is needed
 github.client.id=your_github_client_id_here
-github.client.secret=your_github_client_secret_here
 
 # GitLab OAuth App Credentials
 # Create app at: https://gitlab.com/-/profile/applications
 # Callback URL: gitflow://oauth/callback
+# Untick "Confidential"; no client secret is needed
 gitlab.client.id=your_gitlab_client_id_here
-gitlab.client.secret=your_gitlab_client_secret_here
 
 # Bitbucket OAuth Consumer Credentials
 # Create consumer at: https://bitbucket.org/account/settings/app-passwords/
