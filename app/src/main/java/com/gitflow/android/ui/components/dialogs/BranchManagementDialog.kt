@@ -332,6 +332,19 @@ fun BranchManagementDialog(
                 if (uiState.operationInProgress) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
+                uiState.pushingBranch?.let { branchName ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (uiState.isCancellingPush) stringResource(R.string.changes_sync_cancelling)
+                            else stringResource(R.string.branches_pushing, branchName),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (!uiState.isCancellingPush) {
+                            TextButton(onClick = viewModel::cancelPush) { Text(stringResource(R.string.changes_sync_cancel)) }
+                        }
+                    }
+                }
             }
         }
     }

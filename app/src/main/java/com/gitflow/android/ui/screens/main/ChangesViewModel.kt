@@ -19,6 +19,8 @@ import com.gitflow.android.data.models.getOrNull
 import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.data.repository.RepositorySession
 import com.gitflow.android.data.repository.RepositorySnapshot
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,6 +49,7 @@ data class ChangesUiState(
     val pendingPullCommits: Int = 0,
     /** Non-null while push is in progress; null otherwise. */
     val syncProgress: SyncProgress? = null,
+    val isCancellingSync: Boolean = false,
     // Transient snackbar message — cleared after display
     val message: String? = null,
     /** Persistent network error banner; null when no error. */
@@ -86,6 +89,7 @@ class ChangesViewModel(
 
     /** Stores the last failed network operation so the user can retry it. */
     private var pendingRetry: (() -> Unit)? = null
+    private var networkJob: Job? = null
 
     private val _uiState = MutableStateFlow(
         ChangesUiState(
@@ -266,12 +270,10 @@ class ChangesViewModel(
     }
 
     fun push() {
-        guard {
-            clearNetworkError()
+        runNetworkOperation(str(R.string.push_progress_pushing)) {
             val result = gitRepository.pushWithProgress(repository) { progress ->
                 _uiState.value = _uiState.value.copy(syncProgress = progress)
             }
-            _uiState.update { it.copy(syncProgress = null) }
             when (result) {
                 is GitResult.Success -> emit(str(R.string.changes_push_successful))
                 is GitResult.Failure.AuthRequired -> setReAuthRequired()
@@ -282,8 +284,7 @@ class ChangesViewModel(
     }
 
     fun fetch() {
-        guard {
-            clearNetworkError()
+        runNetworkOperation(str(R.string.changes_sync_fetching)) {
             val result = gitRepository.fetch(repository)
             when (result) {
                 is GitResult.Success -> {
@@ -297,8 +298,7 @@ class ChangesViewModel(
     }
 
     fun pull() {
-        guard {
-            clearNetworkError()
+        runNetworkOperation(str(R.string.changes_sync_pulling)) {
             val result = gitRepository.pull(repository)
             when (result) {
                 is GitResult.Success -> {
@@ -310,6 +310,30 @@ class ChangesViewModel(
                 is GitResult.Failure.AuthRequired -> setReAuthRequired()
                 is GitResult.Failure.NetworkError -> setNetworkError(result) { pull() }
                 is GitResult.Failure -> emit(result.message.ifBlank { null } ?: str(R.string.changes_pull_failed))
+            }
+        }
+    }
+
+    /** The operation stops at JGit's next progress check; until then the banner stays, so nothing else starts on the repository. */
+    fun cancelNetworkOperation() {
+        val job = networkJob ?: return
+        _uiState.update { it.copy(isCancellingSync = true) }
+        job.cancel()
+    }
+
+    private fun runNetworkOperation(title: String, action: suspend () -> Unit) {
+        if (_uiState.value.isProcessing) return
+        clearNetworkError()
+        _uiState.update { it.copy(isProcessing = true, syncProgress = SyncProgress(title, 0, 0)) }
+        networkJob = viewModelScope.launch {
+            try {
+                action()
+            } catch (cancellation: CancellationException) {
+                emit(str(R.string.changes_sync_cancelled))
+                throw cancellation
+            } finally {
+                networkJob = null
+                _uiState.update { it.copy(isProcessing = false, syncProgress = null, isCancellingSync = false) }
             }
         }
     }

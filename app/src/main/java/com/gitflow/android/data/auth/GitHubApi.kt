@@ -5,11 +5,6 @@ import com.gitflow.android.data.models.GitUser
 import retrofit2.Response
 import retrofit2.http.*
 
-data class GitHubOAuthResponse(
-    val access_token: String,
-    val token_type: String,
-    val scope: String
-)
 
 data class GitHubDeviceCodeResponse(
     val device_code: String,

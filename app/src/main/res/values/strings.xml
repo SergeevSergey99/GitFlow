@@ -332,6 +332,11 @@
     <string name="changes_identity_required">Set the commit author in Settings → Local author</string>
     <string name="changes_fetch_successful">Fetch successful</string>
     <string name="changes_fetch_failed">Fetch failed</string>
+    <string name="changes_sync_fetching">Fetching changes from the server…</string>
+    <string name="changes_sync_pulling">Updating the branch from the server…</string>
+    <string name="changes_sync_cancel">Cancel</string>
+    <string name="changes_sync_cancelling">Cancelling…</string>
+    <string name="changes_sync_cancelled">Operation cancelled</string>
     <string name="changes_pull_successful">Pull successful</string>
     <string name="changes_pull_failed">Pull failed</string>
     <string name="changes_pull_conflicts">Pull stopped on conflicts — resolve them below</string>
@@ -487,6 +492,7 @@
     <string name="branches_deleted">Branch %1$s deleted</string>
     <string name="branches_name_empty">Branch name cannot be empty</string>
     <string name="branches_pushed">Pushed %1$s</string>
+    <string name="branches_pushing">Pushing %1$s…</string>
     <string name="branches_renamed">Branch renamed to %1$s</string>
     <string name="branches_merged">Merged %1$s into current branch</string>
     <string name="branches_rebased">Rebased current branch onto %1$s</string>
@@ -570,7 +576,6 @@
     <string name="graph_search_hint">Search by message, author or hash…</string>
     <string name="graph_search_empty">No matching commits</string>
     <string name="graph_search_truncated">Showing the first %1$d matches — refine the query</string>
-    <string name="graph_search_results">%1$d matches</string>
     <string name="graph_merge_commit">Merge commit</string>
     <string name="graph_from_badge">from %1$s</string>
     <string name="graph_from_badge_branch">from %1$s • %2$s</string>
@@ -596,6 +601,11 @@
     <string name="auth_error_user_fetch_failed">Failed to get user info: %1$d</string>
     <string name="auth_error_empty_response">Empty response from server</string>
     <string name="auth_error_github">GitHub authorization error</string>
+    <string name="auth_logout_confirm_title">Sign out of %1$s?</string>
+    <string name="auth_logout_confirm_message">The token will be removed from the device. You can sign in again at any time.</string>
+    <string name="auth_logout_confirm_ok">Sign out</string>
+    <string name="auth_gitlab_self_hosted">Self-hosted</string>
+    <string name="auth_pat_label">Personal access token</string>
     <string name="auth_github_device_title">Sign in to GitHub</string>
     <string name="auth_github_device_message">Open %1$s and enter this code:</string>
     <string name="auth_github_device_waiting">Waiting for confirmation on GitHub…</string>

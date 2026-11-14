@@ -39,6 +39,6 @@ Details: `ARCHITECTURE.md`, file map and commands: `QUICK_REFERENCE.md`.
 ## Known risk zones
 
 - God files: `CommitDetailDialog.kt`, `ChangesScreen.kt`, `EnhancedGraphScreen.kt`, `SettingsScreen.kt`, `AuthManager.kt`.
-- Network operations (fetch/pull/push) can't be cancelled.
+- Network operations are cancelled by cancelling their coroutine: `JGitProgressMonitor` reports the job's cancellation to JGit, which stops at its next progress check.
 - `MANAGE_EXTERNAL_STORAGE` requires a Google Play declaration.
 - Bitbucket's `client_secret` ships in the APK (`assets/oauth.properties`); GitHub (device flow) and GitLab (public client + PKCE) need none.

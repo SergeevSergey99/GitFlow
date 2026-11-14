@@ -11,6 +11,7 @@ import com.gitflow.android.data.models.ResetMode
 import com.gitflow.android.data.models.getOrNull
 import com.gitflow.android.data.repository.IGitRepository
 import com.gitflow.android.data.repository.genericFailure
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,7 +36,8 @@ data class GraphUiState(
     val operationResult: GraphOperationResult? = null,
     val searchResults: List<Commit> = emptyList(),
     val isSearching: Boolean = false,
-    val isFetching: Boolean = false
+    val isFetching: Boolean = false,
+    val isCancellingFetch: Boolean = false
 )
 
 class GraphViewModel(
@@ -53,6 +55,7 @@ class GraphViewModel(
     private var commitsJob: Job? = null
     private var tagsJob: Job? = null
     private var searchJob: Job? = null
+    private var fetchJob: Job? = null
 
     init {
         loadCommits()
@@ -79,18 +82,36 @@ class GraphViewModel(
             return
         }
         _uiState.update { it.copy(isFetching = true) }
-        viewModelScope.launch {
-            val failure = when (val result = gitRepository.fetch(repository)) {
-                is GitResult.Success -> null
-                is GitResult.Failure.AuthRequired -> str(R.string.auth_session_expired_banner)
-                is GitResult.Failure -> result.message.ifBlank { str(R.string.changes_fetch_failed) }
+        fetchJob = viewModelScope.launch {
+            val failure = try {
+                when (val result = gitRepository.fetch(repository)) {
+                    is GitResult.Success -> null
+                    is GitResult.Failure.AuthRequired -> str(R.string.auth_session_expired_banner)
+                    is GitResult.Failure -> result.message.ifBlank { str(R.string.changes_fetch_failed) }
+                }
+            } catch (cancellation: CancellationException) {
+                reportFetchEnd(str(R.string.changes_sync_cancelled))
+                throw cancellation
             }
-            _uiState.update {
-                it.copy(
-                    isFetching = false,
-                    operationResult = failure?.let { message -> GraphOperationResult(message, closeDialogs = false) } ?: it.operationResult
-                )
-            }
+            reportFetchEnd(failure)
+        }
+    }
+
+    /** The fetch stops at JGit's next progress check; until then it still counts as running. */
+    fun cancelFetch() {
+        val job = fetchJob ?: return
+        _uiState.update { it.copy(isCancellingFetch = true) }
+        job.cancel()
+    }
+
+    private fun reportFetchEnd(message: String?) {
+        fetchJob = null
+        _uiState.update {
+            it.copy(
+                isFetching = false,
+                isCancellingFetch = false,
+                operationResult = message?.let { text -> GraphOperationResult(text, closeDialogs = false) } ?: it.operationResult
+            )
         }
     }
 

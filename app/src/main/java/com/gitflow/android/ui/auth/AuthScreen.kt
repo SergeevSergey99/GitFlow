@@ -42,6 +42,7 @@ import coil3.compose.AsyncImage
 import org.koin.androidx.compose.koinViewModel
 import com.gitflow.android.R
 import com.gitflow.android.data.auth.GitHubDeviceCode
+import com.gitflow.android.ui.components.dialogs.ConfirmActionDialog
 import com.gitflow.android.data.models.GitProvider
 import com.gitflow.android.data.models.GitUser
 import com.gitflow.android.data.models.TokenInfo
@@ -63,6 +64,7 @@ fun AuthScreen(
     val localAuthorName by viewModel.localAuthorName.collectAsState()
     val localAuthorEmail by viewModel.localAuthorEmail.collectAsState()
     val githubDeviceCode by viewModel.githubDeviceCode.collectAsState()
+    var providerToLogout by remember { mutableStateOf<GitProvider?>(null) }
 
     val cancelledMessage = stringResource(R.string.auth_manage_cancelled)
 
@@ -81,6 +83,19 @@ fun AuthScreen(
             val error = result.data?.getStringExtra(OAuthActivity.RESULT_ERROR) ?: cancelledMessage
             viewModel.setError(error)
         }
+    }
+
+    providerToLogout?.let { provider ->
+        ConfirmActionDialog(
+            title = stringResource(R.string.auth_logout_confirm_title, providerDisplayName(provider)),
+            message = stringResource(R.string.auth_logout_confirm_message),
+            confirmLabel = stringResource(R.string.auth_logout_confirm_ok),
+            onConfirm = {
+                providerToLogout = null
+                viewModel.logout(provider)
+            },
+            onDismiss = { providerToLogout = null }
+        )
     }
 
     githubDeviceCode?.let { code ->
@@ -149,7 +164,7 @@ fun AuthScreen(
                 isLoading = isLoading,
                 tokenInfo = if (githubUser != null) viewModel.getTokenInfo(GitProvider.GITHUB) else null,
                 onLoginOAuth = viewModel::startGitHubSignIn,
-                onLogout = { viewModel.logout(GitProvider.GITHUB) }
+                onLogout = { providerToLogout = GitProvider.GITHUB }
             )
 
             AccountCard(
@@ -161,7 +176,7 @@ fun AuthScreen(
                 onLoginPAT = { instanceUrl, _, pat ->
                     viewModel.validatePAT(GitProvider.GITLAB, instanceUrl, "", pat)
                 },
-                onLogout = { viewModel.logout(GitProvider.GITLAB) }
+                onLogout = { providerToLogout = GitProvider.GITLAB }
             )
 
             AccountCard(
@@ -170,7 +185,7 @@ fun AuthScreen(
                 isLoading = isLoading,
                 tokenInfo = if (bitbucketUser != null) viewModel.getTokenInfo(GitProvider.BITBUCKET) else null,
                 onLoginOAuth = { viewModel.startAuth(GitProvider.BITBUCKET) { oauthLauncher.launch(it) } },
-                onLogout = { viewModel.logout(GitProvider.BITBUCKET) }
+                onLogout = { providerToLogout = GitProvider.BITBUCKET }
             )
 
             // PAT providers
@@ -182,7 +197,7 @@ fun AuthScreen(
                 onLoginPAT = { instanceUrl, username, pat ->
                     viewModel.validatePAT(GitProvider.GITEA, instanceUrl, username, pat)
                 },
-                onLogout = { viewModel.logout(GitProvider.GITEA) }
+                onLogout = { providerToLogout = GitProvider.GITEA }
             )
 
             AccountCard(
@@ -194,7 +209,7 @@ fun AuthScreen(
                     // Azure DevOps doesn't use username — org is encoded in the URL
                     viewModel.validatePAT(GitProvider.AZURE_DEVOPS, instanceUrl, "", pat)
                 },
-                onLogout = { viewModel.logout(GitProvider.AZURE_DEVOPS) }
+                onLogout = { providerToLogout = GitProvider.AZURE_DEVOPS }
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -364,7 +379,7 @@ fun AccountCard(
                                 enabled = !isLoading,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Self-hosted", maxLines = 1)
+                                Text(stringResource(R.string.auth_gitlab_self_hosted), maxLines = 1)
                             }
                         }
                     } else {
@@ -537,7 +552,7 @@ private fun PATLoginDialog(
                 OutlinedTextField(
                     value = pat,
                     onValueChange = { pat = it },
-                    label = { Text("Personal Access Token") },
+                    label = { Text(stringResource(R.string.auth_pat_label)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     visualTransformation = if (patVisible) VisualTransformation.None else PasswordVisualTransformation(),

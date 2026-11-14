@@ -177,6 +177,8 @@ fun ChangesScreen(
         uiState.syncProgress?.let { progress ->
             SyncProgressBanner(
                 progress = progress,
+                isCancelling = uiState.isCancellingSync,
+                onCancel = viewModel::cancelNetworkOperation,
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }
@@ -1732,8 +1734,10 @@ private fun StashDialog(
 }
 
 @Composable
-private fun SyncProgressBanner(
+fun SyncProgressBanner(
     progress: SyncProgress,
+    isCancelling: Boolean,
+    onCancel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -1748,9 +1752,12 @@ private fun SyncProgressBanner(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = progress.task.ifBlank { stringResource(R.string.push_progress_pushing) },
+                    text = if (isCancelling) stringResource(R.string.changes_sync_cancelling)
+                    else progress.task.ifBlank { stringResource(R.string.push_progress_pushing) },
                     style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
                 val fraction = progress.fraction
                 if (fraction != null && progress.totalWork > 0) {
@@ -1759,6 +1766,9 @@ private fun SyncProgressBanner(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+                if (!isCancelling) {
+                    TextButton(onClick = onCancel) { Text(stringResource(R.string.changes_sync_cancel)) }
                 }
             }
             Spacer(Modifier.height(6.dp))

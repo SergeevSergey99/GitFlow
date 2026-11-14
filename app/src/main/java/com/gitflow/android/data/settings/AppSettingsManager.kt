@@ -164,7 +164,7 @@ class AppSettingsManager(context: Context) {
     }
 
     fun getLanguage(): String {
-        return preferences.getString(KEY_LANGUAGE, LANGUAGE_RUSSIAN) ?: LANGUAGE_RUSSIAN
+        return preferences.getString(KEY_LANGUAGE, LANGUAGE_SYSTEM) ?: LANGUAGE_SYSTEM
     }
 
     fun setLanguage(language: String) {

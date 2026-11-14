@@ -15,6 +15,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -22,6 +25,8 @@ data class BranchesUiState(
     val branches: List<Branch> = emptyList(),
     val isLoading: Boolean = false,
     val operationInProgress: Boolean = false,
+    val pushingBranch: String? = null,
+    val isCancellingPush: Boolean = false,
     val message: String? = null,
     val errorMessage: String? = null,
     /** In-progress git operation (merge/rebase) whose conflicts are awaiting resolution. */
@@ -41,6 +46,7 @@ class BranchesViewModel(
     val uiState: StateFlow<BranchesUiState> = _uiState.asStateFlow()
 
     private var isProcessing = false
+    private var pushJob: Job? = null
 
     init {
         loadBranches()
@@ -100,11 +106,28 @@ class BranchesViewModel(
 
     fun pushBranch(branch: Branch) {
         runOp {
-            when (val result = gitRepository.pushBranch(repository, branch.name)) {
-                is GitResult.Success -> succeed(str(R.string.branches_pushed, branch.name))
-                is GitResult.Failure -> fail(result.message)
+            pushJob = currentCoroutineContext()[Job]
+            _uiState.update { it.copy(pushingBranch = branch.name) }
+            try {
+                when (val result = gitRepository.pushBranch(repository, branch.name)) {
+                    is GitResult.Success -> succeed(str(R.string.branches_pushed, branch.name))
+                    is GitResult.Failure -> fail(result.message)
+                }
+            } catch (cancellation: CancellationException) {
+                succeed(str(R.string.changes_sync_cancelled))
+                throw cancellation
+            } finally {
+                pushJob = null
+                _uiState.update { it.copy(pushingBranch = null, isCancellingPush = false) }
             }
         }
+    }
+
+    /** The push stops at JGit's next progress check; until then the dialog keeps showing it. */
+    fun cancelPush() {
+        val job = pushJob ?: return
+        _uiState.update { it.copy(isCancellingPush = true) }
+        job.cancel()
     }
 
     fun renameBranch(branch: Branch, newName: String) {

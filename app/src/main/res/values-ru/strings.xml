@@ -332,6 +332,11 @@
     <string name="changes_identity_required">Укажите автора коммитов: Настройки → Локальный автор</string>
     <string name="changes_fetch_successful">Fetch выполнен успешно</string>
     <string name="changes_fetch_failed">Ошибка fetch</string>
+    <string name="changes_sync_fetching">Получаю изменения с сервера…</string>
+    <string name="changes_sync_pulling">Обновляю ветку с сервера…</string>
+    <string name="changes_sync_cancel">Отменить</string>
+    <string name="changes_sync_cancelling">Отменяю…</string>
+    <string name="changes_sync_cancelled">Операция отменена</string>
     <string name="changes_pull_successful">Pull выполнен успешно</string>
     <string name="changes_pull_failed">Ошибка pull</string>
     <string name="changes_pull_conflicts">Pull остановлен на конфликтах — разрешите их ниже</string>
@@ -487,6 +492,7 @@
     <string name="branches_deleted">Ветка %1$s удалена</string>
     <string name="branches_name_empty">Имя ветки не может быть пустым</string>
     <string name="branches_pushed">Ветка %1$s отправлена</string>
+    <string name="branches_pushing">Отправляю %1$s…</string>
     <string name="branches_renamed">Ветка переименована в %1$s</string>
     <string name="branches_merged">Ветка %1$s слита в текущую</string>
     <string name="branches_rebased">Текущая ветка перенесена на %1$s</string>
@@ -570,7 +576,6 @@
     <string name="graph_search_hint">Поиск по сообщению, автору или хешу…</string>
     <string name="graph_search_empty">Совпадений не найдено</string>
     <string name="graph_search_truncated">Показаны первые %1$d совпадений — уточните запрос</string>
-    <string name="graph_search_results">%1$d совпадений</string>
     <string name="graph_merge_commit">Merge-коммит</string>
     <string name="graph_from_badge">из %1$s</string>
     <string name="graph_from_badge_branch">из %1$s • %2$s</string>
@@ -596,6 +601,11 @@
     <string name="auth_error_user_fetch_failed">Не удалось получить информацию о пользователе: %1$d</string>
     <string name="auth_error_empty_response">Пустой ответ от сервера</string>
     <string name="auth_error_github">Ошибка авторизации GitHub</string>
+    <string name="auth_logout_confirm_title">Выйти из %1$s?</string>
+    <string name="auth_logout_confirm_message">Токен будет удалён с устройства. Войти снова можно в любой момент.</string>
+    <string name="auth_logout_confirm_ok">Выйти</string>
+    <string name="auth_gitlab_self_hosted">Свой сервер</string>
+    <string name="auth_pat_label">Токен доступа (PAT)</string>
     <string name="auth_github_device_title">Вход в GitHub</string>
     <string name="auth_github_device_message">Откройте %1$s и введите этот код:</string>
     <string name="auth_github_device_waiting">Жду подтверждения на GitHub…</string>

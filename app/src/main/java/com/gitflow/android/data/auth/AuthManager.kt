@@ -400,7 +400,7 @@ class AuthManager(private val context: Context) {
             )
 
             // Warn if required scopes are missing
-            val grantedScopes = oauthResponse.scope?.split(" ")?.map { it.trim() } ?: emptyList()
+            val grantedScopes = oauthResponse.scope.split(" ").map { scope -> scope.trim() }
             if ("read_user" !in grantedScopes || "read_repository" !in grantedScopes) {
                 Timber.w("GitLab OAuth: expected 'read_user read_repository' scopes. Granted: ${oauthResponse.scope}")
             }

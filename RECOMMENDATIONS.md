@@ -7,12 +7,12 @@
 ## Backlog после ревью 2026-11
 
 - [ ] **God-файлы.** `CommitDetailDialog.kt` (~3300 строк), `ChangesScreen.kt` (~1800), `EnhancedGraphScreen.kt` (~1400), `SettingsScreen.kt` (~1350), `AuthManager.kt` (~1350, OAuth + PAT + списки + PR + размеры). Разбирать по одному, без изменения поведения.
-- [ ] **Отмена fetch/pull/push.** `JGitProgressMonitor.isCancelled()` всегда `false`, отмена корутины не останавливает JGit.
+- [x] **Отмена fetch/pull/push** _(2026-11-15)_: монитор JGit повторяет отмену вызвавшей корутины; «Отменить» на экране изменений, в графе и при отправке ветки.
 - [ ] **`AuthRequired` по подстрокам** текста `TransportException` в `classifyNetworkException`. Отдельного исключения в JGit 5.13 нет — можно только сузить проверку.
 - [ ] **Английские остатки:** запасные фразы `classifyNetworkException` (диалог веток показывает их при push), этапы прогресса клонирования, «Unknown error» в `CommitDetailDialog` и `RepositoryListViewModel`.
 - [ ] **Учётные данные только для `origin`**; checkout удалённой ветки обрезает только префикс `origin/`.
 - [ ] **Теги в меню коммита** при ошибке чтения выглядят как «тегов нет».
-- [ ] **Неиспользуемое:** `gitResultOf` в `GitResult.kt`, зависимость `androidx.documentfile`.
+- [x] **Неиспользуемое удалено** _(2026-11-15)_: `gitResultOf`, `androidx.documentfile`, `FormUrlEncodedConverterFactory`, `GitHubOAuthResponse`.
 - [ ] **Google Play:** для `MANAGE_EXTERNAL_STORAGE` нужна декларация «доступ ко всем файлам».
 - [ ] **`GraphViewModel`/`ChangesViewModel`** живут по одному на каждый открытый репозиторий в хранилище главного экрана.
 - [ ] **`AuthViewModel` и `RemoteRepositoriesViewModel`** — россыпь `StateFlow` вместо одного `UiState` (см. P1.5).
@@ -340,7 +340,7 @@
 - [x] Push отдельной ветки — ✅ 2026-07-04. `pushBranch` в data-слое (`RefSpec`) + пункт меню в `BranchManagementDialog`, доступен и для текущей ветки, без диалога подтверждения.
 - [ ] Per-app language: `android:localeConfig` в манифесте + `LocaleManager` на API 33+,
   текущий `attachBaseContext`-механизм оставить для API < 33. Fallback неизвестного
-  значения языка сменить с русского на системный.
+  значения языка сменить с русского на системный. Язык по умолчанию уже системный _(2026-11-15)_.
 - [ ] Предупреждение о submodules при клоне (`.gitmodules` в корне → баннер «submodules не поддерживаются»).
 
 ---

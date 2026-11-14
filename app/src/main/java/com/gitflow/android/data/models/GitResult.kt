@@ -100,10 +100,3 @@ fun <T> GitResult<T>.onFailure(action: (GitResult.Failure) -> Unit): GitResult<T
     if (this is GitResult.Failure) action(this)
     return this
 }
-
-/** Convenience builder — wraps a throwing block into GitResult. */
-inline fun <T> gitResultOf(block: () -> T): GitResult<T> = try {
-    GitResult.Success(block())
-} catch (e: Exception) {
-    GitResult.Failure.Generic(e.message ?: "Unknown error", e)
-}

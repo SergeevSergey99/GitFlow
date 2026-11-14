@@ -106,7 +106,6 @@ dependencies {
     // not guaranteed on Android minSdk 26 without full core library desugaring setup
     implementation("org.eclipse.jgit:org.eclipse.jgit:5.13.3.202401111512-r")
 
-    implementation("androidx.documentfile:documentfile:1.1.0")
 
     // Network и OAuth — Retrofit 3.0/OkHttp 5.0 not upgraded yet (breaking API changes)
     implementation("com.squareup.retrofit2:retrofit:2.11.0")

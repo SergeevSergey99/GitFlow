@@ -2,6 +2,8 @@ package com.gitflow.android.data.repository
 
 import com.gitflow.android.R
 import com.gitflow.android.data.models.*
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import org.eclipse.jgit.api.CreateBranchCommand
 import org.eclipse.jgit.api.errors.RefAlreadyExistsException
 import org.eclipse.jgit.api.errors.TransportException
@@ -81,8 +83,13 @@ internal fun classifyNetworkException(e: Exception): GitResult.Failure {
     return genericFailure(e)
 }
 
-private class JGitProgressMonitor(
-    private val callback: (SyncProgress) -> Unit
+/**
+ * JGit can't be interrupted from outside: it stops only when its monitor reports cancellation, so the
+ * monitor mirrors the calling coroutine and cancelling that coroutine stops the network operation.
+ */
+internal class JGitProgressMonitor(
+    private val job: Job?,
+    private val callback: (SyncProgress) -> Unit = {}
 ) : ProgressMonitor {
     private var currentTask = ""
     private var total = 0
@@ -102,8 +109,11 @@ private class JGitProgressMonitor(
     override fun endTask() {
         callback(SyncProgress(currentTask, total, total))
     }
-    override fun isCancelled(): Boolean = false
+    override fun isCancelled(): Boolean = job?.isCancelled == true
 }
+
+private suspend fun cancellableMonitor(callback: (SyncProgress) -> Unit = {}) =
+    JGitProgressMonitor(currentCoroutineContext()[Job], callback)
 
 private fun GitRepository.conflictPathList(paths: List<String>): String =
     paths.joinToString(", ").ifEmpty { text(R.string.git_conflicts_see_working_tree) }
@@ -211,7 +221,7 @@ private suspend fun GitRepository.originCredentials(git: Git) = resolveCredentia
 
 internal suspend fun GitRepository.fetchImpl(repository: Repository): GitResult<Unit> =
     withGit(repository, onError = ::classifyNetworkException) { git ->
-        val fetchCommand = git.fetch()
+        val fetchCommand = git.fetch().setProgressMonitor(cancellableMonitor())
         originCredentials(git)?.let { fetchCommand.setCredentialsProvider(it) }
         fetchCommand.call()
         refreshRepository(repository)
@@ -223,7 +233,7 @@ internal suspend fun GitRepository.pullImpl(repository: Repository): GitResult<U
         val credentials = originCredentials(git)
         // Not refused without an identity: most pulls fast-forward and create no commit.
         applyCommitIdentity(git)
-        val pullCommand = git.pull()
+        val pullCommand = git.pull().setProgressMonitor(cancellableMonitor())
         credentials?.let { pullCommand.setCredentialsProvider(it) }
         val result = pullCommand.call()
         val mergeConflicts = result.mergeResult
@@ -245,7 +255,7 @@ internal suspend fun GitRepository.pullImpl(repository: Repository): GitResult<U
 
 internal suspend fun GitRepository.pushImpl(repository: Repository): GitResult<Unit> =
     withGit(repository, onError = ::classifyNetworkException) { git ->
-        val pushCommand = git.push()
+        val pushCommand = git.push().setProgressMonitor(cancellableMonitor())
         originCredentials(git)?.let { pushCommand.setCredentialsProvider(it) }
         finishPush(repository, git, currentLocalBranch(git), evaluatePushResult(pushCommand.call()))
     }
@@ -259,7 +269,7 @@ internal suspend fun GitRepository.pushImpl(repository: Repository): GitResult<U
 internal suspend fun GitRepository.pushBranchImpl(repository: Repository, branchName: String): GitResult<Unit> =
     withGit(repository, onError = ::classifyNetworkException) { git ->
         val refSpec = RefSpec("refs/heads/$branchName:refs/heads/$branchName")
-        val pushCommand = git.push().setRefSpecs(refSpec)
+        val pushCommand = git.push().setRefSpecs(refSpec).setProgressMonitor(cancellableMonitor())
         originCredentials(git)?.let { pushCommand.setCredentialsProvider(it) }
         finishPush(repository, git, branchName, evaluatePushResult(pushCommand.call()))
     }
@@ -270,7 +280,7 @@ internal suspend fun GitRepository.pushWithProgressImpl(
 ): GitResult<Unit> = withGit(repository, onError = ::classifyNetworkException) { git ->
     val pushCommand = git.push()
     originCredentials(git)?.let { pushCommand.setCredentialsProvider(it) }
-    pushCommand.setProgressMonitor(JGitProgressMonitor(onProgress))
+    pushCommand.setProgressMonitor(cancellableMonitor(onProgress))
     finishPush(repository, git, currentLocalBranch(git), evaluatePushResult(pushCommand.call()))
 }
 

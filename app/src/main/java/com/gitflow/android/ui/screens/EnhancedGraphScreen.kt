@@ -76,7 +76,9 @@ import com.gitflow.android.data.models.Commit
 import com.gitflow.android.data.models.Repository
 import com.gitflow.android.data.models.ResetMode
 import com.gitflow.android.ui.config.GraphConfig
+import com.gitflow.android.data.models.SyncProgress
 import com.gitflow.android.ui.screens.main.EmptyStateMessage
+import com.gitflow.android.ui.screens.main.SyncProgressBanner
 import com.gitflow.android.ui.util.timeAgo
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
@@ -201,6 +203,15 @@ fun EnhancedGraphView(
                         viewModel.selectActionCommit(commit)
                         showActionsSheet = true
                     }
+                )
+            }
+
+            if (uiState.isFetching) {
+                SyncProgressBanner(
+                    progress = SyncProgress(stringResource(R.string.changes_sync_fetching), 0, 0),
+                    isCancelling = uiState.isCancellingFetch,
+                    onCancel = viewModel::cancelFetch,
+                    modifier = Modifier.align(Alignment.BottomCenter)
                 )
             }
 
